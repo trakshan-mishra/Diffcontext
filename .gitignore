@@ -5,3 +5,4 @@ benchmark_results.json
 repomix-output.xml
 
 requests/
+benchmarks/click/
