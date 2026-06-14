@@ -1,18 +1,106 @@
 {
-  "add": {
-    "file": "app.py",
-    "code": "def add(a, b):\n    return a + b +1"
+  "./repo_extractor.py:extract_repository_functions": {
+    "file": "./repo_extractor.py",
+    "code": "def extract_repository_functions(repo_path):\n\n    repository_functions = {}\n\n    files = find_python_files(repo_path)\n\n    for file in files:\n\n        functions = extract_functions(file)\n\n        repository_functions.update(\n            functions\n        )\n\n    return repository_functions"
   },
-  "multiply": {
-    "file": "app.py",
+  "./app.py:add": {
+    "file": "./app.py",
+    "code": "def add(a, b):\n    return a + b +2"
+  },
+  "./app.py:multiply": {
+    "file": "./app.py",
     "code": "def multiply(a, b):\n    return a * b"
   },
-  "calculate": {
-    "file": "app.py",
+  "./app.py:divide": {
+    "file": "./app.py",
+    "code": "def divide(a,b):\n    return a/b"
+  },
+  "./app.py:calculate": {
+    "file": "./app.py",
     "code": "def calculate():\n\n    x = add(2, 3)\n\n    y = multiply(4, 5)\n\n    return x + y"
   },
-  "report": {
-    "file": "app.py",
+  "./app.py:report": {
+    "file": "./app.py",
     "code": "def report():\n\n    return calculate()"
+  },
+  "./dependency_expander.py:expand_dependencies": {
+    "file": "./dependency_expander.py",
+    "code": "def expand_dependencies(graph, selected_functions):\n\n    visited = set()\n    result = []\n\n    def dfs(func):\n\n        if func in visited:\n            return\n\n        visited.add(func)\n        result.append(func)\n\n        for dep in graph.get(func, []):\n            dfs(dep)\n\n    for func in selected_functions:\n        dfs(func)\n\n    return result"
+  },
+  "./dependency_graph.py:build_dependency_graph": {
+    "file": "./dependency_graph.py",
+    "code": "def build_dependency_graph(filename):\n\n    with open(filename, \"r\") as f:\n        source = f.read()\n\n    tree = ast.parse(source)\n\n    graph = {}\n\n    for node in tree.body:\n\n        if isinstance(node, ast.FunctionDef):\n\n            function_name = node.name\n\n            graph[function_name] = []\n\n            for child in ast.walk(node):\n\n                if isinstance(child, ast.Call):\n\n                    if isinstance(child.func, ast.Name):\n\n                        graph[function_name].append(\n                            child.func.id\n                        )\n\n    return graph"
+  },
+  "./context_builder.py:build_context": {
+    "file": "./context_builder.py",
+    "code": "def build_context(\n    functions,\n    selected_functions\n):\n\n    sections = []\n\n    for function_id in selected_functions:\n\n        if function_id not in functions:\n            continue\n\n        file_name, function_name = (\n            function_id.split(\":\", 1)\n        )\n\n        sections.append(\n            f\"FILE: {file_name}\\n\"\n            f\"FUNCTION: {function_name}\\n\\n\"\n            f\"{functions[function_id]['code']}\"\n        )\n\n    return \"\\n\\n\".join(sections)"
+  },
+  "./extractor.py:extract_functions": {
+    "file": "./extractor.py",
+    "code": "def extract_functions(filename):\n\n    with open(filename, \"r\") as f:\n        source = f.read()\n\n    tree = ast.parse(source)\n\n    functions = {}\n\n    for node in tree.body:\n\n        if isinstance(node, ast.FunctionDef):\n\n            function_id = f\"{filename}:{node.name}\"\n\n            functions[function_id] = {\n                \"file\": filename,\n                \"code\": ast.get_source_segment(\n                    source,\n                    node\n                )\n            }\n\n    return functions"
+  },
+  "./multi_file_dependency_graph.py:build_repository_graph": {
+    "file": "./multi_file_dependency_graph.py",
+    "code": "def build_repository_graph(repo_path):\n\n    graph = {}\n\n    functions = extract_repository_functions(\n        repo_path\n    )\n\n    files = find_python_files(repo_path)\n\n    for filename in files:\n\n        with open(filename, \"r\") as f:\n            source = f.read()\n\n        tree = ast.parse(source)\n\n        for node in tree.body:\n\n            if not isinstance(\n                node,\n                ast.FunctionDef\n            ):\n                continue\n\n            function_id = (\n                f\"{filename}:{node.name}\"\n            )\n\n            graph[function_id] = []\n\n            for child in ast.walk(node):\n\n                if not isinstance(\n                    child,\n                    ast.Call\n                ):\n                    continue\n\n                if not isinstance(\n                    child.func,\n                    ast.Name\n                ):\n                    continue\n\n                called_name = child.func.id\n\n                local_function = (\n                    f\"{filename}:{called_name}\"\n                )\n\n                if local_function in functions:\n\n                    graph[function_id].append(\n                        local_function\n                    )\n\n    return graph"
+  },
+  "./diff.py:compare_functions": {
+    "file": "./diff.py",
+    "code": "def compare_functions(previous_state, current_state):\n\n    modified = {}\n    added = {}\n    deleted = []\n\n    for fn in previous_state:\n\n        if fn not in current_state:\n            deleted.append(fn)\n\n        elif previous_state[fn] != current_state[fn]:\n            modified[fn] = current_state[fn]\n\n    for fn in current_state:\n\n        if fn not in previous_state:\n            added[fn] = current_state[fn]\n\n    return {\n        \"modified\": modified,\n        \"added\": added,\n        \"deleted\": deleted\n    }"
+  },
+  "./main.py:main": {
+    "file": "./main.py",
+    "code": "def main():\n\n    current_state = extract_functions(\"app.py\")\n\n    previous_state = load_state()\n\n    diff = compare_functions(\n        previous_state,\n        current_state\n    )\n\n    changed = (\n        list(diff[\"modified\"].keys())\n        + list(diff[\"added\"].keys())\n    )\n\n    if not changed:\n        print(\"No changes detected\")\n        return\n\n    graph = build_dependency_graph(\"app.py\")\n\n    selected = set(changed)\n\n    for fn in changed:\n        selected.update(\n            get_blast_radius(graph, fn)\n        )\n\n    expanded = expand_dependencies(\n        graph,\n        list(selected)\n    )\n\n    context = build_context(\n        current_state,\n        expanded\n    )\n\n    print(context)\n\n    save_state(current_state)"
+  },
+  "./state_manager.py:load_state": {
+    "file": "./state_manager.py",
+    "code": "def load_state():\n\n    if not os.path.exists(STATE_FILE):\n        return {}\n\n    with open(STATE_FILE, \"r\") as f:\n        return json.load(f)"
+  },
+  "./state_manager.py:save_state": {
+    "file": "./state_manager.py",
+    "code": "def save_state(state):\n\n    with open(STATE_FILE, \"w\") as f:\n        json.dump(state, f, indent=2)"
+  },
+  "./repo_scanner.py:find_python_files": {
+    "file": "./repo_scanner.py",
+    "code": "def find_python_files(root_dir):\n\n    python_files = []\n\n    for root, dirs, files in os.walk(root_dir):\n\n        dirs[:] = [\n            d\n            for d in dirs\n            if d not in [\n                \"__pycache__\",\n                \".git\",\n                \"experimental\",\n                \"venv\"\n            ]\n        ]\n\n        for file in files:\n\n            if file.endswith(\".py\"):\n\n                python_files.append(\n                    os.path.join(root, file)\n                )\n\n    return python_files"
+  },
+  "./repo_main.py:main": {
+    "file": "./repo_main.py",
+    "code": "def main():\n\n    current_state = (\n        extract_repository_functions(\".\")\n    )\n\n    previous_state = load_state()\n\n    diff = compare_functions(\n        previous_state,\n        current_state\n    )\n\n    changed = (\n        list(diff[\"modified\"].keys())\n        + list(diff[\"added\"].keys())\n    )\n\n    if not changed:\n\n        print(\n            \"No changes detected\"\n        )\n\n        return\n\n    graph = build_repository_graph(\".\")\n\n    selected = set(changed)\n\n    for func in changed:\n\n        selected.update(\n            get_blast_radius(\n                graph,\n                func\n            )\n        )\n\n    expanded = expand_dependencies(\n        graph,\n        list(selected)\n    )\n\n    context = build_context(\n        current_state,\n        expanded\n    )\n\n    print(context)\n\n    save_state(current_state)"
+  },
+  "./blast_radius.py:get_blast_radius": {
+    "file": "./blast_radius.py",
+    "code": "def get_blast_radius(graph, changed_function):\n\n    affected = set()\n\n    def dfs(target):\n\n        for function, dependencies in graph.items():\n\n            if target in dependencies:\n\n                if function not in affected:\n\n                    affected.add(function)\n\n                    dfs(function)\n\n    dfs(changed_function)\n\n    return list(affected)"
+  },
+  "./examples/app_v1.py:add": {
+    "file": "./examples/app_v1.py",
+    "code": "def add(a, b):\n    return a + b"
+  },
+  "./examples/app_v1.py:multiply": {
+    "file": "./examples/app_v1.py",
+    "code": "def multiply(a, b):\n    return a * b"
+  },
+  "./examples/app_v1.py:calculate": {
+    "file": "./examples/app_v1.py",
+    "code": "def calculate():\n    x = add(2, 3)\n    y = multiply(4, 5)\n    return x + y"
+  },
+  "./examples/app_v1.py:report": {
+    "file": "./examples/app_v1.py",
+    "code": "def report():\n    return calculate()"
+  },
+  "./examples/app_v2.py:add": {
+    "file": "./examples/app_v2.py",
+    "code": "def add(a, b):\n    return a + b + 1"
+  },
+  "./examples/app_v2.py:multiply": {
+    "file": "./examples/app_v2.py",
+    "code": "def multiply(a, b):\n    return a * b"
+  },
+  "./examples/app_v2.py:calculate": {
+    "file": "./examples/app_v2.py",
+    "code": "def calculate():\n    x = add(2, 3)\n    y = multiply(4, 5)\n    return x + y"
+  },
+  "./examples/app_v2.py:report": {
+    "file": "./examples/app_v2.py",
+    "code": "def report():\n    return calculate()"
   }
 }

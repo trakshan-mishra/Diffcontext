@@ -10,11 +10,13 @@ def extract_functions(filename):
 
     functions = {}
 
-    for node in ast.walk(tree):
+    for node in tree.body:
 
         if isinstance(node, ast.FunctionDef):
 
-            functions[node.name] = {
+            function_id = f"{filename}:{node.name}"
+
+            functions[function_id] = {
                 "file": filename,
                 "code": ast.get_source_segment(
                     source,
