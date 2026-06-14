@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+
+benchmark_results.json
+repomix-output.xml
+
+requests/
