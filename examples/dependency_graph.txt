@@ -1,0 +1,11 @@
+{
+    "add": [],
+    "multiply": [],
+    "calculate": [
+        "add",
+        "multiply"
+    ],
+    "report": [
+        "calculate"
+    ]
+}
