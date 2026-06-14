@@ -1,3 +1,8 @@
+from multi_file_dependency_graph import (
+    build_repository_graph
+)
+
+
 def get_blast_radius(graph, changed_function):
 
     affected = set()
@@ -18,17 +23,16 @@ def get_blast_radius(graph, changed_function):
 
     return list(affected)
 
+
 if __name__ == "__main__":
 
-    from dependency_graph import build_dependency_graph
-
-    graph = build_dependency_graph("app.py")
+    graph = build_repository_graph(".")
 
     print(graph)
 
     print(
         get_blast_radius(
             graph,
-            "add"
+            "./app.py:add"
         )
     )

@@ -1,0 +1,11 @@
+{
+  "changed": [
+    "./app.py:add"
+  ],
+  "expected_context": [
+    "./app.py:add",
+    "./app.py:multiply",
+    "./app.py:calculate",
+    "./app.py:report"
+  ]
+}
