@@ -11,6 +11,9 @@ import os
 import sys
 import time
 
+import tempfile
+import subprocess
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from benchmarks.evaluator import run_diffcontext
@@ -35,6 +38,12 @@ def selected_tokens(functions, selected_ids):
 
 
 def run_benchmark(repo_path, changed_functions, name="", note=""):
+    is_online = repo_path.startswith("http://") or repo_path.startswith("https://") or repo_path.startswith("git@")
+    if is_online:
+        temp_dir = tempfile.mkdtemp()
+        print(f"Cloning {repo_path} to {temp_dir}...")
+        subprocess.run(["git", "clone", repo_path, temp_dir], check=True)
+        repo_path = temp_dir
     repo_path = os.path.abspath(repo_path)
 
     print(f"\n{'=' * 60}")
