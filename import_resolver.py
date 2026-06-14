@@ -40,9 +40,21 @@ def build_import_map(filename, repo_path):
 
             resolved = _resolve_module_path(module_path)
 
-            if resolved:
-                for alias in node.names:
-                    local_name = alias.asname or alias.name
+            for alias in node.names:
+                local_name = alias.asname or alias.name
+
+                # `from . import routing` / `from fastapi import routing`:
+                # `routing` is itself a submodule (routing.py), not a name
+                # defined in the package's __init__.py. Prefer that
+                # interpretation -- it's what matters for `routing.Foo`
+                # style attribute access, which is the common case for
+                # `from package import submodule` imports.
+                submodule_path = os.path.join(module_path, alias.name)
+                submodule_resolved = _resolve_module_path(submodule_path)
+
+                if submodule_resolved:
+                    imports[local_name] = submodule_resolved
+                elif resolved:
                     imports[local_name] = resolved
 
         elif isinstance(node, ast.Import):
