@@ -27,4 +27,6 @@ graph = {
 
 selected = ["calculate"]
 
-print(expand_dependencies(graph, selected))
+
+if __name__ == "__main__":
+    print(expand_dependencies(graph, selected))

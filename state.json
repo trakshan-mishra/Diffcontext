@@ -1,6 +1,18 @@
 {
-  "add": "def add(a, b):\n    return a + b +1",
-  "multiply": "def multiply(a, b):\n    return a * b",
-  "calculate": "def calculate():\n\n    x = add(2, 3)\n\n    y = multiply(4, 5)\n\n    return x + y",
-  "report": "def report():\n\n    return calculate()"
+  "add": {
+    "file": "app.py",
+    "code": "def add(a, b):\n    return a + b +1"
+  },
+  "multiply": {
+    "file": "app.py",
+    "code": "def multiply(a, b):\n    return a * b"
+  },
+  "calculate": {
+    "file": "app.py",
+    "code": "def calculate():\n\n    x = add(2, 3)\n\n    y = multiply(4, 5)\n\n    return x + y"
+  },
+  "report": {
+    "file": "app.py",
+    "code": "def report():\n\n    return calculate()"
+  }
 }
