@@ -1,8 +1,11 @@
+# Python
 __pycache__/
 *.pyc
 
-benchmark_results.json
-repomix-output.xml
-
-requests/
+# Benchmark repositories
 benchmarks/click/
+benchmarks/flask/
+
+# Temporary inspection scripts
+inspect_click.py
+inspect_flask.py
