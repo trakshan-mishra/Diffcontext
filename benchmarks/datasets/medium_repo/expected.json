@@ -1,10 +1,10 @@
 {
-  "changed": [
-    "./utils.py:validate"
-  ],
+  "changed": ["./api.py:register"],
   "expected_context": [
-    "./utils.py:validate",
+    "./api.py:register",
     "./services.py:create_user",
-    "./api.py:register"
+    "./utils.py:validate",
+    "./utils.py:sanitize",
+    "./utils.py:hash_password"
   ]
 }

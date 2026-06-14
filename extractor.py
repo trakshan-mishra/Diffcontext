@@ -1,32 +1,33 @@
-import ast, os
+import ast
+import os
 
 
-def extract_functions(filename):
-
-    with open(filename, "r") as f:
+def extract_functions(filename, repo_path):
+    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
         source = f.read()
 
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
 
     functions = {}
 
-    for node in tree.body:
+    relative_file = "./" + os.path.relpath(filename, repo_path)
 
-        if isinstance(node, ast.FunctionDef):
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
 
-            relative_file = (
-                "./" + os.path.basename(filename)
-            )
+        function_id = f"{relative_file}:{node.name}"
 
-            function_id = (
-                f"{relative_file}:{node.name}"
-            )
+        code = ast.get_source_segment(source, node)
+        if code is None:
+            continue
 
-            functions[function_id] = {
-                "file": filename,
-                "code": ast.get_source_segment(
-                    source,
-                    node
-                )
-            }
+        functions[function_id] = {
+            "file": filename,
+            "code": code,
+        }
+
     return functions

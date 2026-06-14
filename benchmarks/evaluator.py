@@ -4,36 +4,24 @@ from blast_radius import get_blast_radius
 from dependency_expander import expand_dependencies
 
 
-def run_diffcontext(repo_path, changed):
+def run_diffcontext(repo_path, changed_functions):
+    """
+    Run the full DiffContext pipeline on a repo given a list of changed function IDs.
 
-    functions = extract_repository_functions(
-        repo_path
-    )
+    Args:
+        repo_path: path to the repository root
+        changed_functions: list of function IDs e.g. ["./api.py:get"]
 
-    graph = build_repository_graph(
-        repo_path
-    )
+    Returns:
+        list of function IDs that should be included in context
+    """
+    graph = build_repository_graph(repo_path)
 
+    selected = set(changed_functions)
 
+    for func in changed_functions:
+        selected.update(get_blast_radius(graph, func))
 
-    selected = set(changed)
-
-    for func in changed:
-
-        selected.update(
-            get_blast_radius(
-                graph,
-                func
-            )
-        )
-
-        
-
-    expanded = expand_dependencies(
-        graph,
-        list(selected)
-    )
+    expanded = expand_dependencies(graph, list(selected))
 
     return expanded
-
-
