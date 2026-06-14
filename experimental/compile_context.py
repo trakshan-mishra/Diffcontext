@@ -1,4 +1,4 @@
-from diff import extract_functions
+from extractor import extract_functions
 from dependency_graph import build_dependency_graph
 
 from context_selector import select_top_functions

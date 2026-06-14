@@ -1,31 +1,46 @@
-def build_context(functions, selected_functions):
+from repo_extractor import (
+    extract_repository_functions
+)
+
+def build_context(
+    functions,
+    selected_functions
+):
+
     sections = []
 
-    for func in selected_functions:
-        if func not in functions:
+    for function_id in selected_functions:
+
+        if function_id not in functions:
             continue
 
+        file_name, function_name = (
+            function_id.split(":", 1)
+        )
+
         sections.append(
-            f"FUNCTION: {func}\n\n"
-            f"{functions[func]}"
+            f"FILE: {file_name}\n"
+            f"FUNCTION: {function_name}\n\n"
+            f"{functions[function_id]['code']}"
         )
 
     return "\n\n".join(sections)
 
 
-functions = {
-    "add": "def add(a,b):\n    return a+b",
+if __name__ == "__main__":
 
-    "multiply": "def multiply(a,b):\n    return a*b",
+    functions = extract_repository_functions(".")
 
-    "calculate": """def calculate(a,b):
-    return add(a,b) + multiply(a,b)"""
-}
+    selected = [
+        "./app.py:report",
+        "./app.py:calculate",
+        "./app.py:add",
+        "./app.py:multiply"
+    ]
 
-selected = [
-    "calculate",
-    "add",
-    "multiply"
-]
-
-print(build_context(functions, selected))
+    print(
+        build_context(
+            functions,
+            selected
+        )
+    )
