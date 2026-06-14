@@ -1,4 +1,4 @@
-import ast
+import ast, os
 
 
 def extract_functions(filename):
@@ -14,7 +14,13 @@ def extract_functions(filename):
 
         if isinstance(node, ast.FunctionDef):
 
-            function_id = f"{filename}:{node.name}"
+            relative_file = (
+                "./" + os.path.basename(filename)
+            )
+
+            function_id = (
+                f"{relative_file}:{node.name}"
+            )
 
             functions[function_id] = {
                 "file": filename,
@@ -23,5 +29,4 @@ def extract_functions(filename):
                     node
                 )
             }
-
     return functions

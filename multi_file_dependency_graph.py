@@ -1,4 +1,5 @@
 import ast
+import os
 
 from repo_scanner import find_python_files
 from repo_extractor import extract_repository_functions
@@ -21,6 +22,10 @@ def build_repository_graph(repo_path):
 
         tree = ast.parse(source)
 
+        relative_file = (
+            "./" + os.path.basename(filename)
+        )
+
         for node in tree.body:
 
             if not isinstance(
@@ -30,7 +35,7 @@ def build_repository_graph(repo_path):
                 continue
 
             function_id = (
-                f"{filename}:{node.name}"
+                f"{relative_file}:{node.name}"
             )
 
             graph[function_id] = []
@@ -52,7 +57,7 @@ def build_repository_graph(repo_path):
                 called_name = child.func.id
 
                 local_function = (
-                    f"{filename}:{called_name}"
+                    f"{relative_file}:{called_name}"
                 )
 
                 if local_function in functions:
@@ -69,8 +74,4 @@ if __name__ == "__main__":
     graph = build_repository_graph(".")
 
     for function, deps in graph.items():
-        print(
-            function,
-            "->",
-            deps
-        )
+        print(function, "->", deps)
