@@ -1,0 +1,12 @@
+{
+  "./app.py:App.setup_a": ["./routing.py:Router.include_router"],
+  "./app.py:App.setup_b": ["./helpers.py:Helper.run"],
+  "./app.py:App.setup_c": ["./helpers.py:Helper.run"],
+  "./app.py:App.setup_d": ["./routing.py:Router.include_router"],
+  "./app.py:App.setup_e": ["./routing.py:Router.include_router"],
+  "./app.py:App.setup_f": ["./routing.py:Router.include_router"],
+  "./app.py:App.setup_two_hop": ["./routing.py:Router.include_router"],
+  "./commands.py:Command.main": ["./base.py:BaseCommand.invoke"],
+  "./routing.py:Router.include_router": ["./routing.py:Router.add_api_route"],
+  "./base.py:BaseCommand.invoke": ["./base.py:BaseCommand.execute"]
+}

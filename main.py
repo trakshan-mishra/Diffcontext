@@ -1,19 +1,36 @@
-from extractor import extract_functions
+from repo_extractor import (
+    extract_repository_functions
+)
+
 from diff import compare_functions
 
-from dependency_graph import build_dependency_graph
-from blast_radius import get_blast_radius
-from dependency_expander import expand_dependencies
+from blast_radius import (
+    get_blast_radius
+)
 
-from context_builder import build_context
+from dependency_expander import (
+    expand_dependencies
+)
 
-from state_manager import load_state
-from state_manager import save_state
+from context_builder import (
+    build_context
+)
+
+from multi_file_dependency_graph import (
+    build_repository_graph
+)
+
+from state_manager import (
+    load_state,
+    save_state
+)
 
 
 def main():
 
-    current_state = extract_functions("app.py")
+    current_state = (
+        extract_repository_functions(".")
+    )
 
     previous_state = load_state()
 
@@ -28,16 +45,24 @@ def main():
     )
 
     if not changed:
-        print("No changes detected")
+
+        print(
+            "No changes detected"
+        )
+
         return
 
-    graph = build_dependency_graph("app.py")
+    graph = build_repository_graph(".")
 
     selected = set(changed)
 
-    for fn in changed:
+    for func in changed:
+
         selected.update(
-            get_blast_radius(graph, fn)
+            get_blast_radius(
+                graph,
+                func
+            )
         )
 
     expanded = expand_dependencies(
