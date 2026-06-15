@@ -1,0 +1,29 @@
+{
+  "name": "DiffContext Dependency Analysis Benchmark",
+  "version": "1.0.0",
+  "methodology": "\n            Each test case consists of:\n            1. A Python code snippet or repository\n            2. The expected dependency relationships\n            3. Evaluation metrics: precision, recall, F1\n            \n            Unlike traditional benchmarks, we focus on:\n            - Real-world code patterns\n            - Framework-specific features (decorators, inheritance)\n            - Cross-file dependencies\n            - Dynamic features (where detectable)\n            ",
+  "test_categories": {
+    "function_extraction": {
+      "weight": 0.25,
+      "description": "Correctly identifying all function definitions"
+    },
+    "call_detection": {
+      "weight": 0.35,
+      "description": "Finding all function calls and method invocations"
+    },
+    "decorator_detection": {
+      "weight": 0.2,
+      "description": "Parsing and understanding decorators"
+    },
+    "inheritance_tracking": {
+      "weight": 0.2,
+      "description": "Tracking class inheritance relationships"
+    }
+  },
+  "scoring": {
+    "excellent": "90-100% - Production ready",
+    "good": "75-89% - Most use cases covered",
+    "acceptable": "60-74% - Basic functionality works",
+    "needs_improvement": "<60% - Significant gaps"
+  }
+}
