@@ -1,0 +1,693 @@
+.
+├── api.py
+├── app.py
+├── ARCHITECTURE.md
+├── archive
+│   ├── final_report.txt
+│   ├── llm_prompt.txt
+│   ├── new.md
+│   ├── prompt.txt
+│   ├── real_context.txt
+│   ├── research
+│   │   ├── claude-code
+│   │   │   ├── CHANGELOG.md
+│   │   │   ├── demo.gif
+│   │   │   ├── examples
+│   │   │   ├── feed.xml
+│   │   │   ├── LICENSE.md
+│   │   │   ├── plugins
+│   │   │   ├── README.md
+│   │   │   ├── Script
+│   │   │   ├── scripts
+│   │   │   └── SECURITY.md
+│   │   └── validation
+│   │       ├── complete_benchmark.py
+│   │       ├── genuine_validation.py
+│   │       ├── ground_truth_annotator.py
+│   │       └── human_eval_prep.py
+│   ├── with_context.txt
+│   └── without_context.txt
+├── attribute_ownership_old.py
+├── attribute_ownership.py
+├── benchmark_results
+├── benchmark_results.json
+├── benchmark_runner.py
+├── benchmarks
+│   ├── BENCHMARK_RESULTS.md
+│   ├── click
+│   │   ├── CHANGES.md
+│   │   ├── docs
+│   │   │   ├── advanced.md
+│   │   │   ├── api.md
+│   │   │   ├── arguments.md
+│   │   │   ├── changes.md
+│   │   │   ├── click-concepts.md
+│   │   │   ├── command-line-reference.md
+│   │   │   ├── commands-and-groups.md
+│   │   │   ├── commands.md
+│   │   │   ├── complex.md
+│   │   │   ├── conf.py
+│   │   │   ├── contrib.md
+│   │   │   ├── contributing.md
+│   │   │   ├── design-opinions.md
+│   │   │   ├── documentation.md
+│   │   │   ├── entry-points.md
+│   │   │   ├── exceptions.md
+│   │   │   ├── extending-click.md
+│   │   │   ├── faqs.md
+│   │   │   ├── handling-files.md
+│   │   │   ├── index.md
+│   │   │   ├── license.md
+│   │   │   ├── option-decorators.md
+│   │   │   ├── options.md
+│   │   │   ├── parameters.md
+│   │   │   ├── parameter-types.md
+│   │   │   ├── prompts.md
+│   │   │   ├── quickstart.md
+│   │   │   ├── setuptools.md
+│   │   │   ├── shell-completion.md
+│   │   │   ├── standalone-apps.md
+│   │   │   ├── _static
+│   │   │   ├── support-multiple-versions.md
+│   │   │   ├── testing.md
+│   │   │   ├── unicode-support.md
+│   │   │   ├── upgrade-guides.md
+│   │   │   ├── utils.md
+│   │   │   ├── virtualenv.md
+│   │   │   ├── why.md
+│   │   │   └── wincmd.md
+│   │   ├── examples
+│   │   │   ├── aliases
+│   │   │   ├── colors
+│   │   │   ├── completion
+│   │   │   ├── complex
+│   │   │   ├── imagepipe
+│   │   │   ├── inout
+│   │   │   ├── naval
+│   │   │   ├── README
+│   │   │   ├── repo
+│   │   │   ├── termui
+│   │   │   └── validation
+│   │   ├── LICENSE.txt
+│   │   ├── pyproject.toml
+│   │   ├── README.md
+│   │   ├── src
+│   │   │   └── click
+│   │   ├── tests
+│   │   │   ├── conftest.py
+│   │   │   ├── test_arguments.py
+│   │   │   ├── test_basic.py
+│   │   │   ├── test_chain.py
+│   │   │   ├── test_command_decorators.py
+│   │   │   ├── test_commands.py
+│   │   │   ├── test_compat.py
+│   │   │   ├── test_context.py
+│   │   │   ├── test_custom_classes.py
+│   │   │   ├── test_defaults.py
+│   │   │   ├── test_formatting.py
+│   │   │   ├── test_imports.py
+│   │   │   ├── test_info_dict.py
+│   │   │   ├── test_normalization.py
+│   │   │   ├── test_options.py
+│   │   │   ├── test_parser.py
+│   │   │   ├── test_shell_completion.py
+│   │   │   ├── test_stream_lifecycle.py
+│   │   │   ├── test_termui.py
+│   │   │   ├── test_testing.py
+│   │   │   ├── test_types.py
+│   │   │   ├── test_utils.py
+│   │   │   └── typing
+│   │   └── uv.lock
+│   ├── datasets
+│   │   ├── fastapi_repo
+│   │   ├── medium_repo
+│   │   │   ├── api.py
+│   │   │   ├── expected.json
+│   │   │   ├── services.py
+│   │   │   └── utils.py
+│   │   ├── simple_repo
+│   │   │   ├── app.py
+│   │   │   └── expected.json
+│   │   └── torture_repo
+│   │       ├── app.py
+│   │       ├── base.py
+│   │       ├── chain.py
+│   │       ├── commands.py
+│   │       ├── expected_edges.json
+│   │       ├── helpers.py
+│   │       ├── legacy
+│   │       └── routing.py
+│   ├── evaluator.py
+│   ├── fastapi
+│   │   ├── CITATION.cff
+│   │   ├── docs
+│   │   │   ├── de
+│   │   │   ├── en
+│   │   │   ├── es
+│   │   │   ├── fr
+│   │   │   ├── ja
+│   │   │   ├── ko
+│   │   │   ├── language_names.yml
+│   │   │   ├── missing-translation.md
+│   │   │   ├── pt
+│   │   │   ├── ru
+│   │   │   ├── tr
+│   │   │   ├── uk
+│   │   │   ├── zh
+│   │   │   └── zh-hant
+│   │   ├── docs_src
+│   │   │   ├── additional_responses
+│   │   │   ├── additional_status_codes
+│   │   │   ├── advanced_middleware
+│   │   │   ├── app_testing
+│   │   │   ├── async_tests
+│   │   │   ├── authentication_error_status_code
+│   │   │   ├── background_tasks
+│   │   │   ├── behind_a_proxy
+│   │   │   ├── bigger_applications
+│   │   │   ├── body
+│   │   │   ├── body_fields
+│   │   │   ├── body_multiple_params
+│   │   │   ├── body_nested_models
+│   │   │   ├── body_updates
+│   │   │   ├── conditional_openapi
+│   │   │   ├── configure_swagger_ui
+│   │   │   ├── cookie_param_models
+│   │   │   ├── cookie_params
+│   │   │   ├── cors
+│   │   │   ├── custom_docs_ui
+│   │   │   ├── custom_request_and_route
+│   │   │   ├── custom_response
+│   │   │   ├── dataclasses_
+│   │   │   ├── debugging
+│   │   │   ├── dependencies
+│   │   │   ├── dependency_testing
+│   │   │   ├── encoder
+│   │   │   ├── events
+│   │   │   ├── extending_openapi
+│   │   │   ├── extra_data_types
+│   │   │   ├── extra_models
+│   │   │   ├── first_steps
+│   │   │   ├── generate_clients
+│   │   │   ├── graphql_
+│   │   │   ├── handling_errors
+│   │   │   ├── header_param_models
+│   │   │   ├── header_params
+│   │   │   ├── json_base64_bytes
+│   │   │   ├── metadata
+│   │   │   ├── middleware
+│   │   │   ├── openapi_callbacks
+│   │   │   ├── openapi_webhooks
+│   │   │   ├── path_operation_advanced_configuration
+│   │   │   ├── path_operation_configuration
+│   │   │   ├── path_params
+│   │   │   ├── path_params_numeric_validations
+│   │   │   ├── pydantic_v1_in_v2
+│   │   │   ├── python_types
+│   │   │   ├── query_param_models
+│   │   │   ├── query_params
+│   │   │   ├── query_params_str_validations
+│   │   │   ├── request_files
+│   │   │   ├── request_form_models
+│   │   │   ├── request_forms
+│   │   │   ├── request_forms_and_files
+│   │   │   ├── response_change_status_code
+│   │   │   ├── response_cookies
+│   │   │   ├── response_directly
+│   │   │   ├── response_headers
+│   │   │   ├── response_model
+│   │   │   ├── response_status_code
+│   │   │   ├── schema_extra_example
+│   │   │   ├── security
+│   │   │   ├── separate_openapi_schemas
+│   │   │   ├── server_sent_events
+│   │   │   ├── settings
+│   │   │   ├── sql_databases
+│   │   │   ├── static_files
+│   │   │   ├── stream_data
+│   │   │   ├── stream_json_lines
+│   │   │   ├── strict_content_type
+│   │   │   ├── sub_applications
+│   │   │   ├── templates
+│   │   │   ├── using_request_directly
+│   │   │   ├── websockets_
+│   │   │   └── wsgi
+│   │   ├── fastapi
+│   │   │   ├── applications.py
+│   │   │   ├── background.py
+│   │   │   ├── cli.py
+│   │   │   ├── _compat
+│   │   │   ├── concurrency.py
+│   │   │   ├── datastructures.py
+│   │   │   ├── dependencies
+│   │   │   ├── encoders.py
+│   │   │   ├── exception_handlers.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── __init__.py
+│   │   │   ├── logger.py
+│   │   │   ├── __main__.py
+│   │   │   ├── middleware
+│   │   │   ├── openapi
+│   │   │   ├── param_functions.py
+│   │   │   ├── params.py
+│   │   │   ├── py.typed
+│   │   │   ├── requests.py
+│   │   │   ├── responses.py
+│   │   │   ├── routing.py
+│   │   │   ├── security
+│   │   │   ├── sse.py
+│   │   │   ├── staticfiles.py
+│   │   │   ├── templating.py
+│   │   │   ├── testclient.py
+│   │   │   ├── types.py
+│   │   │   ├── utils.py
+│   │   │   └── websockets.py
+│   │   ├── LICENSE
+│   │   ├── pyproject.toml
+│   │   ├── README.md
+│   │   ├── scripts
+│   │   │   ├── add_latest_release_date.py
+│   │   │   ├── contributors.py
+│   │   │   ├── coverage.sh
+│   │   │   ├── deploy_docs_status.py
+│   │   │   ├── doc_parsing_utils.py
+│   │   │   ├── docs.py
+│   │   │   ├── format.sh
+│   │   │   ├── general-llm-prompt.md
+│   │   │   ├── label_approved.py
+│   │   │   ├── lint.sh
+│   │   │   ├── notify_translations.py
+│   │   │   ├── people.py
+│   │   │   ├── playwright
+│   │   │   ├── prepare_release.py
+│   │   │   ├── sponsors.py
+│   │   │   ├── test-cov-html.sh
+│   │   │   ├── test-cov.sh
+│   │   │   ├── tests
+│   │   │   ├── test.sh
+│   │   │   ├── topic_repos.py
+│   │   │   ├── translate.py
+│   │   │   └── translation_fixer.py
+│   │   ├── tests
+│   │   │   ├── benchmarks
+│   │   │   ├── forward_reference_type.py
+│   │   │   ├── __init__.py
+│   │   │   ├── main.py
+│   │   │   ├── test_additional_properties_bool.py
+│   │   │   ├── test_additional_properties.py
+│   │   │   ├── test_additional_response_extra.py
+│   │   │   ├── test_additional_responses_bad.py
+│   │   │   ├── test_additional_responses_custom_model_in_callback.py
+│   │   │   ├── test_additional_responses_custom_validationerror.py
+│   │   │   ├── test_additional_responses_default_validationerror.py
+│   │   │   ├── test_additional_responses_response_class.py
+│   │   │   ├── test_additional_responses_router.py
+│   │   │   ├── test_additional_responses_union_duplicate_anyof.py
+│   │   │   ├── test_allow_inf_nan_in_enforcing.py
+│   │   │   ├── test_ambiguous_params.py
+│   │   │   ├── test_annotated.py
+│   │   │   ├── test_application.py
+│   │   │   ├── test_arbitrary_types.py
+│   │   │   ├── test_callable_endpoint.py
+│   │   │   ├── test_compat.py
+│   │   │   ├── test_computed_fields.py
+│   │   │   ├── test_custom_middleware_exception.py
+│   │   │   ├── test_custom_route_class.py
+│   │   │   ├── test_custom_schema_fields.py
+│   │   │   ├── test_custom_swagger_ui_redirect.py
+│   │   │   ├── test_datastructures.py
+│   │   │   ├── test_datetime_custom_encoder.py
+│   │   │   ├── test_default_response_class.py
+│   │   │   ├── test_default_response_class_router.py
+│   │   │   ├── test_dependencies_utils.py
+│   │   │   ├── test_dependency_after_yield_raise.py
+│   │   │   ├── test_dependency_after_yield_streaming.py
+│   │   │   ├── test_dependency_after_yield_websockets.py
+│   │   │   ├── test_dependency_cache.py
+│   │   │   ├── test_dependency_class.py
+│   │   │   ├── test_dependency_contextmanager.py
+│   │   │   ├── test_dependency_contextvars.py
+│   │   │   ├── test_dependency_duplicates.py
+│   │   │   ├── test_dependency_overrides.py
+│   │   │   ├── test_dependency_paramless.py
+│   │   │   ├── test_dependency_partial.py
+│   │   │   ├── test_dependency_pep695.py
+│   │   │   ├── test_dependency_security_overrides.py
+│   │   │   ├── test_dependency_wrapped.py
+│   │   │   ├── test_dependency_yield_except_httpexception.py
+│   │   │   ├── test_dependency_yield_scope.py
+│   │   │   ├── test_dependency_yield_scope_websockets.py
+│   │   │   ├── test_depends_hashable.py
+│   │   │   ├── test_deprecated_openapi_prefix.py
+│   │   │   ├── test_deprecated_responses.py
+│   │   │   ├── test_dump_json_fast_path.py
+│   │   │   ├── test_duplicate_models_openapi.py
+│   │   │   ├── test_empty_router.py
+│   │   │   ├── test_enforce_once_required_parameter.py
+│   │   │   ├── test_exception_handlers.py
+│   │   │   ├── test_extra_routes.py
+│   │   │   ├── test_fastapi_cli.py
+│   │   │   ├── test_file_and_form_order_issue_9116.py
+│   │   │   ├── test_filter_pydantic_sub_model_pv2.py
+│   │   │   ├── test_form_default.py
+│   │   │   ├── test_forms_from_non_typing_sequences.py
+│   │   │   ├── test_forms_single_model.py
+│   │   │   ├── test_forms_single_param.py
+│   │   │   ├── test_generate_unique_id_function.py
+│   │   │   ├── test_generic_parameterless_depends.py
+│   │   │   ├── test_get_model_definitions_formfeed_escape.py
+│   │   │   ├── test_get_request_body.py
+│   │   │   ├── test_http_connection_injection.py
+│   │   │   ├── test_include_route.py
+│   │   │   ├── test_include_router_defaults_overrides.py
+│   │   │   ├── test_infer_param_optionality.py
+│   │   │   ├── test_inherited_custom_class.py
+│   │   │   ├── test_invalid_path_param.py
+│   │   │   ├── test_invalid_sequence_param.py
+│   │   │   ├── test_jsonable_encoder.py
+│   │   │   ├── test_json_type.py
+│   │   │   ├── test_list_bytes_file_order_preserved_issue_14811.py
+│   │   │   ├── test_local_docs.py
+│   │   │   ├── test_modules_same_name_body
+│   │   │   ├── test_multi_body_errors.py
+│   │   │   ├── test_multipart_installation.py
+│   │   │   ├── test_multi_query_errors.py
+│   │   │   ├── test_no_schema_split.py
+│   │   │   ├── test_no_swagger_ui_redirect.py
+│   │   │   ├── test_openapi_cache_root_path.py
+│   │   │   ├── test_openapi_examples.py
+│   │   │   ├── test_openapi_model_description_trim_on_formfeed.py
+│   │   │   ├── test_openapi_query_parameter_extension.py
+│   │   │   ├── test_openapi_route_extensions.py
+│   │   │   ├── test_openapi_schema_type.py
+│   │   │   ├── test_openapi_separate_input_output_schemas.py
+│   │   │   ├── test_openapi_servers.py
+│   │   │   ├── test_operations_signatures.py
+│   │   │   ├── test_optional_file_list.py
+│   │   │   ├── test_orjson_response_class.py
+│   │   │   ├── test_param_class.py
+│   │   │   ├── test_param_include_in_schema.py
+│   │   │   ├── test_param_in_path_and_dependency.py
+│   │   │   ├── test_params_repr.py
+│   │   │   ├── test_path.py
+│   │   │   ├── test_prepare_release.py
+│   │   │   ├── test_put_no_body.py
+│   │   │   ├── test_pydantic_v1_error.py
+│   │   │   ├── test_pydanticv2_dataclasses_uuid_stringified_annotations.py
+│   │   │   ├── test_query_cookie_header_model_extra_params.py
+│   │   │   ├── test_query.py
+│   │   │   ├── test_read_with_orm_mode.py
+│   │   │   ├── test_regex_deprecated_body.py
+│   │   │   ├── test_regex_deprecated_params.py
+│   │   │   ├── test_repeated_cookie_headers.py
+│   │   │   ├── test_repeated_dependency_schema.py
+│   │   │   ├── test_repeated_parameter_alias.py
+│   │   │   ├── test_request_body_parameters_media_type.py
+│   │   │   ├── test_request_param_model_by_alias.py
+│   │   │   ├── test_request_params
+│   │   │   ├── test_required_noneable.py
+│   │   │   ├── test_response_by_alias.py
+│   │   │   ├── test_response_change_status_code.py
+│   │   │   ├── test_response_class_no_mediatype.py
+│   │   │   ├── test_response_code_no_body.py
+│   │   │   ├── test_response_dependency.py
+│   │   │   ├── test_response_model_as_return_annotation.py
+│   │   │   ├── test_response_model_data_filter_no_inheritance.py
+│   │   │   ├── test_response_model_data_filter.py
+│   │   │   ├── test_response_model_default_factory.py
+│   │   │   ├── test_response_model_include_exclude.py
+│   │   │   ├── test_response_model_invalid.py
+│   │   │   ├── test_response_model_sub_types.py
+│   │   │   ├── test_response_set_response_code_empty.py
+│   │   │   ├── test_return_none_stringified_annotations.py
+│   │   │   ├── test_router_circular_import.py
+│   │   │   ├── test_router_events.py
+│   │   │   ├── test_router_prefix_with_template.py
+│   │   │   ├── test_router_redirect_slashes.py
+│   │   │   ├── test_route_scope.py
+│   │   │   ├── test_schema_compat_pydantic_v2.py
+│   │   │   ├── test_schema_extra_examples.py
+│   │   │   ├── test_schema_ref_pydantic_v2.py
+│   │   │   ├── test_security_api_key_cookie_description.py
+│   │   │   ├── test_security_api_key_cookie_optional.py
+│   │   │   ├── test_security_api_key_cookie.py
+│   │   │   ├── test_security_api_key_header_description.py
+│   │   │   ├── test_security_api_key_header_optional.py
+│   │   │   ├── test_security_api_key_header.py
+│   │   │   ├── test_security_api_key_query_description.py
+│   │   │   ├── test_security_api_key_query_optional.py
+│   │   │   ├── test_security_api_key_query.py
+│   │   │   ├── test_security_http_base_description.py
+│   │   │   ├── test_security_http_base_optional.py
+│   │   │   ├── test_security_http_base.py
+│   │   │   ├── test_security_http_basic_optional.py
+│   │   │   ├── test_security_http_basic_realm_description.py
+│   │   │   ├── test_security_http_basic_realm.py
+│   │   │   ├── test_security_http_bearer_description.py
+│   │   │   ├── test_security_http_bearer_optional.py
+│   │   │   ├── test_security_http_bearer.py
+│   │   │   ├── test_security_http_digest_description.py
+│   │   │   ├── test_security_http_digest_optional.py
+│   │   │   ├── test_security_http_digest.py
+│   │   │   ├── test_security_oauth2_authorization_code_bearer_description.py
+│   │   │   ├── test_security_oauth2_authorization_code_bearer.py
+│   │   │   ├── test_security_oauth2_authorization_code_bearer_scopes_openapi.py
+│   │   │   ├── test_security_oauth2_authorization_code_bearer_scopes_openapi_simple.py
+│   │   │   ├── test_security_oauth2_optional_description.py
+│   │   │   ├── test_security_oauth2_optional.py
+│   │   │   ├── test_security_oauth2_password_bearer_optional_description.py
+│   │   │   ├── test_security_oauth2_password_bearer_optional.py
+│   │   │   ├── test_security_oauth2.py
+│   │   │   ├── test_security_openid_connect_description.py
+│   │   │   ├── test_security_openid_connect_optional.py
+│   │   │   ├── test_security_openid_connect.py
+│   │   │   ├── test_security_scopes_dont_propagate.py
+│   │   │   ├── test_security_scopes.py
+│   │   │   ├── test_security_scopes_sub_dependency.py
+│   │   │   ├── test_serialize_response_dataclass.py
+│   │   │   ├── test_serialize_response_model.py
+│   │   │   ├── test_serialize_response.py
+│   │   │   ├── test_skip_defaults.py
+│   │   │   ├── test_sse.py
+│   │   │   ├── test_starlette_exception.py
+│   │   │   ├── test_starlette_urlconvertors.py
+│   │   │   ├── test_stream_bare_type.py
+│   │   │   ├── test_stream_cancellation.py
+│   │   │   ├── test_stream_json_validation_error.py
+│   │   │   ├── test_strict_content_type_app_level.py
+│   │   │   ├── test_strict_content_type_nested.py
+│   │   │   ├── test_strict_content_type_router_level.py
+│   │   │   ├── test_stringified_annotation_dependency.py
+│   │   │   ├── test_stringified_annotation_dependency_py314.py
+│   │   │   ├── test_stringified_annotations_simple.py
+│   │   │   ├── test_sub_callbacks.py
+│   │   │   ├── test_swagger_ui_escape.py
+│   │   │   ├── test_swagger_ui_init_oauth.py
+│   │   │   ├── test_top_level_security_scheme_in_openapi.py
+│   │   │   ├── test_tuples.py
+│   │   │   ├── test_tutorial
+│   │   │   ├── test_typing_python39.py
+│   │   │   ├── test_union_body_discriminator_annotated.py
+│   │   │   ├── test_union_body_discriminator.py
+│   │   │   ├── test_union_body.py
+│   │   │   ├── test_union_forms.py
+│   │   │   ├── test_union_inherited_body.py
+│   │   │   ├── test_validate_response_dataclass.py
+│   │   │   ├── test_validate_response.py
+│   │   │   ├── test_validate_response_recursive
+│   │   │   ├── test_validation_error_context.py
+│   │   │   ├── test_webhooks_security.py
+│   │   │   ├── test_wrapped_method_forward_reference.py
+│   │   │   ├── test_ws_dependencies.py
+│   │   │   ├── test_ws_router.py
+│   │   │   └── utils.py
+│   │   └── uv.lock
+│   ├── flask
+│   │   ├── CHANGES.rst
+│   │   ├── docs
+│   │   │   ├── api.rst
+│   │   │   ├── appcontext.rst
+│   │   │   ├── async-await.rst
+│   │   │   ├── blueprints.rst
+│   │   │   ├── changes.rst
+│   │   │   ├── cli.rst
+│   │   │   ├── config.rst
+│   │   │   ├── conf.py
+│   │   │   ├── contributing.rst
+│   │   │   ├── debugging.rst
+│   │   │   ├── deploying
+│   │   │   ├── design.rst
+│   │   │   ├── errorhandling.rst
+│   │   │   ├── extensiondev.rst
+│   │   │   ├── extensions.rst
+│   │   │   ├── gevent.rst
+│   │   │   ├── index.rst
+│   │   │   ├── installation.rst
+│   │   │   ├── license.rst
+│   │   │   ├── lifecycle.rst
+│   │   │   ├── logging.rst
+│   │   │   ├── make.bat
+│   │   │   ├── Makefile
+│   │   │   ├── patterns
+│   │   │   ├── quickstart.rst
+│   │   │   ├── reqcontext.rst
+│   │   │   ├── server.rst
+│   │   │   ├── shell.rst
+│   │   │   ├── signals.rst
+│   │   │   ├── _static
+│   │   │   ├── templating.rst
+│   │   │   ├── testing.rst
+│   │   │   ├── tutorial
+│   │   │   ├── views.rst
+│   │   │   └── web-security.rst
+│   │   ├── examples
+│   │   │   ├── celery
+│   │   │   ├── javascript
+│   │   │   └── tutorial
+│   │   ├── LICENSE.txt
+│   │   ├── pyproject.toml
+│   │   ├── README.md
+│   │   ├── src
+│   │   │   └── flask
+│   │   ├── tests
+│   │   │   ├── conftest.py
+│   │   │   ├── static
+│   │   │   ├── templates
+│   │   │   ├── test_appctx.py
+│   │   │   ├── test_apps
+│   │   │   ├── test_async.py
+│   │   │   ├── test_basic.py
+│   │   │   ├── test_blueprints.py
+│   │   │   ├── test_cli.py
+│   │   │   ├── test_config.py
+│   │   │   ├── test_converters.py
+│   │   │   ├── test_helpers.py
+│   │   │   ├── test_instance_config.py
+│   │   │   ├── test_json.py
+│   │   │   ├── test_json_tag.py
+│   │   │   ├── test_logging.py
+│   │   │   ├── test_regression.py
+│   │   │   ├── test_reqctx.py
+│   │   │   ├── test_request.py
+│   │   │   ├── test_session_interface.py
+│   │   │   ├── test_signals.py
+│   │   │   ├── test_subclassing.py
+│   │   │   ├── test_templating.py
+│   │   │   ├── test_testing.py
+│   │   │   ├── test_user_error_handler.py
+│   │   │   ├── test_views.py
+│   │   │   └── type_check
+│   │   └── uv.lock
+│   ├── __init__.py
+│   ├── requests
+│   │   ├── AUTHORS.rst
+│   │   ├── docs
+│   │   │   ├── api.rst
+│   │   │   ├── community
+│   │   │   ├── conf.py
+│   │   │   ├── dev
+│   │   │   ├── index.rst
+│   │   │   ├── make.bat
+│   │   │   ├── Makefile
+│   │   │   ├── requirements.txt
+│   │   │   ├── _static
+│   │   │   ├── _templates
+│   │   │   ├── _themes
+│   │   │   └── user
+│   │   ├── evaluate_runtime_graph.py
+│   │   ├── ext
+│   │   │   ├── kr.png
+│   │   │   ├── LICENSE
+│   │   │   ├── psf.png
+│   │   │   ├── requests-logo.ai
+│   │   │   ├── requests-logo-compressed.png
+│   │   │   ├── requests-logo.png
+│   │   │   └── requests-logo.svg
+│   │   ├── gold_edges.json
+│   │   ├── HISTORY.md
+│   │   ├── LICENSE
+│   │   ├── Makefile
+│   │   ├── MANIFEST.in
+│   │   ├── NOTICE
+│   │   ├── pyproject.toml
+│   │   ├── README.md
+│   │   ├── requirements-dev.txt
+│   │   ├── run_tracer.py
+│   │   ├── setup.py
+│   │   ├── src
+│   │   │   ├── requests
+│   │   │   └── requests.egg-info
+│   │   ├── tests
+│   │   │   ├── certs
+│   │   │   ├── compat.py
+│   │   │   ├── conftest.py
+│   │   │   ├── __init__.py
+│   │   │   ├── test_adapters.py
+│   │   │   ├── test_help.py
+│   │   │   ├── test_hooks.py
+│   │   │   ├── test_lowlevel.py
+│   │   │   ├── test_packages.py
+│   │   │   ├── test_requests.py
+│   │   │   ├── testserver
+│   │   │   ├── test_structures.py
+│   │   │   ├── test_testserver.py
+│   │   │   ├── test_utils.py
+│   │   │   └── utils.py
+│   │   └── tox.ini
+│   └── utils
+│       ├── graph_diff.py
+│       └── run_torture_test.py
+├── blast_radius.py
+├── bm25_evaluator.py
+├── compare_llm.sh
+├── context_builder.py
+├── custom_benchmark_suite.json
+├── dependency_expander.py
+├── dependency_graph.py
+├── diff.py
+├── enhanced_dependency_graph.py
+├── evaluate_graph.py
+├── evaluate.py
+├── evaluate_retrieval.py
+├── evaluate_runtime_graph.py
+├── evaluation
+│   ├── calculate_real_metrics.py
+│   ├── cases
+│   ├── compare_precision.py
+│   ├── eval_real_repos.py
+│   ├── eval_real_repos_v2.py
+│   ├── final_validation.py
+│   ├── measure_real_recall.py
+│   ├── relevance_scorer.py
+│   └── results
+├── extractor.py
+├── extreme_tests.py
+├── fastcontext_hf_client.py
+├── fix_pytest_analysis.py
+├── generate_gold.py
+├── gold_tracer.py
+├── ground_truth_celery.csv
+├── ground_truth_django.csv
+├── ground_truth_fastapi.csv
+├── ground_truth_sqlalchemy.csv
+├── import_resolver.py
+├── inspect_flask.py
+├── main.py
+├── multi_file_dependency_graph.py
+├── pytest.ini
+├── random_flask_eval.py
+├── README.md
+├── repo_extractor.py
+├── repo_scanner.py
+├── repo_tree.txt
+├── requirements.txt
+├── run_tracer.py
+├── state_manager.py
+├── test_context.py
+├── test_fixed_system.py
+├── test_llm_context.sh
+├── test_python_repos.py
+├── test_suite.py
+└── token_stats.md
+
+177 directories, 514 files
