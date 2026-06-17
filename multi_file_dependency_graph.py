@@ -159,38 +159,31 @@ def _collect_function_nodes(tree):
 
 def _find_return_type(node):
     """
-    Best-effort return-type inference for simple factory functions:
-
-        def make_helper():
-            return Helper()
-
-        def make_router():
-            return routing.Router()
-
-    Returns (qualifier, type_name) if every `return <Call>` in the function
-    constructs the same type, else None.
+    Returns (qualifier, type_name) if ALL return statements return the same type.
+    Returns None if ambiguous or no returns.
     """
     found = None
-
+    
     for stmt in _iter_statements(node.body):
-
-        if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Call):
-            f = stmt.value.func
-
-            if isinstance(f, ast.Name):
-                ref = (None, f.id)
-            elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
-                ref = (f.value.id, f.attr)
-            elif isinstance(f, ast.Attribute):
-                ref = (None, f.attr)
+        if isinstance(stmt, ast.Return) and stmt.value is not None:
+            if not isinstance(stmt.value, ast.Call):
+                return None  # Non-call return makes factory assumption invalid
+            
+            func = stmt.value.func
+            if isinstance(func, ast.Name):
+                ref = (None, func.id)
+            elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+                ref = (func.value.id, func.attr)
+            elif isinstance(func, ast.Attribute):
+                ref = (None, func.attr)
             else:
-                continue
-
+                return None
+            
             if found is None:
                 found = ref
             elif found != ref:
-                return None  # ambiguous - different return types
-
+                return None  # Different return types - ambiguous
+    
     return found
 
 

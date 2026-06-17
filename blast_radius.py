@@ -6,27 +6,27 @@ from multi_file_dependency_graph import (
 def get_blast_radius(graph, changed_function):
     """
     All functions that (transitively) call changed_function.
-
-    Old version re-scanned graph.items() for every node visited during
-    the DFS -> O(V*E). Here we build the reverse adjacency once, then
-    DFS is O(V+E).
+    Now with cycle detection.
     """
-
     reverse = {}
     for function, dependencies in graph.items():
         for dep in dependencies:
             reverse.setdefault(dep, set()).add(function)
 
     affected = set()
+    visited = set()  # ADD THIS
 
     def dfs(target):
+        if target in visited:  # ADD THIS - cycle detection
+            return
+        visited.add(target)    # ADD THIS
+        
         for caller in reverse.get(target, ()):
             if caller not in affected:
                 affected.add(caller)
                 dfs(caller)
 
     dfs(changed_function)
-
     return list(affected)
 
 
