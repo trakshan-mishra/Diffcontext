@@ -1,11 +1,30 @@
-# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+state.json
+benchmark_results.json
+eval_results.json
+.vscode/
+.idea/
+*.log
+.DS_Store
+# External benchmark repos
+real_benchmarks/
+SWE-bench/
+requests/
 
-# Benchmark repositories
-benchmarks/click/
-benchmarks/flask/
+# Generated outputs
+*.json
+!custom_benchmark_suite.json
+!swe_bench_submission.json
 
-# Temporary inspection scripts
-inspect_click.py
-inspect_flask.py
+# Reports
+final_report.txt
+
