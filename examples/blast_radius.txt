@@ -1,6 +1,0 @@
-Changed Function:
-add
-
-Affected Functions:
-- calculate
-- report
