@@ -1,286 +1,619 @@
+#!/usr/bin/env python3
 """
-benchmark_runner.py - runs DiffContext on real repos, reports real metrics.
+benchmark_runner.py — Research-grade DiffContext benchmarks.
+
+Three evaluation modes:
+1. CO-CHANGE (default): Ground truth from git history — real human behavior
+2. GRAPH: Internal consistency check (circular, for debugging only)
+3. BASELINES: Compare DiffContext vs BM25 vs file-colocation vs random
 
 Usage:
-    python benchmark_runner.py --repo /path/to/repo --changed ./api.py:get
-    python benchmark_runner.py --repo https://github.com/psf/black --changed ./src/black/linegen.py:transform_line --name black_test --max-tokens 15000
+    # Clone real repos with full history first:
+    python benchmark_runner.py --clone
+
+    # Run co-change benchmark (honest, non-circular):
+    python benchmark_runner.py --cochange
+
+    # Compare against baselines:
+    python benchmark_runner.py --compare
+
+    # Run everything:
+    python benchmark_runner.py --full
+
+    # Single repo:
+    python benchmark_runner.py --repo /path/to/repo --cochange
 """
 
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
-import tempfile
-import subprocess
-from typing import List, Dict, Any
+import random
+from dataclasses import dataclass, field, asdict
+from typing import Dict, List, Optional, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from benchmarks.evaluator import run_diffcontext
-from repo_extractor import extract_repository_functions
-from multi_file_dependency_graph import build_repository_graph
-from relevance_scorer import score_relevance
+from diffcontext.parser import extract_all_symbols
+from diffcontext.graph_builder import build_repository_graph
+from diffcontext.impact.blast_radius import get_blast_radius
+from diffcontext.impact.traversal import expand_dependencies
+from diffcontext.impact.scoring import compute_impact_scores
+from diffcontext.context.selector import select_context
+from diffcontext.models import Symbol
+
+from benchmarks.ground_truth import extract_cochange_cases, CoChangeCase
+from benchmarks.baselines import BM25Baseline, FileCoLocationBaseline, RandomBaseline
 
 
-def count_tokens(text: str) -> int:
-    """~4 chars per token (GPT approximation, good enough for reduction metrics)"""
+# ---- Real repos to benchmark against ----
+BENCHMARK_REPOS = {
+    "flask": {
+        "url": "https://github.com/pallets/flask.git",
+        "description": "Micro web framework (354 symbols)",
+    },
+    "click": {
+        "url": "https://github.com/pallets/click.git",
+        "description": "CLI creation toolkit (506 symbols)",
+    },
+    "httpx": {
+        "url": "https://github.com/encode/httpx.git",
+        "description": "HTTP client (large, async-heavy)",
+    },
+    "pydantic": {
+        "url": "https://github.com/pydantic/pydantic.git",
+        "description": "Data validation (heavy inheritance)",
+    },
+}
+
+
+def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def full_repo_tokens(functions: Dict) -> int:
-    """Calculate total tokens for entire repository"""
-    all_code = "\n\n".join(f["code"] for f in functions.values())
-    return count_tokens(all_code)
+# ---- Clone repos ----
 
+def clone_repos(base_dir: str, repos: Optional[List[str]] = None):
+    """Clone real repos with full git history for co-change analysis."""
+    os.makedirs(base_dir, exist_ok=True)
 
-def selected_tokens(functions: Dict, selected_ids: List[str]) -> int:
-    """Calculate tokens for selected functions"""
-    code = "\n\n".join(
-        functions[fid]["code"] for fid in selected_ids if fid in functions
-    )
-    return count_tokens(code)
+    targets = repos or list(BENCHMARK_REPOS.keys())
+    for name in targets:
+        if name not in BENCHMARK_REPOS:
+            print(f"Unknown repo: {name}")
+            continue
 
+        repo_dir = os.path.join(base_dir, name)
+        if os.path.isdir(repo_dir):
+            print(f"  {name}: already exists, skipping")
+            continue
 
-def filter_by_token_budget(
-    functions: Dict,
-    retrieved: List[str],
-    changed_functions: List[str],
-    graph: Dict,
-    max_tokens: int = 10000
-) -> List[str]:
-    """
-    Filter retrieved functions by token budget and relevance scoring.
-    
-    Priority order:
-    1. Changed functions themselves (always included)
-    2. Direct callees/callers (score >= 80)
-    3. 2-hop relationships (score >= 50)
-    4. Lower relevance (score >= 20) if budget permits
-    """
-    if max_tokens is None or max_tokens <= 0:
-        return retrieved
-    
-    # Score each retrieved function
-    scored = []
-    for fn in retrieved:
-        score = score_relevance(graph, changed_functions, fn)
-        fn_tokens = selected_tokens(functions, [fn])
-        scored.append((fn, score, fn_tokens))
-    
-    # Sort by relevance score (highest first)
-    scored.sort(key=lambda x: x[1], reverse=True)
-    
-    # Apply token budget
-    result = []
-    current_tokens = 0
-    changed_set = set(changed_functions)
-    
-    for fn, score, fn_tokens in scored:
-        # Always include changed functions
-        if fn in changed_set:
-            result.append(fn)
-            current_tokens += fn_tokens
-        # Include high relevance regardless of budget
-        elif score >= 80:
-            result.append(fn)
-            current_tokens += fn_tokens
-        # Include if within budget
-        elif current_tokens + fn_tokens <= max_tokens:
-            result.append(fn)
-            current_tokens += fn_tokens
-        # Skip if over budget and low relevance
-        else:
-            print(f"    [SKIP] {fn} (score={score}, tokens={fn_tokens}) - over budget")
-    
-    return result
-
-
-def run_benchmark(
-    repo_path: str,
-    changed_functions: List[str],
-    name: str = "",
-    note: str = "",
-    max_depth: int = 2,
-    max_tokens: int = 10000
-) -> Dict[str, Any]:
-    """
-    Run benchmark with precision improvements.
-    
-    Args:
-        repo_path: Local path or git URL
-        changed_functions: List of function IDs that changed
-        name: Label for this benchmark
-        note: Optional note/description
-        max_depth: Maximum dependency depth (1=direct, 2=one hop, None=full)
-        max_tokens: Token budget for context (None = unlimited)
-    """
-    is_online = repo_path.startswith(("http://", "https://", "git@"))
-    temp_dir = None
-    
-    if is_online:
-        temp_dir = tempfile.mkdtemp()
-        print(f"Cloning {repo_path} to {temp_dir}...")
-        subprocess.run(["git", "clone", "--depth=1", repo_path, temp_dir], check=True)
-        repo_path = temp_dir
-    
-    repo_path = os.path.abspath(repo_path)
-    
-    print(f"\n{'=' * 60}")
-    print(f"  {name or repo_path}")
-    if note:
-        print(f"  {note}")
-    print(f"  Changed: {changed_functions}")
-    print(f"  Max depth: {max_depth if max_depth else 'full'}")
-    print(f"  Max tokens: {max_tokens if max_tokens else 'unlimited'}")
-    print("=" * 60)
-    
-    # Extract all functions
-    functions = extract_repository_functions(repo_path)
-    total_functions = len(functions)
-    total_tokens = full_repo_tokens(functions)
-    
-    print(f"  Total functions : {total_functions}")
-    print(f"  Full repo tokens: {total_tokens:,}")
-    
-    # Build graph (once)
-    print(f"  Building dependency graph...")
-    start_graph = time.perf_counter()
-    graph = build_repository_graph(repo_path)
-    graph_time = (time.perf_counter() - start_graph) * 1000
-    
-    edges = sum(len(deps) for deps in graph.values())
-    print(f"  Graph: {len(graph)} nodes, {edges} edges in {graph_time:.1f}ms")
-    
-    # Run pipeline with depth limiting
-    start = time.perf_counter()
-    retrieved = run_diffcontext(repo_path, changed_functions, max_depth=max_depth)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    
-    print(f"\n  Raw retrieval: {len(retrieved)} functions")
-    
-    # Apply token budget filtering
-    if max_tokens:
-        retrieved = filter_by_token_budget(
-            functions, retrieved, changed_functions, graph, max_tokens
+        url = BENCHMARK_REPOS[name]["url"]
+        print(f"  Cloning {name} from {url}...")
+        result = subprocess.run(
+            ["git", "clone", "--depth=100", url, repo_dir],
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
-        print(f"  After budget: {len(retrieved)} functions")
-    
-    # Calculate metrics
-    context_tokens = selected_tokens(functions, retrieved)
-    token_reduction = (1 - context_tokens / total_tokens) * 100 if total_tokens else 0
-    function_reduction = (1 - len(retrieved) / total_functions) * 100 if total_functions else 0
-    
-    # Calculate precision if ground truth available
-    precision_note = ""
-    if name and "test" in name.lower():
-        # Simple precision check for known patterns
-        expected_callees = []
-        for changed in changed_functions:
-            expected_callees.extend(graph.get(changed, []))
-        
-        if expected_callees:
-            found_callees = [c for c in expected_callees if c in retrieved]
-            precision = len(found_callees) / len(retrieved) if retrieved else 0
-            recall = len(found_callees) / len(expected_callees) if expected_callees else 0
-            precision_note = f" | Precision: {precision:.2f}, Recall: {recall:.2f}"
-    
-    print(f"\n  Retrieved {len(retrieved)} / {total_functions} functions:")
-    for fid in sorted(retrieved)[:20]:  # Show first 20
-        print(f"    {fid}")
-    if len(retrieved) > 20:
-        print(f"    ... and {len(retrieved) - 20} more")
-    
-    print(f"\n  Context tokens  : {context_tokens:,}")
-    print(f"  Token reduction : {token_reduction:.1f}%")
-    print(f"  Fn reduction    : {function_reduction:.1f}%")
-    print(f"  Runtime         : {elapsed_ms:.1f}ms (graph: {graph_time:.1f}ms){precision_note}")
-    
-    # Cleanup temp directory if we cloned
-    if temp_dir and os.path.exists(temp_dir):
-        import shutil
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    
+        if result.returncode == 0:
+            print(f"  ✓ {name} cloned")
+        else:
+            print(f"  ✗ {name} failed: {result.stderr[:200]}")
+
+
+# ---- DiffContext retrieval ----
+
+def run_diffcontext(
+    repo_path: str,
+    changed_symbols: List[str],
+    graph: Dict[str, List[str]],
+    symbols: Dict[str, Symbol],
+    max_depth: int = 2,
+    max_tokens: int = 10000,
+) -> List[str]:
+    """Run DiffContext pipeline, return retrieved symbol IDs."""
+    valid = [s for s in changed_symbols if s in graph]
+    if not valid:
+        return []
+
+    # Blast radius
+    blast_radii = {}
+    all_blast = []
+    for sym_id in valid:
+        radius = get_blast_radius(graph, sym_id)
+        blast_radii[sym_id] = radius
+        all_blast.extend(radius)
+
+    # Expand
+    seed = list(set(valid + all_blast))
+    expanded = expand_dependencies(graph, seed, max_depth=max_depth)
+
+    # Score
+    scores = compute_impact_scores(graph, valid, blast_radii)
+
+    # Select
+    selected = select_context(symbols, scores, valid, max_tokens=max_tokens)
+
+    return [s for s in selected if s not in set(valid)]
+
+
+# ---- Metrics ----
+
+def compute_metrics(
+    retrieved: Set[str],
+    ground_truth: Set[str],
+) -> Dict[str, float]:
+    """Standard precision/recall/F1."""
+    if not ground_truth:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0, "tp": 0, "fp": 0, "fn": 0}
+
+    tp = len(retrieved & ground_truth)
+    fp = len(retrieved - ground_truth)
+    fn = len(ground_truth - retrieved)
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    return {
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+    }
+
+
+# ---- Co-change benchmark ----
+
+def run_cochange_benchmark(
+    repo_path: str,
+    repo_name: str = "",
+    max_cases: int = 20,
+    max_tokens: int = 10000,
+) -> Dict:
+    """
+    Run benchmark using git co-change ground truth.
+
+    This is the HONEST evaluation — ground truth comes from
+    human developer behavior (which functions they changed together),
+    NOT from the dependency graph.
+    """
+    repo_path = os.path.abspath(repo_path)
+    name = repo_name or os.path.basename(repo_path)
+
+    print(f"\n{'=' * 60}")
+    print(f"  CO-CHANGE BENCHMARK: {name}")
+    print(f"  (Ground truth from git history — non-circular)")
+    print(f"{'=' * 60}")
+
+    # 1. Extract co-change cases from git history
+    print(f"  Extracting co-change cases from git history...")
+    cases = extract_cochange_cases(repo_path, max_cases=max_cases)
+
+    if not cases:
+        print(f"  No co-change cases found. Need full git history (not shallow clone).")
+        print(f"  Run: python benchmark_runner.py --clone")
+        return {"name": name, "error": "no_cases", "cases": []}
+
+    print(f"  Found {len(cases)} co-change cases")
+
+    # 2. Index repo
+    print(f"  Indexing repository...")
+    t0 = time.perf_counter()
+    symbols = extract_all_symbols(repo_path)
+    graph = build_repository_graph(repo_path)
+    index_ms = (time.perf_counter() - t0) * 1000
+
+    total_symbols = len(symbols)
+    total_edges = sum(len(deps) for deps in graph.values())
+    print(f"  {total_symbols} symbols, {total_edges} edges ({index_ms:.0f}ms)")
+
+    # 3. Run each case
+    results = []
+    total_p = total_r = total_f1 = 0
+    valid_cases = 0
+
+    for i, case in enumerate(cases):
+        # Check query exists in current code
+        if case.query_symbol not in graph:
+            continue
+
+        # Ground truth = other symbols changed in same commit
+        gt = set(case.ground_truth_symbols)
+        # Only keep GT symbols that exist in current codebase
+        gt = gt & set(graph.keys())
+        if not gt:
+            continue
+
+        # Run DiffContext
+        retrieved = run_diffcontext(
+            repo_path, [case.query_symbol], graph, symbols,
+            max_tokens=max_tokens,
+        )
+        retrieved_set = set(retrieved)
+
+        metrics = compute_metrics(retrieved_set, gt)
+
+        results.append({
+            "commit": case.commit_hash,
+            "msg": case.commit_msg[:50],
+            "query": case.query_symbol,
+            "gt_size": len(gt),
+            "retrieved_size": len(retrieved),
+            **metrics,
+        })
+
+        total_p += metrics["precision"]
+        total_r += metrics["recall"]
+        total_f1 += metrics["f1"]
+        valid_cases += 1
+
+        hit = "✓" if metrics["recall"] > 0 else "✗"
+        print(f"  {hit} [{case.commit_hash}] P={metrics['precision']:.2f} "
+              f"R={metrics['recall']:.2f} F1={metrics['f1']:.2f} "
+              f"(GT={len(gt)}, ret={len(retrieved)})")
+
+    if valid_cases == 0:
+        print(f"  No valid test cases (symbols may have been refactored)")
+        return {"name": name, "error": "no_valid_cases", "cases": []}
+
+    avg_p = total_p / valid_cases
+    avg_r = total_r / valid_cases
+    avg_f1 = total_f1 / valid_cases
+
+    print(f"\n  {'─' * 40}")
+    print(f"  Average over {valid_cases} cases:")
+    print(f"  Precision : {avg_p:.3f}")
+    print(f"  Recall    : {avg_r:.3f}")
+    print(f"  F1        : {avg_f1:.3f}")
+
     return {
         "name": name,
-        "note": note,
-        "changed": changed_functions,
-        "max_depth": max_depth,
-        "max_tokens": max_tokens,
-        "total_functions": total_functions,
-        "retrieved_count": len(retrieved),
-        "retrieved_ids": sorted(retrieved),
-        "total_tokens": total_tokens,
-        "context_tokens": context_tokens,
-        "token_reduction_pct": round(token_reduction, 2),
-        "function_reduction_pct": round(function_reduction, 2),
-        "runtime_ms": round(elapsed_ms, 1),
-        "graph_build_ms": round(graph_time, 1),
-        "graph_nodes": len(graph),
-        "graph_edges": edges,
+        "total_symbols": total_symbols,
+        "total_edges": total_edges,
+        "valid_cases": valid_cases,
+        "avg_precision": round(avg_p, 4),
+        "avg_recall": round(avg_r, 4),
+        "avg_f1": round(avg_f1, 4),
+        "cases": results,
     }
+
+
+# ---- Baseline comparison ----
+
+def run_baseline_comparison(
+    repo_path: str,
+    repo_name: str = "",
+    max_cases: int = 15,
+    max_tokens: int = 10000,
+) -> Dict:
+    """
+    Compare DiffContext against BM25, file co-location, and random baselines.
+
+    Uses co-change ground truth for all methods.
+    """
+    repo_path = os.path.abspath(repo_path)
+    name = repo_name or os.path.basename(repo_path)
+
+    print(f"\n{'=' * 60}")
+    print(f"  BASELINE COMPARISON: {name}")
+    print(f"  DiffContext vs BM25 vs File-CoLocation vs Random")
+    print(f"{'=' * 60}")
+
+    # Extract test cases
+    cases = extract_cochange_cases(repo_path, max_cases=max_cases)
+    if not cases:
+        print(f"  No co-change cases. Need full git history.")
+        return {"name": name, "error": "no_cases"}
+
+    # Index
+    symbols = extract_all_symbols(repo_path)
+    graph = build_repository_graph(repo_path)
+    print(f"  {len(symbols)} symbols, {sum(len(d) for d in graph.values())} edges")
+
+    # Build baselines
+    print(f"  Building BM25 index...")
+    bm25 = BM25Baseline(symbols)
+    coloc = FileCoLocationBaseline(symbols)
+    rand = RandomBaseline(symbols)
+
+    methods = {
+        "DiffContext": lambda q: run_diffcontext(repo_path, [q], graph, symbols, max_tokens=max_tokens),
+        "BM25": lambda q: bm25.retrieve(q, top_k=30),
+        "File-CoLoc": lambda q: coloc.retrieve(q, top_k=30),
+        "Random": lambda q: rand.retrieve(q, top_k=30),
+    }
+
+    # Run each case with each method
+    scores = {m: {"p": 0, "r": 0, "f1": 0, "n": 0} for m in methods}
+
+    for case in cases:
+        if case.query_symbol not in graph:
+            continue
+
+        gt = set(case.ground_truth_symbols) & set(graph.keys())
+        if not gt:
+            continue
+
+        for method_name, method_fn in methods.items():
+            retrieved = set(method_fn(case.query_symbol))
+            metrics = compute_metrics(retrieved, gt)
+
+            scores[method_name]["p"] += metrics["precision"]
+            scores[method_name]["r"] += metrics["recall"]
+            scores[method_name]["f1"] += metrics["f1"]
+            scores[method_name]["n"] += 1
+
+    # Print results
+    print(f"\n  {'Method':<15} {'Precision':>10} {'Recall':>10} {'F1':>10} {'Cases':>8}")
+    print(f"  {'─' * 55}")
+
+    summary = {}
+    for method_name, s in scores.items():
+        n = s["n"]
+        if n == 0:
+            continue
+        avg_p = s["p"] / n
+        avg_r = s["r"] / n
+        avg_f1 = s["f1"] / n
+        print(f"  {method_name:<15} {avg_p:>10.3f} {avg_r:>10.3f} {avg_f1:>10.3f} {n:>8}")
+        summary[method_name] = {
+            "precision": round(avg_p, 4),
+            "recall": round(avg_r, 4),
+            "f1": round(avg_f1, 4),
+            "cases": n,
+        }
+
+    return {"name": name, "methods": summary}
+
+
+# ---- Graph consistency check (the old benchmark) ----
+
+def run_graph_benchmark(
+    repo_path: str,
+    repo_name: str = "",
+    num_symbols: int = 3,
+    max_tokens: int = 10000,
+) -> Dict:
+    """
+    Internal consistency check — graph-derived ground truth.
+    CIRCULAR — useful for debugging, NOT for proving the algorithm works.
+    """
+    repo_path = os.path.abspath(repo_path)
+    name = repo_name or os.path.basename(repo_path)
+
+    print(f"\n  GRAPH CONSISTENCY: {name} (circular — debug only)")
+
+    symbols = extract_all_symbols(repo_path)
+    graph = build_repository_graph(repo_path)
+
+    # Build reverse graph
+    reverse: Dict[str, Set[str]] = {}
+    for caller, callees in graph.items():
+        for callee in callees:
+            reverse.setdefault(callee, set()).add(caller)
+
+    # Pick high-connectivity symbols
+    scored = []
+    for sym_id in graph:
+        indegree = len(reverse.get(sym_id, set()))
+        outdegree = len(graph.get(sym_id, []))
+        if indegree + outdegree > 0:
+            scored.append((sym_id, indegree + outdegree))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    test_symbols = [s[0] for s in scored[:num_symbols]]
+
+    results = []
+    for sym_id in test_symbols:
+        # Ground truth = 2-hop neighborhood
+        gt = set()
+        # Forward 2-hop
+        frontier = [sym_id]
+        visited = {sym_id}
+        for _ in range(2):
+            next_f = []
+            for s in frontier:
+                for callee in graph.get(s, []):
+                    if callee not in visited:
+                        visited.add(callee)
+                        gt.add(callee)
+                        next_f.append(callee)
+            frontier = next_f
+        # Reverse 2-hop
+        frontier = [sym_id]
+        visited_r = {sym_id}
+        for _ in range(2):
+            next_f = []
+            for s in frontier:
+                for caller in reverse.get(s, set()):
+                    if caller not in visited_r:
+                        visited_r.add(caller)
+                        gt.add(caller)
+                        next_f.append(caller)
+            frontier = next_f
+
+        # Run pipeline
+        retrieved = run_diffcontext(
+            repo_path, [sym_id], graph, symbols,
+            max_tokens=max_tokens,
+        )
+
+        metrics = compute_metrics(set(retrieved), gt)
+        results.append({"symbol": sym_id, **metrics})
+
+        print(f"    {sym_id.split(':')[-1]:<35} "
+              f"P={metrics['precision']:.3f} R={metrics['recall']:.3f} F1={metrics['f1']:.3f}")
+
+    return {"name": name, "type": "graph_consistency", "results": results}
+
+
+# ---- Full suite ----
+
+def run_full_suite(bench_dir: str):
+    """Run all benchmarks on all available repos."""
+    all_results = {}
+
+    for name in sorted(os.listdir(bench_dir)):
+        repo_path = os.path.join(bench_dir, name)
+        if not os.path.isdir(os.path.join(repo_path, ".git")):
+            continue
+
+        print(f"\n\n{'#' * 60}")
+        print(f"  REPO: {name}")
+        print(f"{'#' * 60}")
+
+        # Co-change benchmark (the real test)
+        cochange = run_cochange_benchmark(repo_path, name)
+
+        # Baseline comparison
+        baseline = run_baseline_comparison(repo_path, name)
+
+        # Graph consistency (debug)
+        graph_check = run_graph_benchmark(repo_path, name)
+
+        all_results[name] = {
+            "cochange": cochange,
+            "baseline": baseline,
+            "graph_consistency": graph_check,
+        }
+
+    # Save
+    out_path = os.path.join(os.path.dirname(__file__), "benchmark_results.json")
+    with open(out_path, "w") as f:
+        json.dump(all_results, f, indent=2, default=str)
+    print(f"\n\n✓ All results saved to {out_path}")
+
+    # Print final summary
+    print(f"\n{'=' * 60}")
+    print(f"  FINAL SUMMARY")
+    print(f"{'=' * 60}")
+    print(f"  {'Repo':<15} {'Co-change F1':>14} {'vs BM25':>10} {'vs Random':>10}")
+    print(f"  {'─' * 50}")
+
+    for name, data in all_results.items():
+        cc = data.get("cochange", {})
+        bl = data.get("baseline", {}).get("methods", {})
+
+        cc_f1 = cc.get("avg_f1", 0)
+        bm25_f1 = bl.get("BM25", {}).get("f1", 0)
+        rand_f1 = bl.get("Random", {}).get("f1", 0)
+
+        diff_bm25 = f"+{cc_f1 - bm25_f1:.3f}" if bm25_f1 else "N/A"
+        diff_rand = f"+{cc_f1 - rand_f1:.3f}" if rand_f1 else "N/A"
+
+        print(f"  {name:<15} {cc_f1:>14.3f} {diff_bm25:>10} {diff_rand:>10}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run DiffContext benchmark on real repositories",
+        description="DiffContext Research-Grade Benchmarks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Local repo with default settings
-  python benchmark_runner.py --repo ./myproject --changed ./api.py:get_user
-  
-  # Remote repo with depth limit
-  python benchmark_runner.py --repo https://github.com/psf/black \\
-      --changed ./src/black/linegen.py:transform_line --max-depth 1
-  
-  # With token budget
-  python benchmark_runner.py --repo ./flask --changed ./app.py:Flask.route \\
-      --max-tokens 5000 --name flask_test
-        """
+Step-by-step guide:
+
+  1. Clone real repos:
+     python benchmark_runner.py --clone
+
+  2. Run co-change benchmark (non-circular, honest):
+     python benchmark_runner.py --cochange
+
+  3. Compare against baselines (BM25, random):
+     python benchmark_runner.py --compare
+
+  4. Run everything:
+     python benchmark_runner.py --full
+
+  5. Single repo:
+     python benchmark_runner.py --repo /path/to/repo --cochange
+        """,
     )
-    parser.add_argument("--repo", required=True, help="Path or git URL to repo")
-    parser.add_argument("--changed", nargs="+", required=True,
-                        help="Changed function IDs e.g. ./api.py:get")
-    parser.add_argument("--name", default="", help="Label for this benchmark run")
-    parser.add_argument("--note", default="", help="Optional description")
-    parser.add_argument("--max-depth", type=int, default=2,
-                        help="Max dependency depth (1=direct, 2=one hop, default=2)")
+    parser.add_argument("--clone", action="store_true",
+                        help="Clone benchmark repos with git history")
+    parser.add_argument("--cochange", action="store_true",
+                        help="Run co-change benchmark (honest ground truth)")
+    parser.add_argument("--compare", action="store_true",
+                        help="Compare DiffContext vs baselines")
+    parser.add_argument("--graph", action="store_true",
+                        help="Run graph consistency check (circular, debug only)")
+    parser.add_argument("--full", action="store_true",
+                        help="Run all benchmarks")
+    parser.add_argument("--repo", help="Path to specific repo")
+    parser.add_argument("--bench-dir", default=None,
+                        help="Directory containing benchmark repos")
+    parser.add_argument("--max-cases", type=int, default=20,
+                        help="Max test cases per repo")
     parser.add_argument("--max-tokens", type=int, default=10000,
-                        help="Token budget for context (default=10000, 0=unlimited)")
-    parser.add_argument("--out", default="benchmark_results.json",
-                        help="Output JSON file")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Show detailed output")
-    
+                        help="Token budget")
+
     args = parser.parse_args()
-    
-    # Handle max_tokens=0 as unlimited
-    max_tokens = args.max_tokens if args.max_tokens > 0 else None
-    
-    result = run_benchmark(
-        args.repo,
-        args.changed,
-        name=args.name,
-        note=args.note,
-        max_depth=args.max_depth,
-        max_tokens=max_tokens
-    )
-    
-    with open(args.out, "w") as f:
-        json.dump(result, f, indent=2)
-    print(f"\n✓ Results saved to {args.out}")
-    
-    # Print summary
-    print(f"\n{'=' * 60}")
-    print("  SUMMARY")
-    print(f"{'=' * 60}")
-    print(f"  Repository: {result['name'] or args.repo}")
-    print(f"  Functions: {result['retrieved_count']}/{result['total_functions']} "
-          f"({result['function_reduction_pct']:.1f}% reduction)")
-    print(f"  Tokens: {result['context_tokens']:,}/{result['total_tokens']:,} "
-          f"({result['token_reduction_pct']:.1f}% reduction)")
-    print(f"  Runtime: {result['runtime_ms']:.1f}ms")
+
+    # Default bench dir
+    base = os.path.dirname(os.path.abspath(__file__))
+    bench_dir = args.bench_dir or os.path.join(base, "benchmark_repos")
+
+    if args.clone:
+        print("Cloning benchmark repos with full git history...\n")
+        clone_repos(bench_dir)
+        return
+
+    if args.repo:
+        repo_path = os.path.abspath(args.repo)
+        name = os.path.basename(repo_path)
+
+        if args.cochange or args.full:
+            run_cochange_benchmark(repo_path, name, args.max_cases, args.max_tokens)
+        if args.compare or args.full:
+            run_baseline_comparison(repo_path, name, args.max_cases, args.max_tokens)
+        if args.graph or args.full:
+            run_graph_benchmark(repo_path, name)
+        if not (args.cochange or args.compare or args.graph or args.full):
+            # Default: run co-change
+            run_cochange_benchmark(repo_path, name, args.max_cases, args.max_tokens)
+        return
+
+    if args.full:
+        if not os.path.isdir(bench_dir):
+            print(f"No repos found at {bench_dir}")
+            print("Run: python benchmark_runner.py --clone")
+            return
+        run_full_suite(bench_dir)
+        return
+
+    # Default: run co-change on all available repos
+    if os.path.isdir(bench_dir):
+        for name in sorted(os.listdir(bench_dir)):
+            repo_path = os.path.join(bench_dir, name)
+            if os.path.isdir(os.path.join(repo_path, ".git")):
+                if args.cochange or not (args.compare or args.graph):
+                    run_cochange_benchmark(repo_path, name, args.max_cases, args.max_tokens)
+                if args.compare:
+                    run_baseline_comparison(repo_path, name, args.max_cases, args.max_tokens)
+                if args.graph:
+                    run_graph_benchmark(repo_path, name)
+    else:
+        # Try the existing benchmarks/ repos
+        old_bench = os.path.join(base, "benchmarks")
+        found = False
+        for name in ["flask", "fastapi", "click"]:
+            repo_path = os.path.join(old_bench, name)
+            if os.path.isdir(repo_path):
+                found = True
+                if args.graph:
+                    run_graph_benchmark(repo_path, name)
+                else:
+                    print(f"\n  {name}: No git history available for co-change benchmark.")
+                    print(f"  Run: python benchmark_runner.py --clone")
+                    run_graph_benchmark(repo_path, name)
+
+        if not found:
+            print("No benchmark repos found.")
+            print("Run: python benchmark_runner.py --clone")
 
 
 if __name__ == "__main__":
