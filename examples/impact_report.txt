@@ -1,6 +1,0 @@
-Function Impact Scores
-
-add: 8
-multiply: 8
-calculate: 7
-report: 2
