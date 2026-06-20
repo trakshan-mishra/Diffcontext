@@ -1,24 +1,28 @@
 """
-evaluator.py - Core DiffContext pipeline with precision improvements.
+benchmarks/evaluator.py — Core DiffContext pipeline runner for benchmarks.
 """
 
-from repo_extractor import extract_repository_functions
-from multi_file_dependency_graph import build_repository_graph
-from blast_radius import get_blast_radius
-from dependency_expander import expand_dependencies
+import os
+import sys
+from typing import List, Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from diffcontext.parser import extract_all_symbols
+from diffcontext.graph_builder import build_repository_graph
+from diffcontext.impact.blast_radius import get_blast_radius
+from diffcontext.impact.traversal import expand_dependencies
 
 
-def run_diffcontext(repo_path, changed_functions, max_depth=2):
+def run_diffcontext(
+    repo_path: str,
+    changed_functions: List[str],
+    max_depth: Optional[int] = 2,
+) -> List[str]:
     """
-    Run the full DiffContext pipeline on a repo given a list of changed function IDs.
+    Run the full DiffContext pipeline on a repo given changed function IDs.
 
-    Args:
-        repo_path: path to the repository root
-        changed_functions: list of function IDs e.g. ["./api.py:get"]
-        max_depth: maximum dependency depth (1=direct, 2=one hop, None=full)
-
-    Returns:
-        list of function IDs that should be included in context
+    Returns list of function IDs that should be included in context.
     """
     graph = build_repository_graph(repo_path)
 
@@ -34,5 +38,3 @@ def run_diffcontext(repo_path, changed_functions, max_depth=2):
     expanded = expand_dependencies(graph, list(selected), max_depth=max_depth)
 
     return expanded
-
-

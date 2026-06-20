@@ -1,30 +1,16 @@
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.so
-*.egg
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+*.egg
 state.json
+diffcontext_state.json
 benchmark_results.json
-eval_results.json
-.vscode/
-.idea/
-*.log
-.DS_Store
-# External benchmark repos
-real_benchmarks/
-SWE-bench/
-requests/
-
-# Generated outputs
-*.json
-!custom_benchmark_suite.json
-!swe_bench_submission.json
-
-# Reports
-final_report.txt
-
+.venv/
+venv/
+yt-dlp/
+benchmark_repos/
+a.txt
