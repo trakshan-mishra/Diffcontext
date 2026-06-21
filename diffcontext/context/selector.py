@@ -37,13 +37,6 @@ def select_context(
 
         sym_tokens = _estimate_tokens(symbols[sym_id].code)
 
-        # Always include changed symbols and high-relevance
-        if sym_id in changed_set or score >= 80:
-            result.append(sym_id)
-            current_tokens += sym_tokens
-            continue
-
-        # Apply token budget for lower-relevance
         if max_tokens is not None and current_tokens + sym_tokens > max_tokens:
             continue
 
