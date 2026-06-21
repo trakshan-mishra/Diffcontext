@@ -21,6 +21,7 @@ class RepositoryIndex:
     """Complete index of a repository."""
     symbols: Dict[str, Symbol] = field(default_factory=dict)     # id -> Symbol
     graph: Dict[str, List[str]] = field(default_factory=dict)    # id -> [dependency ids]
+    broken_files: List[str] = field(default_factory=list)
 
     @property
     def reverse_graph(self) -> Dict[str, Set[str]]:
@@ -42,6 +43,7 @@ class DiffResult:
     modified: List[str] = field(default_factory=list)
     added: List[str] = field(default_factory=list)
     deleted: List[str] = field(default_factory=list)
+    broken_files: List[str] = field(default_factory=list)
 
     @property
     def all_changed(self) -> List[str]:

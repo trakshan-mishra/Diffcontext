@@ -10,17 +10,28 @@ from typing import List, Optional, Set
 def get_changed_files(
     repo_path: str,
     ref: str = "HEAD~1",
-    against: str = "HEAD",
+    against: "Optional[str]" = None,
 ) -> List[str]:
     """
-    Get list of Python files changed between two git refs.
+    Get list of Python files changed between `ref` and `against`.
+
+    against=None (default): compare against the WORKING TREE, i.e. include
+    uncommitted changes (staged or not). This is `git diff <ref>` with no
+    second ref -- the same thing `git status`-style tools show you before
+    you commit.
+    against="HEAD" (or any other ref): compare two committed snapshots only;
+    uncommitted edits are invisible to this mode.
 
     Returns list of relative paths like ["./src/auth.py", "./api/login.py"]
     """
     repo_path = os.path.abspath(repo_path)
     try:
+        cmd = ["git", "diff", "--name-only", "--diff-filter=ACMR", ref]
+        if against is not None:
+            cmd.append(against)
+
         result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=ACMR", ref, against],
+            cmd,
             cwd=repo_path,
             capture_output=True,
             text=True,
@@ -44,17 +55,25 @@ def get_changed_lines(
     repo_path: str,
     filepath: str,
     ref: str = "HEAD~1",
-    against: str = "HEAD",
+    against: "Optional[str]" = None,
 ) -> Set[int]:
     """
     Get set of changed line numbers for a specific file.
+
+    against=None (default): compare `ref` against the working tree,
+    including uncommitted edits. See get_changed_files for details.
 
     Returns set of 1-indexed line numbers that were added or modified.
     """
     repo_path = os.path.abspath(repo_path)
     try:
+        cmd = ["git", "diff", "-U0", ref]
+        if against is not None:
+            cmd.append(against)
+        cmd += ["--", filepath.lstrip("./")]
+
         result = subprocess.run(
-            ["git", "diff", "-U0", ref, against, "--", filepath.lstrip("./")],
+            cmd,
             cwd=repo_path,
             capture_output=True,
             text=True,
@@ -84,38 +103,171 @@ def get_changed_lines(
         return set()
 
 
+def get_patch_text(
+    repo_path: str,
+    filepath: str,
+    ref: str = "HEAD~1",
+    against: "Optional[str]" = None,
+    context_lines: int = 3,
+) -> str:
+    """
+    Return the raw unified-diff patch text for a single file between
+    `ref` and `against` (working tree if against=None).
+
+    Useful for files that no longer parse: you can't get a line-level
+    symbol diff out of AST comparison, but the raw patch still shows
+    exactly what text changed (e.g. a commented-out `class` line).
+
+    Returns "" if there's no diff, the file/ref doesn't exist, or git fails.
+    """
+    repo_path = os.path.abspath(repo_path)
+    try:
+        cmd = ["git", "diff", f"-U{context_lines}", ref]
+        if against is not None:
+            cmd.append(against)
+        cmd += ["--", filepath.lstrip("./")]
+
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout
+
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return ""
+
+
 def find_changed_symbols(
     repo_path: str,
     symbols: dict,
     ref: str = "HEAD~1",
-    against: str = "HEAD",
+    against: "Optional[str]" = None,
+    broken_files: Optional[List[str]] = None,
+    broken_file_patches: Optional[dict] = None,
+    known_broken_files: Optional[List[str]] = None,
 ) -> List[str]:
     """
     Find which symbol IDs are affected by a git diff.
 
+    against=None (default): compares `ref` against the WORKING TREE, so
+    uncommitted edits are picked up. Pass against="HEAD" explicitly if you
+    only want committed changes.
+
     Cross-references changed lines with symbol line ranges to find
     exactly which functions/methods were modified.
+
+    `symbols` is the CURRENT index (built from the working tree / `against`
+    ref). A changed file that contributes zero entries to `symbols` is
+    ambiguous on its own -- it might have failed to parse (SyntaxError), or
+    it might just be a file with no function/method definitions (setup.py,
+    a constants module, an __init__.py with only imports, etc). To tell
+    these apart correctly, pass `known_broken_files` -- the ground-truth
+    list from extract_all_symbols()/RepositoryIndex.broken_files, which
+    only contains files that actually raised SyntaxError. Only files in
+    that list get the broken-file fallback treatment below; any other
+    zero-symbol file is treated as a normal (legitimately function-less)
+    file and simply contributes no changed symbols.
+
+    For files confirmed broken via `known_broken_files`:
+      - the file's relative path is appended to `broken_files` (if provided)
+      - we fall back to the symbol IDs that existed in the file at `ref`
+        (the prior, presumably-working revision) via `git show`, so the
+        change is still reported instead of silently disappearing.
+      - if `broken_file_patches` (a dict) is provided, it's populated with
+        {relative_file: raw_patch_text} -- the actual unified diff, since a
+        broken file can't be symbol-diffed and the patch is the only real
+        signal of what changed.
     """
+    known_broken = set(known_broken_files or ())
     changed_files = get_changed_files(repo_path, ref, against)
     if not changed_files:
         return []
 
+    # Which changed files actually have symbols in the current index?
+    files_with_current_symbols = {
+        "./" + os.path.relpath(sym.file, os.path.abspath(repo_path))
+        for sym in symbols.values()
+    }
+
     changed_symbols = []
+
     for sym_id, sym in symbols.items():
         sym_file = "./" + os.path.relpath(sym.file, os.path.abspath(repo_path))
         if sym_file not in changed_files:
             continue
 
-        # Get changed lines for this file
         changed_lines = get_changed_lines(repo_path, sym_file, ref, against)
         if not changed_lines:
             continue
 
-        # Check if any changed line falls within this symbol's range
         code_lines = sym.code.count("\n") + 1
         sym_lines = set(range(sym.lineno, sym.lineno + code_lines))
 
         if sym_lines & changed_lines:
             changed_symbols.append(sym_id)
 
+    # Files git says changed, but that contributed zero current symbols.
+    # Only treat as "broken" (and run the SyntaxError fallback) if this
+    # file is confirmed broken via known_broken_files. Otherwise it's just
+    # a normal file with no function/method definitions (e.g. setup.py) --
+    # nothing to report, and definitely not a parse failure.
+    for changed_file in changed_files:
+        if changed_file in files_with_current_symbols:
+            continue
+
+        if changed_file not in known_broken:
+            continue
+
+        if broken_files is not None and changed_file not in broken_files:
+            broken_files.append(changed_file)
+
+        if broken_file_patches is not None:
+            broken_file_patches[changed_file] = get_patch_text(
+                repo_path, changed_file, ref, against
+            )
+
+        prior_ids = _symbol_ids_at_ref(repo_path, changed_file, ref)
+        changed_symbols.extend(prior_ids)
+
     return changed_symbols
+
+
+def _symbol_ids_at_ref(repo_path: str, filepath: str, ref: str) -> List[str]:
+    """
+    Best-effort: list symbol IDs ("./file.py:Name") that existed in
+    `filepath` at git ref `ref`, by parsing the file's contents at that
+    revision. Returns [] if the file didn't exist, wasn't valid Python
+    at that ref either, or git/parse fails for any reason.
+    """
+    repo_path = os.path.abspath(repo_path)
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{ref}:{filepath.lstrip('./')}"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return []
+
+        import ast as _ast
+        try:
+            tree = _ast.parse(result.stdout)
+        except SyntaxError:
+            return []
+
+        names = []
+        for node in _ast.walk(tree):
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                names.append(node.name)
+
+        return [f"{filepath}:{name}" for name in names]
+
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return []

@@ -5,10 +5,14 @@ Extracts functions, methods (including async), with class-aware naming.
 """
 
 import ast
+import logging
 import os
-from typing import Dict
+from typing import Dict, List, Optional
 
 from .models import Symbol
+from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
+
+logger = logging.getLogger(__name__)
 
 
 class _FunctionCollector(ast.NodeVisitor):
@@ -40,21 +44,35 @@ class _FunctionCollector(ast.NodeVisitor):
         self.collected.append((name, node))
 
 
-def extract_symbols(filename: str, repo_path: str) -> Dict[str, Symbol]:
+def extract_symbols(
+    filename: str,
+    repo_path: str,
+    broken_files: "Optional[List[str]]" = None,
+) -> Dict[str, Symbol]:
     """
     Parse a single Python file, return dict of symbol_id -> Symbol.
 
     Symbol IDs look like: "./relative/path.py:ClassName.method_name"
+
+    If parsing fails and `broken_files` is provided (a list), the file's
+    relative path is appended to it so callers can distinguish "file failed
+    to parse" from "file legitimately has no functions."
     """
-    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
-        source = f.read()
+    with open(filename, "rb") as f:
+        raw = f.read()
+    check_and_warn_encoding(logger, filename, raw)
+    source = raw.decode("utf-8", errors="ignore")
+
+    relative_file = "./" + os.path.relpath(filename, repo_path)
 
     try:
         tree = ast.parse(source)
-    except SyntaxError:
+    except SyntaxError as e:
+        warn_syntax_error_once(logger, filename, e)
+        if broken_files is not None:
+            broken_files.append(relative_file)
         return {}
 
-    relative_file = "./" + os.path.relpath(filename, repo_path)
     collector = _FunctionCollector()
     collector.visit(tree)
 
@@ -75,14 +93,22 @@ def extract_symbols(filename: str, repo_path: str) -> Dict[str, Symbol]:
     return symbols
 
 
-def extract_all_symbols(repo_path: str) -> Dict[str, Symbol]:
-    """Extract symbols from all Python files in a repository."""
+def extract_all_symbols(
+    repo_path: str,
+    broken_files: "Optional[List[str]]" = None,
+) -> Dict[str, Symbol]:
+    """
+    Extract symbols from all Python files in a repository.
+
+    If `broken_files` is provided (a list), relative paths of any files
+    that failed to parse (SyntaxError) are appended to it.
+    """
     from .scanner import find_python_files
 
     repo_path = os.path.abspath(repo_path)
     all_symbols: Dict[str, Symbol] = {}
 
     for filepath in find_python_files(repo_path):
-        all_symbols.update(extract_symbols(filepath, repo_path))
+        all_symbols.update(extract_symbols(filepath, repo_path, broken_files=broken_files))
 
     return all_symbols
