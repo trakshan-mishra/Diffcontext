@@ -13,13 +13,22 @@ This is the core algorithm. It:
 """
 
 import ast
+import logging
 import os
 from typing import Dict, List, Optional, Set, Tuple
 
 from .scanner import find_python_files
 from .parser import extract_all_symbols
 from .resolver import build_import_map
-from .symbols import extract_attribute_ownerships, _iter_statements
+from .symbols import (
+    extract_attribute_ownerships,
+    extract_local_var_types,
+    extract_param_types,
+    _iter_statements,
+)
+from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
+
+logger = logging.getLogger(__name__)
 
 
 def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
@@ -39,17 +48,21 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
     file_trees: Dict[str, ast.Module] = {}
     import_maps: Dict[str, Dict[str, str]] = {}
     class_registry: Dict[str, List[str]] = {}      # class_name -> [relative_file, ...]
+    classes_by_file: Dict[str, List[str]] = {}      # relative_file -> [class_name, ...]
     inheritance: Dict[str, List[Tuple]] = {}        # "rel_file:ClassName" -> [(qualifier, base_name), ...]
     factory_returns: Dict[str, Tuple] = {}          # "rel_file:func_name" -> (qualifier, type_name)
 
     for filename in find_python_files(repo_path):
 
-        with open(filename, "r", encoding="utf-8", errors="ignore") as f:
-            source = f.read()
+        with open(filename, "rb") as f:
+            raw = f.read()
+        check_and_warn_encoding(logger, filename, raw)
+        source = raw.decode("utf-8", errors="ignore")
 
         try:
             tree = ast.parse(source)
-        except SyntaxError:
+        except SyntaxError as e:
+            warn_syntax_error_once(logger, filename, e)
             continue
 
         relative_file = "./" + os.path.relpath(filename, repo_path)
@@ -61,6 +74,7 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
 
             if isinstance(node, ast.ClassDef):
                 class_registry.setdefault(node.name, []).append(relative_file)
+                classes_by_file.setdefault(relative_file, []).append(node.name)
 
                 bases = []
                 for b in node.bases:
@@ -92,6 +106,7 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
             resolved = _resolve_owner_type(
                 qualifier, bare_name, relative_file, import_map,
                 class_registry, factory_returns, import_maps, repo_path,
+                classes_by_file=classes_by_file,
             )
             if resolved:
                 attribute_owners[f"{relative_file}:{key}"] = resolved
@@ -122,6 +137,16 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
 
             graph.setdefault(function_id, [])
 
+            # Track local variable types within THIS function (works for
+            # free functions too, not just methods -- see symbols.py).
+            # E.g. `h = Handler(); h.process()` inside a plain function.
+            param_types = extract_param_types(fn_node)
+            local_var_types = extract_local_var_types(fn_node, param_types)
+            # Annotated params (e.g. `def run(h: Handler)`) are receiver
+            # candidates too, even if never reassigned in the body --
+            # merge them in (local reassignments take precedence on conflict).
+            local_var_types = {**param_types, **local_var_types}
+
             for child in ast.walk(fn_node):
 
                 if not isinstance(child, ast.Call):
@@ -142,6 +167,8 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                     class_registry,
                     factory_returns,
                     import_maps,
+                    local_var_types,
+                    classes_by_file,
                 )
 
                 if (
@@ -207,6 +234,7 @@ def _find_return_type(node):
 def _resolve_owner_type(
     qualifier, bare_name, relative_file, import_map,
     class_registry, factory_returns, import_maps, repo_path, _seen=None,
+    classes_by_file=None,
 ):
     """
     Resolve a (qualifier, bare_name) type reference to "owner_rel_file:ClassName".
@@ -243,6 +271,7 @@ def _resolve_owner_type(
                 *factory_returns[factory_key], target_file,
                 import_maps.get(target_file, {}), class_registry,
                 factory_returns, import_maps, repo_path, _seen,
+                classes_by_file,
             )
 
         return None
@@ -264,12 +293,24 @@ def _resolve_owner_type(
                     if cand_file.startswith(target_dir + "/"):
                         return f"{cand_file}:{bare_name}"
 
+        elif classes_by_file:
+            # bare_name didn't match class_registry directly -- likely an
+            # import alias, e.g. `from .user import Handler as UserHandler`.
+            # ast only ever gives us the alias at the call site ("UserHandler"),
+            # never the real name ("Handler"), so class_registry (keyed by
+            # real name) can't match. If the target file defines exactly one
+            # class, that's unambiguously the aliased class.
+            file_classes = classes_by_file.get(target_file, [])
+            if len(file_classes) == 1:
+                return f"{target_file}:{file_classes[0]}"
+
         factory_key = f"{target_file}:{bare_name}"
         if factory_key in factory_returns:
             return _resolve_owner_type(
                 *factory_returns[factory_key], target_file,
                 import_maps.get(target_file, {}), class_registry,
                 factory_returns, import_maps, repo_path, _seen,
+                classes_by_file,
             )
 
         return None
@@ -280,12 +321,18 @@ def _resolve_owner_type(
             *factory_returns[factory_key], relative_file,
             import_map, class_registry, factory_returns,
             import_maps, repo_path, _seen,
+            classes_by_file=classes_by_file,
         )
 
     return None
 
 
-def _resolve_owner_of_expr(node, class_name, relative_file, is_method, attribute_owners):
+def _resolve_owner_of_expr(
+    node, class_name, relative_file, is_method, attribute_owners,
+    local_var_types=None, import_map=None, class_registry=None,
+    factory_returns=None, import_maps=None, repo_path=None,
+    classes_by_file=None,
+):
     """
     For the receiver expression of a method call, return its type as
     "rel_file:ClassName", or None.
@@ -294,13 +341,38 @@ def _resolve_owner_of_expr(node, class_name, relative_file, is_method, attribute
         self                -> rel_file:ClassName
         self.router         -> attribute_owners["rel_file:ClassName.router"]
         self.state.router   -> chase attribute_owners twice
+
+    Also handles a bare local variable whose type was tracked via
+    extract_local_var_types (works inside free functions too, not just
+    methods):
+        h = Handler()
+        h.process()          -> h is "Handler" via local_var_types,
+                                 resolved to a real rel_file:ClassName
+                                 the same way attribute types are resolved.
     """
     if isinstance(node, ast.Name) and node.id == "self" and is_method and class_name:
         return f"{relative_file}:{class_name}"
 
+    if (
+        isinstance(node, ast.Name)
+        and local_var_types
+        and node.id in local_var_types
+        and import_map is not None
+    ):
+        qualifier, bare_name = local_var_types[node.id]
+        return _resolve_owner_type(
+            qualifier, bare_name, relative_file, import_map,
+            class_registry or {}, factory_returns or {},
+            import_maps or {}, repo_path or "",
+            classes_by_file=classes_by_file,
+        )
+
     if isinstance(node, ast.Attribute):
         base_owner = _resolve_owner_of_expr(
-            node.value, class_name, relative_file, is_method, attribute_owners
+            node.value, class_name, relative_file, is_method, attribute_owners,
+            local_var_types, import_map, class_registry,
+            factory_returns, import_maps, repo_path,
+            classes_by_file,
         )
         if base_owner is None:
             return None
@@ -312,6 +384,7 @@ def _resolve_owner_of_expr(node, class_name, relative_file, is_method, attribute
 def _resolve_via_inheritance(
     owner_type, method_name, inheritance, class_registry,
     import_maps, function_ids, repo_path, _seen=None,
+    classes_by_file=None,
 ):
     """
     owner_type defines method_name? No -> walk its base classes
@@ -330,6 +403,7 @@ def _resolve_via_inheritance(
         base_owner = _resolve_owner_type(
             qualifier, base_name, rel_file, import_map,
             class_registry, {}, import_maps, repo_path,
+            classes_by_file=classes_by_file,
         )
         if not base_owner:
             continue
@@ -341,6 +415,7 @@ def _resolve_via_inheritance(
         deeper = _resolve_via_inheritance(
             base_owner, method_name, inheritance, class_registry,
             import_maps, function_ids, repo_path, _seen,
+            classes_by_file,
         )
         if deeper:
             return deeper
@@ -363,6 +438,8 @@ def _resolve_call(
     class_registry,
     factory_returns,
     import_maps,
+    local_var_types=None,
+    classes_by_file=None,
 ):
     """
     Handles:
@@ -382,9 +459,12 @@ def _resolve_call(
     if isinstance(func, ast.Attribute):
         method_name = func.attr
 
-        # self / self.attr / self.a.b ... -> resolve receiver's type
+        # self / self.attr / self.a.b ... / local_var.method() -> resolve receiver's type
         owner_type = _resolve_owner_of_expr(
-            func.value, class_name, relative_file, is_method, attribute_owners
+            func.value, class_name, relative_file, is_method, attribute_owners,
+            local_var_types, import_map, class_registry,
+            factory_returns, import_maps, repo_path,
+            classes_by_file,
         )
 
         if owner_type:
@@ -396,6 +476,7 @@ def _resolve_call(
             resolved = _resolve_via_inheritance(
                 owner_type, method_name, inheritance, class_registry,
                 import_maps, function_ids, repo_path,
+                classes_by_file=classes_by_file,
             )
             if resolved:
                 return resolved
