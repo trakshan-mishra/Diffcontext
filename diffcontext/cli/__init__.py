@@ -12,16 +12,24 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
 
-from ..pipeline import index_repository, analyze_impact, compile
+from ..pipeline import index_repository, analyze_impact, compile, warn_unknown_symbols
 from ..diff.git_diff import find_changed_symbols
 from ..impact.visualizer import render_blast_radius, render_verification
 
 
 def main():
+    # Make sure warnings from anywhere in the pipeline (broken files,
+    # invalid encoding, unknown --changed symbols) are actually visible.
+    # Without this, they depend on logging's lastResort fallback, which is
+    # unreliable -- some warnings showed up by accident, others silently
+    # didn't, depending on subtle propagation/level details.
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
+
     parser = argparse.ArgumentParser(
         prog="diffcontext",
         description="Static-analysis-powered repository context compiler for LLMs",
@@ -44,6 +52,10 @@ def main():
     p_diff = sub.add_parser("diff", help="Find changed symbols from git diff")
     p_diff.add_argument("ref", default="HEAD~1", nargs="?", help="Git ref to compare against")
     p_diff.add_argument("--repo", default=".", help="Repository path")
+    p_diff.add_argument(
+        "--committed-only", action="store_true",
+        help="Compare two commits only (ref vs HEAD); ignores uncommitted working-tree changes",
+    )
 
     # --- compile ---
     p_compile = sub.add_parser("compile", help="Build LLM context for changes")
@@ -62,6 +74,10 @@ def main():
     p_blast.add_argument("--depth", type=int, default=3, help="Max traversal depth for tree")
     p_blast.add_argument("--verify", action="store_true", help="Show proof chains for each edge")
     p_blast.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
+    p_blast.add_argument(
+        "--committed-only", action="store_true",
+        help="Compare two commits only (ref vs HEAD); ignores uncommitted working-tree changes",
+    )
 
     args = parser.parse_args()
 
@@ -97,6 +113,9 @@ def _cmd_index(args):
         files.add(sym.file)
     print(f"Files   : {len(files)}")
 
+    if idx.broken_files:
+        print(f"Broken  : {len(idx.broken_files)} file(s) failed to parse (see warnings above)")
+
 
 def _cmd_impact(args):
     """Analyze impact of specific symbol changes."""
@@ -129,18 +148,44 @@ def _cmd_impact(args):
         print(f"\nTotal impacted: {len(impact.all_relevant)}")
 
 
+def _print_broken_files(idx, broken_patches):
+    """Shared helper: print patch text for any files that failed to parse."""
+    if not idx.broken_files:
+        return
+
+    print(f"\n⚠ {len(idx.broken_files)} file(s) failed to parse and could not be fully analyzed:")
+    for f in idx.broken_files:
+        print(f"\n--- {f} ---")
+        patch = broken_patches.get(f)
+        if patch:
+            print(patch.rstrip("\n"))
+        else:
+            print("  (no patch text available -- file may be new/untracked)")
+
+
 def _cmd_diff(args):
     """Find changed symbols from git diff."""
     idx = index_repository(args.repo)
-    changed = find_changed_symbols(args.repo, idx.symbols, ref=args.ref)
+
+    against = "HEAD" if args.committed_only else None
+    broken_patches = {}
+    changed = find_changed_symbols(
+        args.repo, idx.symbols, ref=args.ref, against=against,
+        broken_files=idx.broken_files,
+        broken_file_patches=broken_patches,
+        known_broken_files=idx.broken_files,
+    )
 
     if not changed:
         print("No changed symbols found.")
+        _print_broken_files(idx, broken_patches)
         return
 
     print(f"Changed symbols ({len(changed)}):")
     for sym_id in changed:
         print(f"  {sym_id}")
+
+    _print_broken_files(idx, broken_patches)
 
 
 def _cmd_compile(args):
@@ -151,7 +196,11 @@ def _cmd_compile(args):
     if args.changed:
         changed = args.changed
     elif args.ref:
-        changed = find_changed_symbols(args.repo, idx.symbols, ref=args.ref)
+        changed = find_changed_symbols(
+            args.repo, idx.symbols, ref=args.ref,
+            broken_files=idx.broken_files,
+            known_broken_files=idx.broken_files,
+        )
     else:
         print("Error: provide --changed or --ref", file=sys.stderr)
         sys.exit(1)
@@ -187,20 +236,38 @@ def _cmd_blast(args):
     idx = index_repository(args.repo)
     index_ms = (time.perf_counter() - t0) * 1000
 
+    against = "HEAD" if getattr(args, "committed_only", False) else None
+    broken_patches = {}
+
     # Determine changed symbols
     if args.changed:
         changed = args.changed
     elif args.ref:
-        changed = find_changed_symbols(args.repo, idx.symbols, ref=args.ref)
+        changed = find_changed_symbols(
+            args.repo, idx.symbols, ref=args.ref, against=against,
+            broken_files=idx.broken_files, broken_file_patches=broken_patches,
+            known_broken_files=idx.broken_files,
+        )
     else:
         # Default: compare against HEAD~1
-        changed = find_changed_symbols(args.repo, idx.symbols, ref="HEAD~1")
+        changed = find_changed_symbols(
+            args.repo, idx.symbols, ref="HEAD~1", against=against,
+            broken_files=idx.broken_files, broken_file_patches=broken_patches,
+            known_broken_files=idx.broken_files,
+        )
 
     if not changed:
         print("No changed symbols detected.")
         print("  Tip: make a Python change and commit it, or use --changed <symbol_id>")
         print(f"  Available symbols: {len(idx.symbols)} (use 'diffcontext index' to see stats)")
+        _print_broken_files(idx, broken_patches)
         return
+
+    # blast renders directly from idx.graph and never calls analyze_impact,
+    # so it needs its own unknown-symbol check (typo'd --changed, renamed/
+    # deleted symbol) -- otherwise a typo silently renders as "0 impact"
+    # indistinguishable from a real, genuinely-isolated symbol.
+    warn_unknown_symbols(idx, changed)
 
     # Strip ANSI if --no-color
     if args.no_color:
@@ -232,6 +299,8 @@ def _cmd_blast(args):
         )
         print(verification)
 
+    _print_broken_files(idx, broken_patches)
+
     # Timing footer
     total_ms = (time.perf_counter() - t0) * 1000
     print(f"  Indexed {len(idx.symbols)} symbols in {index_ms:.0f}ms")
@@ -241,3 +310,23 @@ def _cmd_blast(args):
 
 if __name__ == "__main__":
     main()
+
+
+def cli_main():
+    """
+    Entry point for the `diffcontext` console script.
+
+    Wraps main() to handle BrokenPipeError gracefully -- this happens
+    whenever stdout is piped into something that closes early (a missing
+    command, `head`, a reader that exits before reading everything). Without
+    this, piping `diffcontext compile | some-missing-tool` prints a full
+    Python traceback even though nothing is actually wrong.
+    """
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        # Redirect remaining stdout to devnull so the interpreter's own
+        # shutdown-time flush doesn't also raise BrokenPipeError.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(1)

@@ -112,6 +112,82 @@ def _extract_assign_owner(value, local_var_types=None, param_types=None):
     return None
 
 
+def extract_local_var_types(
+    fn_node,
+    param_types: Optional[Dict[str, Tuple[Optional[str], str]]] = None,
+) -> Dict[str, Tuple[Optional[str], str]]:
+    """
+    Track local variable -> type assignments within a SINGLE function body,
+    free function or method alike:
+
+        h = Helper()              -> {"h": (None, "Helper")}
+        r: routing.Router = ...   -> {"r": ("routing", "Router")}
+        x = make_helper()         -> chases factory functions the same way
+                                      attribute ownership tracking does
+                                      (resolution of the factory return type
+                                      itself happens later, in graph_builder)
+
+    This is the free-function counterpart to the self.attr tracking that
+    extract_attribute_ownerships does for class bodies. It exists because
+    a huge fraction of real code instantiates a class in a local variable
+    inside a plain function (not as a self.attr) and immediately calls a
+    method on it -- e.g.:
+
+        def run():
+            h = Handler()
+            return h.process()
+
+    Without this, `h.process()` can never resolve: there's nowhere that
+    records "h" has type "Handler". extract_attribute_ownerships alone
+    can't help, because it only ever looks inside ast.ClassDef bodies.
+
+    Returns: {local_var_name: (qualifier, bare_type_name)}
+    """
+    if param_types is None:
+        param_types = {}
+
+    local_var_types: Dict[str, Tuple[Optional[str], str]] = {}
+
+    for stmt in _iter_statements(fn_node.body):
+
+        if isinstance(stmt, ast.AnnAssign):
+            target = stmt.target
+            if isinstance(target, ast.Name):
+                ref = _extract_annotation_name(stmt.annotation)
+                if ref:
+                    local_var_types[target.id] = ref
+            continue
+
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name):
+                    ref = _extract_assign_owner(
+                        stmt.value, local_var_types, param_types
+                    )
+                    if ref:
+                        local_var_types[target.id] = ref
+            continue
+
+    return local_var_types
+
+
+def extract_param_types(fn_node) -> Dict[str, Tuple[Optional[str], str]]:
+    """
+    Map annotated parameter names to their (qualifier, bare_name) type, e.g.
+
+        def f(router: routing.Router, name: str): ...
+
+    -> {"router": ("routing", "Router")}   (unannotated/non-type params skipped)
+    """
+    param_types: Dict[str, Tuple[Optional[str], str]] = {}
+    for arg in fn_node.args.args:
+        if arg.annotation is not None:
+            ref = _extract_annotation_name(arg.annotation)
+            if ref:
+                param_types[arg.arg] = ref
+    return param_types
+
+
 def extract_attribute_ownerships(tree) -> Dict[str, Tuple[Optional[str], str]]:
     """
     Extracts mappings like:
@@ -136,12 +212,7 @@ def extract_attribute_ownerships(tree) -> Dict[str, Tuple[Optional[str], str]]:
             if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
 
-            param_types = {}
-            for arg in item.args.args:
-                if arg.annotation is not None:
-                    ref = _extract_annotation_name(arg.annotation)
-                    if ref:
-                        param_types[arg.arg] = ref
+            param_types = extract_param_types(item)
 
             local_var_types = {}
 
