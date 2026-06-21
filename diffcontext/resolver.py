@@ -3,8 +3,13 @@ resolver.py — Resolve Python import statements to filesystem paths.
 """
 
 import ast
+import logging
 import os
 from typing import Dict, Optional
+
+from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
+
+logger = logging.getLogger(__name__)
 
 
 def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
@@ -15,12 +20,15 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
         dict: local_name -> absolute_path_of_source_file
         e.g. {"helper": "/repo/utils.py", "Session": "/repo/sessions.py"}
     """
-    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
-        source = f.read()
+    with open(filename, "rb") as f:
+        raw = f.read()
+    check_and_warn_encoding(logger, filename, raw)
+    source = raw.decode("utf-8", errors="ignore")
 
     try:
         tree = ast.parse(source)
-    except SyntaxError:
+    except SyntaxError as e:
+        warn_syntax_error_once(logger, filename, e)
         return {}
 
     imports: Dict[str, str] = {}
