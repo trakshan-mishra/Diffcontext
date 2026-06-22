@@ -211,28 +211,35 @@ def find_changed_symbols(
         if sym_lines & changed_lines:
             changed_symbols.append(sym_id)
 
-    # Files git says changed, but that contributed zero current symbols.
-    # Only treat as "broken" (and run the SyntaxError fallback) if this
-    # file is confirmed broken via known_broken_files. Otherwise it's just
-    # a normal file with no function/method definitions (e.g. setup.py) --
-    # nothing to report, and definitely not a parse failure.
+    # Check for deleted symbols or broken files
     for changed_file in changed_files:
-        if changed_file in files_with_current_symbols:
+        # Handle broken files (SyntaxError)
+        if changed_file in known_broken:
+            if broken_files is not None and changed_file not in broken_files:
+                broken_files.append(changed_file)
+
+            if broken_file_patches is not None:
+                broken_file_patches[changed_file] = get_patch_text(
+                    repo_path, changed_file, ref, against
+                )
+
+            prior_ids = _symbol_ids_at_ref(repo_path, changed_file, ref)
+            for p_id in prior_ids:
+                if p_id not in changed_symbols:
+                    changed_symbols.append(p_id)
             continue
 
-        if changed_file not in known_broken:
-            continue
-
-        if broken_files is not None and changed_file not in broken_files:
-            broken_files.append(changed_file)
-
-        if broken_file_patches is not None:
-            broken_file_patches[changed_file] = get_patch_text(
-                repo_path, changed_file, ref, against
-            )
-
+        # Handle valid files: find symbols that existed before but are gone now
         prior_ids = _symbol_ids_at_ref(repo_path, changed_file, ref)
-        changed_symbols.extend(prior_ids)
+        current_ids = {
+            sym_id for sym_id, sym in symbols.items()
+            if "./" + os.path.relpath(sym.file, os.path.abspath(repo_path)) == changed_file
+        }
+        
+        deleted_ids = set(prior_ids) - current_ids
+        for d_id in deleted_ids:
+            if d_id not in changed_symbols:
+                changed_symbols.append(d_id)
 
     return changed_symbols
 
@@ -262,12 +269,33 @@ def _symbol_ids_at_ref(repo_path: str, filepath: str, ref: str) -> List[str]:
         except SyntaxError:
             return []
 
-        names = []
-        for node in _ast.walk(tree):
-            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                names.append(node.name)
+        class _FuncVisitor(_ast.NodeVisitor):
+            def __init__(self):
+                self.class_stack = []
+                self.names = []
 
-        return [f"{filepath}:{name}" for name in names]
+            def visit_ClassDef(self, node):
+                self.class_stack.append(node.name)
+                self.generic_visit(node)
+                self.class_stack.pop()
+
+            def visit_FunctionDef(self, node):
+                self._add(node)
+                self.generic_visit(node)
+
+            def visit_AsyncFunctionDef(self, node):
+                self._add(node)
+                self.generic_visit(node)
+
+            def _add(self, node):
+                if self.class_stack:
+                    self.names.append(f"{self.class_stack[-1]}.{node.name}")
+                else:
+                    self.names.append(node.name)
+
+        visitor = _FuncVisitor()
+        visitor.visit(tree)
+        return [f"{filepath}:{name}" for name in visitor.names]
 
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
