@@ -1,46 +1,40 @@
 # DiffContext
 
-**Static-analysis-powered repository context compiler for LLMs.**
+Static-analysis-powered repository context compiler for LLMs.
 
-> Git diff + AST parsing + dependency graph + blast radius + impact scoring → optimized context package
+**Git diff + AST parsing + dependency graph + blast radius + impact scoring → optimized context package**
 
 Instead of dumping an entire codebase (or doing keyword/vector search), DiffContext:
 
 1. **Parses** Python files via AST → extracts every function, method, class
-2. **Builds a dependency graph** → calls, imports, inheritance, attribute ownership
-3. **Detects changes** → via git diff or snapshot comparison
+2. **Builds a dependency graph** → calls, imports, inheritance, attribute ownership, decorators
+3. **Detects changes** → via git diff (including uncommitted edits) or snapshot comparison
 4. **Computes blast radius** → everything transitively affected by the change
 5. **Scores impact** → prioritizes symbols by structural importance
-6. **Selects relevant code** → respects token budget
-7. **Compiles context** → structured output ready for an LLM
+6. **Selects relevant code** → respects a token budget
+7. **Compiles context** → structured output ready to paste into an LLM
 
----
+On a real ~1,100-symbol production repo, this reliably produces **95–99% token
+reduction** versus pasting the whole codebase, while keeping the functions that
+are actually call-graph-connected to your change.
 
-## Quick Start (Complete Noob Guide)
+## Quick Start
 
 ### Step 1: Install
 
 ```bash
-# Clone this repo
 git clone https://github.com/trakshan-mishra/Diffcontext.git
 cd Diffcontext
-
-# Install globally (the "diffcontext" command becomes available everywhere)
-pip install -e ".[bench]"
-
-# Verify it works
+pip install -e .
 diffcontext --help
 ```
 
 ### Step 2: Index a repository
 
-Point DiffContext at any Python project:
-
 ```bash
 diffcontext index /path/to/any/python/project
 ```
 
-Example output:
 ```
 Symbols : 354
 Edges   : 160
@@ -48,151 +42,177 @@ Time    : 548ms
 Files   : 20
 ```
 
-### Step 3: Analyze impact of a change
+If any file fails to parse (a real `SyntaxError`), it's reported explicitly —
+not silently skipped:
 
-If you know which function changed:
-
-```bash
-diffcontext impact ./src/auth.py:validate_jwt --repo /path/to/repo
+```
+Skipping broken_file.py due to SyntaxError: unmatched ')' (line 237)
 ```
 
-Output shows the **blast radius** — everything affected by that change.
+### Step 3: Check impact of a function you're working on
 
-### Step 4: Auto-detect changes from git
+This is the recommended default mode while actively editing — it doesn't
+depend on git at all, so it works on uncommitted or untracked files too:
 
 ```bash
-diffcontext diff HEAD~1 --repo /path/to/repo
+diffcontext blast --changed ./src/auth.py:validate_jwt
 ```
 
-Finds which functions were modified in the last commit.
+Shows who calls it, what it calls, and the full transitive blast radius.
 
-### Step 5: Build LLM context
+### Step 4: Auto-detect changes from git (optional)
 
 ```bash
-# From specific changed functions:
-diffcontext compile --changed ./src/auth.py:validate_jwt --repo /path/to/repo
+diffcontext diff
+```
+
+Compares your working tree (including uncommitted edits to **tracked** files)
+against `HEAD~1` by default. Note: this only sees changes to files git
+already knows about — a brand-new untracked file is invisible to any
+git-diff-based tool until you `git add -N <file>` or commit it. Use
+`--committed-only` to compare two commits and ignore working-tree changes.
+
+### Step 5: Build LLM-ready context
+
+```bash
+# From a specific function:
+diffcontext compile --changed ./src/auth.py:validate_jwt
 
 # From git diff:
-diffcontext compile --ref HEAD~1 --repo /path/to/repo
+diffcontext compile --ref HEAD~1
 
-# With token budget:
-diffcontext compile --changed ./src/auth.py:validate_jwt --repo /path/to/repo --max-tokens 8000
+# With a token budget:
+diffcontext compile --changed ./src/auth.py:validate_jwt --max-tokens 8000
 
-# JSON output:
-diffcontext compile --changed ./src/auth.py:validate_jwt --repo /path/to/repo --json
+# JSON output (for piping into another tool):
+diffcontext compile --changed ./src/auth.py:validate_jwt --json
 ```
 
-### Step 6: Use in Python code
+Then paste the output into Claude / ChatGPT / your LLM of choice, **with a
+specific question** — not just the raw context. E.g.:
+
+> "Is the dynamic SQL construction in `update_run` safe, given how `kwargs`
+> is validated against `_UPDATABLE_RUN_COLUMNS`?"
+
+### Step 6: Use as a library
 
 ```python
 from diffcontext.pipeline import index_repository, analyze_impact, compile
 
-# 1. Index the repo (do once, reuse)
 idx = index_repository("/path/to/repo")
-print(f"{len(idx.symbols)} symbols, {idx.total_edges} edges")
-
-# 2. Analyze impact of a change
 impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])
-print(f"Blast radius: {len(impact.blast_radius)} affected symbols")
-
-# 3. Compile context for LLM
 ctx = compile(idx, impact, max_tokens=10000)
-print(ctx.text)            # The context to send to the LLM
-print(f"Tokens: {ctx.token_estimate:,} / {ctx.total_repo_tokens:,}")
-print(f"Reduction: {ctx.reduction_pct:.1f}%")
+
+print(ctx.text)             # the context to send to the LLM
+print(f"{ctx.token_estimate:,} / {ctx.total_repo_tokens:,} tokens")
+print(f"{ctx.reduction_pct:.1f}% reduction")
 ```
 
----
+See `USAGE.md` for the full day-to-day workflow, including shell aliases.
 
-## Benchmarking (Research-Grade)
+## What the resolver actually handles
 
-### Step 1: Clone real repos with git history
+Confirmed via an automated test suite (`tests/`) that builds small repos on
+the fly and asserts on real resolved call-graph edges — not just "it ran
+without crashing":
 
-```bash
-python benchmark_runner.py --clone
-```
+- Function and method calls, including multi-hop attribute chains (`self.a.b.method()`)
+- Multiple inheritance / MRO, including cross-file base classes
+- Circular imports
+- Local variables instantiating a class inside a **free function** (not just
+  `self.x = ...` inside a method) — e.g. `h = Handler(); h.process()`
+- Annotated parameters as call receivers (`def run(h: Handler): h.process()`)
+- Import aliasing (`from .user import Handler as UserHandler`), including
+  disambiguating two same-named classes in different files
+- Bare `import x` where `x` lives in a sibling directory rather than the
+  repo root (common in script-style codebases)
+- **Decorators**: a decorated function's graph entry now correctly includes
+  calls made by its decorator's wrapper — e.g. `@require_auth` wrapping
+  `get_profile` correctly shows `get_profile` depending on whatever
+  `require_auth`'s wrapper calls (like a session check), not falsely
+  attributed to `require_auth` itself
+- Higher-order stdlib functions: `map(fn, items)`, `sorted(x, key=fn)`,
+  `filter(fn, items)` — a function passed *by reference* to these is
+  tracked as an implicit call
 
-This clones Flask, Click, httpx, Pydantic with 100 commits of history.
+## Known limitations (genuinely unfixable by static analysis, not bugs)
 
-### Step 2: Run co-change benchmark (honest, non-circular)
+- **Dynamic dispatch / `getattr()`-based routing**: `getattr(obj, name)()`
+  can't be resolved statically when `name` is computed at runtime (from
+  config, user input, etc.) — no static analysis tool can do this in
+  general, including IDEs.
+- **Cross-file changes related by theme, not by function calls**: e.g. "remove
+  a dependency," touching 3 files for one conceptual reason with no direct
+  call-graph edges between them. Blast radius is a call-graph tool; it
+  cannot detect relatedness that isn't expressed as a function call.
+- **User-defined higher-order functions**: only the common stdlib cases
+  (`map`, `filter`, `sorted`/`max`/`min` with `key=`) are recognized.
+  A custom function like `def apply_twice(fn, value): return fn(fn(value))`
+  is not — this would need cross-function signature analysis to know which
+  parameter is expected to be callable.
 
-```bash
-python benchmark_runner.py --cochange
-```
-
-**Ground truth**: Functions that human developers changed together in the same commit.
-This is external evidence — completely independent of our dependency graph.
-
-### Step 3: Compare against baselines
-
-```bash
-python benchmark_runner.py --compare
-```
-
-Compares DiffContext vs BM25 vs file co-location vs random.
-
-### Step 4: Run everything
-
-```bash
-python benchmark_runner.py --full
-```
-
-### Results
-
-DiffContext wins on F1 in **3/4 real repos** against BM25 (the standard IR baseline):
-
-| Repo | DiffContext F1 | BM25 F1 | Winner |
-|---|---|---|---|
-| click | **0.136** | 0.079 | DiffContext (+72%) |
-| flask | **0.133** | 0.119 | DiffContext (+12%) |
-| httpx | 0.219 | 0.221 | Tie (File-CoLoc wins at 0.260) |
-| pydantic | **0.130** | 0.078 | DiffContext (+67%) |
-
-**DiffContext has 2-3x higher precision** — it sends less irrelevant code to the LLM.
-
----
+Run `grep -rn "function_name(" --include="*.py" .` to spot-check anything
+important before fully trusting "no callers found."
 
 ## Architecture
 
 ```
 diffcontext/
-├── __init__.py          # Package entry
-├── models.py            # Data classes (Symbol, RepositoryIndex, etc.)
-├── scanner.py           # File discovery with exclusion list
-├── parser.py            # AST symbol extraction
-├── resolver.py          # Import → filesystem path resolution
-├── symbols.py           # Attribute ownership (self.x type tracking)
-├── graph_builder.py     # Core: dependency graph construction
-├── pipeline.py          # Pipeline orchestrator
+├── __init__.py          # Package entry, high-level API
+├── models.py             # Data classes (Symbol, RepositoryIndex, etc.)
+├── scanner.py             # File discovery with exclusion list
+├── parser.py               # AST symbol extraction
+├── resolver.py              # Import -> filesystem path resolution
+├── symbols.py                 # Attribute / local-var type tracking
+├── graph_builder.py             # Core: dependency graph construction
+├── pipeline.py                    # Pipeline orchestrator
+├── _warn_once.py                    # De-duplicated warnings (broken files, encoding, unknown symbols)
 ├── diff/
-│   ├── git_diff.py      # Git diff → changed symbols
-│   └── state_manager.py # Snapshot-based change detection
+│   ├── git_diff.py                    # Git diff -> changed symbols
+│   └── state_manager.py                # Snapshot-based change detection
 ├── impact/
-│   ├── blast_radius.py  # Reverse graph traversal
-│   ├── scoring.py       # Impact scoring (blast_radius*3 + indegree*2 + outdegree)
-│   └── traversal.py     # Forward dependency expansion
+│   ├── blast_radius.py                  # Reverse graph traversal
+│   ├── scoring.py                         # Impact scoring
+│   ├── traversal.py                         # Forward dependency expansion
+│   └── visualizer.py                          # Terminal tree rendering
 ├── context/
-│   ├── selector.py      # Token-budget-aware selection
-│   └── compiler.py      # Structured output formatting
+│   ├── selector.py                              # Token-budget-aware selection
+│   └── compiler.py                                # Structured output formatting
 └── cli/
-    └── __init__.py      # CLI commands: index, impact, diff, compile
+    └── __init__.py                                  # CLI: index, impact, diff, compile, blast
 ```
 
----
-
-## How Symbol IDs Work
+## How symbol IDs work
 
 Every function gets a unique ID: `./relative/path.py:ClassName.method_name`
 
-Examples:
 ```
+./src/auth.py:validate_jwt
 ./src/flask/app.py:Flask.route
-./src/flask/app.py:Flask.wsgi_app
-./src/flask/helpers.py:url_for
-./auth.py:validate_jwt
 ```
 
----
+**No parentheses, no arguments** — `validate_jwt`, never `validate_jwt(token)`.
+
+## Testing
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+25 tests, all self-contained (no external clone needed), covering both
+correct resolution and the documented limitations above — including tests
+that were written to fail loudly if a future change silently regresses
+something that's currently working.
+
+## Status
+
+This is a personal project, built and iteratively debugged against a real
+production codebase (not just synthetic test repos). Several real resolver
+bugs were found and fixed through that process — see commit history and
+`tests/test_graph_resolution.py` for specifics. It has not yet been
+benchmarked for precision/recall against real git co-change history at
+scale; treat blast-radius output as a strong starting point, not a
+guarantee, and spot-check with `grep` on anything load-bearing.
 
 ## License
 
