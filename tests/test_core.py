@@ -2,8 +2,14 @@
 """
 tests/test_core.py — Unit tests for DiffContext core algorithm.
 
-Tests against the small repos in benchmarks/datasets/ and against
-the real Flask/FastAPI/Click repos.
+Runs entirely against small, checked-in fixture repos under
+tests/fixtures/ -- no external clone (Flask/FastAPI/Click) required, so
+nothing here silently skips in a fresh checkout or CI environment.
+
+For larger-scale, real-world precision/recall numbers (the kind only a
+big real repo with git history can give you), see benchmark_runner.py
+and BENCHMARKS.md instead -- that's a separate, opt-in suite, not part
+of the fast unit-test path.
 """
 
 import os
@@ -25,30 +31,48 @@ from diffcontext.pipeline import index_repository, analyze_impact, compile
 
 
 # ---- Paths ----
+# Fixtures are small, hand-built repos checked into the repo itself --
+# see tests/fixtures/simple_repo and tests/fixtures/medium_repo.
 BASE = os.path.dirname(os.path.dirname(__file__))
-DATASETS = os.path.join(BASE, "benchmarks", "datasets")
-SIMPLE = os.path.join(DATASETS, "simple_repo")
-MEDIUM = os.path.join(DATASETS, "medium_repo")
-TORTURE = os.path.join(DATASETS, "torture_repo")
-FLASK = os.path.join(BASE, "benchmarks", "flask")
-FASTAPI = os.path.join(BASE, "benchmarks", "fastapi")
-CLICK = os.path.join(BASE, "benchmarks", "click")
+FIXTURES = os.path.join(BASE, "tests", "fixtures")
+SIMPLE = os.path.join(FIXTURES, "simple_repo")
+MEDIUM = os.path.join(FIXTURES, "medium_repo")
+
+
+def _require_fixture(path, name):
+    """
+    Fail loudly (not skip) if a checked-in fixture is missing -- unlike
+    an external clone, there's no legitimate reason for this to be absent
+    in a real checkout, so a missing fixture is a real test failure, not
+    something to silently skip past.
+    """
+    if not os.path.isdir(path):
+        pytest.fail(
+            f"{name} fixture missing at {path} -- it should be checked "
+            f"into the repo under tests/fixtures/. This is not an "
+            f"external dependency; if it's missing, something is wrong "
+            f"with the checkout."
+        )
 
 
 # ---- Scanner tests ----
 
 class TestScanner:
     def test_find_python_files_simple(self):
-        if not os.path.isdir(SIMPLE):
-            pytest.skip("simple_repo not found")
+        _require_fixture(SIMPLE, "simple_repo")
         files = find_python_files(SIMPLE)
         assert len(files) >= 1
         assert all(f.endswith(".py") for f in files)
 
-    def test_excludes_pycache(self):
-        if not os.path.isdir(FLASK):
-            pytest.skip("Flask repo not found")
-        files = find_python_files(FLASK)
+    def test_excludes_pycache(self, tmp_path):
+        # Build a tiny repo with a __pycache__ dir inline, rather than
+        # depending on an external clone to have one lying around.
+        (tmp_path / "main.py").write_text("def f():\n    return 1\n")
+        pycache = tmp_path / "__pycache__"
+        pycache.mkdir()
+        (pycache / "main.cpython-312.pyc").write_text("not real bytecode")
+
+        files = find_python_files(str(tmp_path))
         assert not any("__pycache__" in f for f in files)
 
 
@@ -56,8 +80,7 @@ class TestScanner:
 
 class TestParser:
     def test_extract_simple(self):
-        if not os.path.isdir(SIMPLE):
-            pytest.skip("simple_repo not found")
+        _require_fixture(SIMPLE, "simple_repo")
         symbols = extract_all_symbols(SIMPLE)
         assert len(symbols) > 0
         # Check symbol IDs have correct format
@@ -66,10 +89,9 @@ class TestParser:
             assert sym_id.startswith("./")
 
     def test_extracts_methods(self):
-        if not os.path.isdir(FLASK):
-            pytest.skip("Flask repo not found")
-        symbols = extract_all_symbols(FLASK)
-        # Flask has class methods
+        _require_fixture(MEDIUM, "medium_repo")
+        symbols = extract_all_symbols(MEDIUM)
+        # medium_repo's models.py has class methods (User, Order)
         method_syms = [s for s in symbols if "." in s.split(":", 1)[1]]
         assert len(method_syms) > 0, "Should extract class methods"
 
@@ -78,32 +100,25 @@ class TestParser:
 
 class TestGraphBuilder:
     def test_simple_graph(self):
-        if not os.path.isdir(SIMPLE):
-            pytest.skip("simple_repo not found")
+        _require_fixture(SIMPLE, "simple_repo")
         graph = build_repository_graph(SIMPLE)
         assert len(graph) > 0
 
     def test_medium_graph(self):
-        if not os.path.isdir(MEDIUM):
-            pytest.skip("medium_repo not found")
+        _require_fixture(MEDIUM, "medium_repo")
         graph = build_repository_graph(MEDIUM)
         assert len(graph) > 0
-        # Medium repo should have cross-file deps
+        # medium_repo's service.py imports from models.py and validators.py
         edges = sum(len(deps) for deps in graph.values())
         assert edges > 0, "Should have cross-file dependency edges"
 
-    def test_flask_graph(self):
-        if not os.path.isdir(FLASK):
-            pytest.skip("Flask repo not found")
-        graph = build_repository_graph(FLASK)
-        assert len(graph) > 50, f"Flask should have many symbols, got {len(graph)}"
-        edges = sum(len(deps) for deps in graph.values())
-        assert edges > 20, f"Flask should have many edges, got {edges}"
-
     def test_no_self_loops(self):
-        if not os.path.isdir(FLASK):
-            pytest.skip("Flask repo not found")
-        graph = build_repository_graph(FLASK)
+        # Structural invariant: a function should never list itself as
+        # its own dependency. Originally only checked against Flask;
+        # medium_repo's onboard_user -> create_user -> create_order chain
+        # is enough to exercise the same code path.
+        _require_fixture(MEDIUM, "medium_repo")
+        graph = build_repository_graph(MEDIUM)
         for sym_id, deps in graph.items():
             assert sym_id not in deps, f"Self-loop found: {sym_id}"
 
@@ -200,39 +215,28 @@ class TestScoring:
 
 class TestPipeline:
     def test_full_pipeline_medium(self):
-        if not os.path.isdir(MEDIUM):
-            pytest.skip("medium_repo not found")
+        _require_fixture(MEDIUM, "medium_repo")
         idx = index_repository(MEDIUM)
         assert len(idx.symbols) > 0
         assert len(idx.graph) > 0
 
-        # Pick first symbol
-        sym_id = list(idx.graph.keys())[0]
+        # Pick a symbol with real dependencies (onboard_user calls into
+        # both create_user and create_order) so the pipeline actually
+        # exercises blast radius / scoring / selection meaningfully,
+        # rather than picking an arbitrary (possibly isolated) symbol.
+        sym_id = "./service.py:onboard_user"
+        assert sym_id in idx.graph, (
+            f"Expected fixture to contain {sym_id}; fixture may have "
+            f"changed without updating this test."
+        )
+
         impact = analyze_impact(idx, [sym_id])
         assert len(impact.scores) > 0
+        assert impact.scores[sym_id] >= 100
 
         ctx = compile(idx, impact)
         assert ctx.symbol_count > 0
         assert ctx.token_estimate > 0
-
-    def test_flask_pipeline(self):
-        if not os.path.isdir(FLASK):
-            pytest.skip("Flask repo not found")
-        idx = index_repository(FLASK)
-        assert len(idx.symbols) > 50
-
-        # Pick a connected symbol
-        best_sym = None
-        best_deps = 0
-        for sym_id, deps in idx.graph.items():
-            if len(deps) > best_deps:
-                best_deps = len(deps)
-                best_sym = sym_id
-
-        if best_sym:
-            impact = analyze_impact(idx, [best_sym])
-            ctx = compile(idx, impact)
-            assert ctx.reduction_pct > 0, "Should reduce tokens vs full repo"
 
 
 if __name__ == "__main__":
