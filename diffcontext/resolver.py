@@ -71,6 +71,19 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
                 local_name = alias.asname or top_module
                 module_path = os.path.join(repo_abs, alias.name.replace(".", os.sep))
                 resolved = _resolve_module_path(module_path)
+
+                if not resolved:
+                    # Bare `import x` with no dots doesn't always live at the
+                    # repo root -- a very common real pattern is sibling
+                    # script files in the same directory doing `import store`,
+                    # which only works at runtime because that directory is
+                    # on sys.path (CWD, or an explicit sys.path.insert).
+                    # Static analysis can't know the real sys.path, but
+                    # "the importing file's own directory" covers the
+                    # overwhelmingly common case correctly.
+                    sibling_path = os.path.join(file_dir, alias.name.replace(".", os.sep))
+                    resolved = _resolve_module_path(sibling_path)
+
                 if resolved:
                     imports[local_name] = resolved
 

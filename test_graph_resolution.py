@@ -232,3 +232,42 @@ class TestKnownLimitations:
             "If this fails, higher-order function argument tracking may "
             "have improved -- update this test to assert the new behavior."
         )
+
+
+class TestBareImportResolution:
+    """
+    Regression test for: `import store` (bare, no dots, no `from`) failed
+    to resolve when store.py was nested in a subdirectory rather than
+    sitting at the repo root -- a very common pattern in script-style
+    codebases where sibling scripts do `import other_script` and rely on
+    their own directory being on sys.path at runtime.
+
+    Found via a real user repo: watchlist.py did `import store` where
+    store.py lived 3 directories deep, and every store.update_run() call
+    site silently produced zero resolved edges.
+    """
+
+    def test_bare_import_resolves_from_nested_sibling_directory(self, tmp_path):
+        scripts_dir = tmp_path / "skills" / "last30days" / "scripts"
+        scripts_dir.mkdir(parents=True)
+
+        (scripts_dir / "store.py").write_text(
+            "def update_run(run_id, **kwargs):\n"
+            "    return run_id\n"
+        )
+        (scripts_dir / "watchlist.py").write_text(
+            "import store\n"
+            "\n"
+            "def do_something(run_id):\n"
+            "    store.update_run(run_id, status='done')\n"
+        )
+        (tmp_path / "__init__.py").write_text("")
+        (scripts_dir / "__init__.py").write_text("")
+
+        idx = index_repository(str(tmp_path))
+
+        edges = idx.graph.get("./skills/last30days/scripts/watchlist.py:do_something", [])
+        assert "./skills/last30days/scripts/store.py:update_run" in edges, (
+            f"Expected bare 'import store' to resolve via sibling-directory "
+            f"fallback, got edges: {edges}"
+        )
