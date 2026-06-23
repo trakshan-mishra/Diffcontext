@@ -110,6 +110,15 @@ print(f"{ctx.reduction_pct:.1f}% reduction")
 
 See `USAGE.md` for the full day-to-day workflow, including shell aliases.
 
+### Step 7: Cloud sync (CtxSync)
+
+```bash
+diffcontext sync
+```
+
+One command. Compiles blast radius and pushes to your CtxSync cloud endpoint.
+Credentials are read from `~/.ctxsync`, env vars, or `--url`/`--key` flags.
+
 ## What the resolver actually handles
 
 Confirmed via an automated test suite (`tests/`) that builds small repos on
@@ -179,7 +188,14 @@ diffcontext/
 │   ├── selector.py                              # Token-budget-aware selection
 │   └── compiler.py                                # Structured output formatting
 └── cli/
-    └── __init__.py                                  # CLI: index, impact, diff, compile, blast
+    └── __init__.py                                  # CLI: index, impact, diff, compile, blast, sync
+```
+
+## Try it (30 seconds)
+
+```bash
+bash demo.sh          # runs on openai/whisper automatically
+bash demos.sh         # interactive — pick from 5 famous repos or use your own
 ```
 
 ## How symbol IDs work
@@ -199,20 +215,20 @@ Every function gets a unique ID: `./relative/path.py:ClassName.method_name`
 python3 -m pytest tests/ -v
 ```
 
-25 tests, all self-contained (no external clone needed), covering both
+17 tests, all self-contained (no external clone needed), covering both
 correct resolution and the documented limitations above — including tests
 that were written to fail loudly if a future change silently regresses
 something that's currently working.
 
 ## Status
 
-This is a personal project, built and iteratively debugged against a real
-production codebase (not just synthetic test repos). Several real resolver
-bugs were found and fixed through that process — see commit history and
-`tests/test_graph_resolution.py` for specifics. It has not yet been
-benchmarked for precision/recall against real git co-change history at
-scale; treat blast-radius output as a strong starting point, not a
-guarantee, and spot-check with `grep` on anything load-bearing.
+This is a personal project, built and iteratively debugged against real
+production codebases (openai/whisper, pallets/click, pallets/flask). Several
+real resolver bugs were found and fixed through dogfooding — decorators,
+higher-order functions, and sibling-directory imports all required fixes
+that were only visible on real code, not toy examples. Treat blast-radius
+output as a strong starting point, not a guarantee, and spot-check with
+`grep` on anything load-bearing.
 
 ## License
 
