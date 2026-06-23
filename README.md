@@ -35,13 +35,6 @@ diffcontext --help
 diffcontext index /path/to/any/python/project
 ```
 
-```
-Symbols : 354
-Edges   : 160
-Time    : 548ms
-Files   : 20
-```
-
 If any file fails to parse (a real `SyntaxError`), it's reported explicitly —
 not silently skipped:
 
