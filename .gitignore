@@ -14,3 +14,6 @@ venv/
 yt-dlp/
 benchmark_repos/
 a.txt
+ctxsync/
+demo-visual.html
+node_modules/

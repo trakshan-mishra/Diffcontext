@@ -98,15 +98,24 @@ look for the `⚠ N file(s) failed to parse` block in the output.
 
 ## Known limitations (don't trust blast radius blindly here)
 
-- **Decorators / closures**: a decorated function's real dependency
-  (via its wrapper) won't show up. If you're touching a decorator or a
-  function that's heavily decorated, grep-check manually.
-- **Functions passed by reference**: `map(fn, items)`, `sorted(key=fn)`
-  — `fn` won't show as "called" since there's no direct call site.
 - **Dynamic dispatch / `getattr()`-based routing**: common in CLI
   argument dispatch and plugin systems — invisible to static analysis.
 - **Cross-file changes related by theme, not by function calls**: e.g.
   "remove a dependency" touching 3 unrelated-by-call-graph files for one
   conceptual reason. Blast radius won't connect these.
+- **User-defined higher-order functions**: only the common stdlib cases
+  (`map`, `filter`, `sorted`/`max`/`min` with `key=`) are recognized.
+  A custom `def apply_twice(fn, value)` is not tracked.
 
 When in doubt: grep first, trust second.
+
+## Cloud sync (CtxSync)
+
+Push your blast radius to the cloud in one command:
+
+```bash
+diffcontext sync
+```
+
+Reads credentials from `~/.ctxsync` (or `--url`/`--key` flags, or env vars).
+The system prompt URL can be pasted into any AI tool for live context awareness.
