@@ -103,7 +103,7 @@ print(f"{ctx.reduction_pct:.1f}% reduction")
 
 See `USAGE.md` for the full day-to-day workflow, including shell aliases.
 
-### Step 7: Cloud sync (CtxSync)
+### Step 7: Cloud sync (CtxSync) (yet to be impemented)
 
 ```bash
 diffcontext sync
@@ -187,7 +187,6 @@ diffcontext/
 ## Try it (30 seconds)
 
 ```bash
-bash demo.sh          # runs on openai/whisper automatically
 bash demos.sh         # interactive — pick from 5 famous repos or use your own
 ```
 
