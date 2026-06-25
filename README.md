@@ -112,6 +112,29 @@ diffcontext sync
 One command. Compiles blast radius and pushes to your CtxSync cloud endpoint.
 Credentials are read from `~/.ctxsync`, env vars, or `--url`/`--key` flags.
 
+### Step 8: Use as an MCP Server (Claude Desktop / Cursor)
+
+DiffContext includes a built-in **Model Context Protocol (MCP)** server, allowing AI assistants to natively query your codebase's blast radius without manual copy-pasting.
+
+**1. Install with MCP support:**
+```bash
+pip install -e .[mcp]
+```
+
+**2. Configure your AI client:**
+For Claude Desktop (`claude_desktop_config.json`) or Cursor:
+```json
+{
+  "mcpServers": {
+    "diffcontext": {
+      "command": "diffcontext-mcp"
+    }
+  }
+}
+```
+
+Now you can just ask your AI: *"What is the blast radius of validate_jwt in the diffcontext repo?"* and it will autonomously use DiffContext to find the precise context!
+
 ## What the resolver actually handles
 
 Confirmed via an automated test suite (`tests/`) that builds small repos on

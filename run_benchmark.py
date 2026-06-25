@@ -124,7 +124,7 @@ def run_diffcontext_retrieval(graph, symbols, query_symbol, max_tokens=4000):
         return set()
     radius = get_blast_radius(graph, query_symbol)
     scores = compute_impact_scores(graph, [query_symbol], {query_symbol: radius})
-    selected = select_context(symbols, scores, [query_symbol], max_tokens=max_tokens)
+    selected, _dropped = select_context(symbols, scores, [query_symbol], max_tokens=max_tokens)
     return set(selected) - {query_symbol}
 
 
