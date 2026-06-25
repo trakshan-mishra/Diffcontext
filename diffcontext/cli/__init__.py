@@ -64,6 +64,7 @@ def main():
     p_compile.add_argument("--repo", default=".", help="Repository path")
     p_compile.add_argument("--depth", type=int, default=2, help="Max dependency depth")
     p_compile.add_argument("--max-tokens", type=int, default=10000, help="Token budget")
+    p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
     p_compile.add_argument("--sync", action="store_true", help="Sync output to CtxSync cloud")
 
@@ -224,7 +225,7 @@ def _cmd_compile(args):
 
     impact = analyze_impact(idx, changed, max_depth=args.depth)
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
-    ctx = compile(idx, impact, max_tokens=max_tokens)
+    ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes)
 
     if args.json:
         result = {
