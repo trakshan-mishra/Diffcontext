@@ -135,7 +135,7 @@ def run_diffcontext(
     scores = compute_impact_scores(graph, valid, blast_radii)
 
     # Select
-    selected = select_context(symbols, scores, valid, max_tokens=max_tokens)
+    selected, _dropped = select_context(symbols, scores, valid, max_tokens=max_tokens)
 
     return [s for s in selected if s not in set(valid)]
 
