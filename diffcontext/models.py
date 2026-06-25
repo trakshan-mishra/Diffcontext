@@ -84,6 +84,10 @@ class ContextPackage:
     symbol_count: int
     token_estimate: int
     total_repo_tokens: int
+    # LLM self-awareness fields
+    dropped_symbols: List[str] = field(default_factory=list)   # scored but cut by budget
+    skipped_files: List[str] = field(default_factory=list)     # SyntaxError'd files
+    graph_confidence: float = 1.0                              # fraction of edges that resolved
 
     @property
     def reduction_pct(self) -> float:
