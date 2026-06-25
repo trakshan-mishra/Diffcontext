@@ -127,11 +127,16 @@ def compile(
     index: RepositoryIndex,
     impact: ImpactResult,
     max_tokens: Optional[int] = 10000,
+    notes: Optional[str] = None,
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
+
+    Now passes the call graph, dropped-symbol list, and broken-file list to
+    compile_context so the LLM receives a full meta-header explaining its own
+    blind spots (dropped symbols, incomplete graph regions, etc.).
     """
-    selected = select_context(
+    selected, dropped = select_context(
         index.symbols,
         impact.scores,
         impact.changed,
@@ -143,6 +148,10 @@ def compile(
         selected,
         impact.changed,
         impact.scores,
+        graph=index.graph,
+        dropped_ids=dropped,
+        skipped_files=index.broken_files,
+        notes=notes,
     )
 
 
