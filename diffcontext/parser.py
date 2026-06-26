@@ -104,11 +104,18 @@ def extract_all_symbols(
     that failed to parse (SyntaxError) are appended to it.
     """
     from .scanner import find_python_files
+    from .cache import SymbolCache
 
     repo_path = os.path.abspath(repo_path)
     all_symbols: Dict[str, Symbol] = {}
+    
+    db_path = os.path.join(repo_path, ".diffcontext_cache.db")
 
-    for filepath in find_python_files(repo_path):
-        all_symbols.update(extract_symbols(filepath, repo_path, broken_files=broken_files))
+    with SymbolCache(db_path) as cache:
+        for filepath in find_python_files(repo_path):
+            def _parse(path: str) -> Dict[str, Symbol]:
+                return extract_symbols(path, repo_path, broken_files=broken_files)
+            
+            all_symbols.update(cache.get_or_parse(filepath, _parse))
 
     return all_symbols
