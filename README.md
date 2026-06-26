@@ -248,3 +248,16 @@ output as a strong starting point, not a guarantee, and spot-check with
 ## License
 
 MIT
+
+## Benchmarks & Performance (Baseline)
+
+We adhere strictly to **Measure Before Optimizing**. Our baseline metrics demonstrate that traversal and compilation are nearly instantaneous, while parsing and graph construction are the primary bottlenecks. This data drives our roadmap for v0.4 (Incremental Caching).
+
+| Repo | Files | Symbols | Parse (ms) | Graph Build (ms) | Traversal (ms) | Compile (ms) | Token Reduction |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Flask** | 20 | 354 | 488 | 930 | 0.1 | 0.0 | 98.15% |
+| **Click** | 19 | 506 | 1273 | 1824 | 0.2 | 0.0 | 96.51% |
+| **HTTPX** | 21 | 434 | 665 | 1147 | 0.1 | 0.0 | 96.70% |
+| **Pydantic** | 90 | 1826 | 4519 | 7914 | 0.6 | 0.0 | 98.43% |
+
+*Note: Peak memory for Pydantic (the largest repo) was only 66.4 MB, validating that memory is not currently a bottleneck.*

@@ -20,3 +20,5 @@ node_modules/
 sync-context.sh
 test_fixtures.tar.gz
 test_graph_resolution.py
+.diffcontext_cache.db
+benchmarks/results/
