@@ -2,6 +2,12 @@
 pipeline.py — The main DiffContext pipeline.
 
 Connects all stages: parse -> graph -> diff -> blast radius -> score -> select -> compile
+
+Key fixes vs original:
+  - expanded_deps is now passed into compute_impact_scores so those symbols
+    are actually scored (previously they were collected but never used).
+  - Graph is built with a single pass and cached import maps (see graph_builder).
+  - warn_unknown_symbols is called before any scoring to surface typos early.
 """
 
 import difflib
@@ -48,15 +54,8 @@ def index_repository(repo_path: str) -> RepositoryIndex:
 
 def warn_unknown_symbols(index: RepositoryIndex, changed_symbols: List[str]) -> List[str]:
     """
-    Check `changed_symbols` against the index and warn (once per call) about
-    any that don't actually exist -- a typo'd symbol ID, or one that was
-    renamed/deleted since the index was built. Without this, callers that
-    pass an unknown symbol get a result that LOOKS like a real,
-    fully-analyzed change with zero callers/dependencies, indistinguishable
-    from a real symbol that's genuinely isolated.
-
-    Returns the list of unknown symbol IDs (empty if all were found), so
-    callers can decide what to do beyond just warning if they want to.
+    Check `changed_symbols` against the index and warn about any that don't
+    actually exist. Returns the list of unknown symbol IDs.
     """
     unknown = [s for s in changed_symbols if s not in index.graph and s not in index.symbols]
     for sym_id in unknown:
@@ -86,12 +85,12 @@ def analyze_impact(
     """
     Phase 2: Given changed symbols, compute blast radius and impact scores.
 
-    See warn_unknown_symbols -- any symbol not actually in the index gets
-    a clear warning rather than silently scoring as if it were real.
+    Fix: expanded_deps is now passed into compute_impact_scores so those
+    nodes are actually scored. Previously they were computed and discarded.
     """
     warn_unknown_symbols(index, changed_symbols)
 
-    # Blast radius for each changed symbol
+    # ── Blast radius (reverse graph / callers) ────────────────────────────
     blast_radii: Dict[str, List[str]] = {}
     all_blast: List[str] = []
 
@@ -101,18 +100,21 @@ def analyze_impact(
             blast_radii[sym_id] = radius
             all_blast.extend(radius)
 
-    # Forward dependency expansion
+    # ── Forward dependency expansion ──────────────────────────────────────
+    # Seed with changed + blast so we also pull in what callers depend on.
     deps = expand_dependencies(
         index.graph,
         changed_symbols + all_blast,
         max_depth=max_depth,
     )
 
-    # Impact scoring
+    # ── Impact scoring ────────────────────────────────────────────────────
+    # FIX: pass expanded deps so they get scored (previously ignored).
     scores = compute_impact_scores(
         index.graph,
         changed_symbols,
         blast_radii,
+        expanded_deps=deps,
     )
 
     return ImpactResult(
@@ -131,10 +133,6 @@ def compile(
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
-
-    Now passes the call graph, dropped-symbol list, and broken-file list to
-    compile_context so the LLM receives a full meta-header explaining its own
-    blind spots (dropped symbols, incomplete graph regions, etc.).
     """
     selected, dropped = select_context(
         index.symbols,
