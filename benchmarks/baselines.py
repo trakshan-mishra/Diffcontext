@@ -13,6 +13,7 @@ These are what DiffContext must beat to prove it's actually useful.
 import os
 import re
 import random
+import hashlib
 from typing import Dict, List, Set
 
 from rank_bm25 import BM25Okapi
@@ -100,10 +101,14 @@ class FileCoLocationBaseline:
 class RandomBaseline:
     """Random baseline — lower bound sanity check."""
 
-    def __init__(self, symbols: Dict[str, Symbol]):
-        self.symbol_ids = list(symbols.keys())
+    def __init__(self, symbols: Dict[str, Symbol], seed: int = 42):
+        self.symbol_ids = sorted(symbols.keys())
+        self.seed = seed
 
     def retrieve(self, query_symbol_id: str, top_k: int = 30) -> List[str]:
-        """Return random functions."""
+        """Return a deterministic random top-k for fair, repeatable evals."""
         candidates = [s for s in self.symbol_ids if s != query_symbol_id]
-        return random.sample(candidates, min(top_k, len(candidates)))
+        seed_bytes = f"{self.seed}:{query_symbol_id}".encode("utf-8")
+        case_seed = int(hashlib.sha256(seed_bytes).hexdigest()[:16], 16)
+        rng = random.Random(case_seed)
+        return rng.sample(candidates, min(top_k, len(candidates)))
