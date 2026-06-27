@@ -43,6 +43,11 @@ MAX_CASES     = 50
 CANDIDATE_LIMIT = 100
 TOKEN_BUDGET    = 10_000
 RRF_K           = 60
+# Dynamic budget: stop returning graph candidates when score falls below
+# SCORE_THRESHOLD_PCT * top_score. This prevents the now-denser graph from
+# flooding with low-confidence window/sibling edges. Floor = MIN_GRAPH_RESULTS.
+SCORE_THRESHOLD_PCT = 0.05   # keep symbols scoring >= 5% of peak score
+MIN_GRAPH_RESULTS   = 10     # always return at least this many
 SIGNALS = [
     "graph", "bm25", "file", "random",
     "graph+bm25", "graph+file", "graph+bm25+file",
@@ -138,6 +143,18 @@ def round_metrics(m: Dict, ndigits: int = 4) -> Dict:
 
 def _token_estimate(symbols, ranked: List[str]) -> int:
     return sum(max(1, len(symbols[s].code) // 4) for s in ranked if s in symbols)
+
+
+def truncate_by_token_budget(symbols, ranked: List[str], budget: int = TOKEN_BUDGET) -> List[str]:
+    """Trim a ranked list so the total token estimate stays within `budget`."""
+    out, used = [], 0
+    for s in ranked:
+        cost = max(1, len(symbols[s].code) // 4) if s in symbols else 1
+        if used + cost > budget:
+            break
+        out.append(s)
+        used += cost
+    return out
 
 
 def retrieval_stats(symbols, ranked_lists: List[List[str]]) -> Dict:
@@ -394,7 +411,7 @@ def _graph_ranked(
     reverse_graph: Dict[str, Set[str]],
     top_n: int = CANDIDATE_LIMIT,
 ) -> List[str]:
-    """Graph signal: bidirectional BFS decay scoring."""
+    """Graph signal: bidirectional BFS decay scoring with dynamic score cutoff."""
     blast_radii = {query: get_blast_radius(graph, query, reverse=reverse_graph)}
     seed        = [query] + blast_radii[query]
     expanded    = expand_dependencies(graph, seed, max_depth=2)
@@ -402,11 +419,20 @@ def _graph_ranked(
         graph, [query], blast_radii,
         expanded_deps=expanded, reverse=reverse_graph,
     )
-    ranked = [
-        s for s, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    ranked_with_scores = [
+        (s, sc) for s, sc in sorted(scores.items(), key=lambda x: x[1], reverse=True)
         if s != query
     ]
-    return ranked[:top_n]
+    if not ranked_with_scores:
+        return []
+    # Dynamic budget: cut off below SCORE_THRESHOLD_PCT * peak
+    peak = ranked_with_scores[0][1]
+    threshold = peak * SCORE_THRESHOLD_PCT
+    trimmed = [s for s, sc in ranked_with_scores if sc >= threshold]
+    # Apply hard floor so sparse graphs still return candidates
+    if len(trimmed) < MIN_GRAPH_RESULTS:
+        trimmed = [s for s, _ in ranked_with_scores[:MIN_GRAPH_RESULTS]]
+    return trimmed[:top_n]
 
 
 def _normalize(scores: Dict[str, float]) -> Dict[str, float]:
@@ -474,10 +500,10 @@ def run_ablation(
             continue
 
         # ── Individual signals ─────────────────────────────────────────────
-        g_ranked = _graph_ranked(q, graph, reverse_graph)
-        b_ranked = bm25.retrieve(q, top_k=CANDIDATE_LIMIT)
-        f_ranked = file_bl.retrieve(q, top_k=CANDIDATE_LIMIT)
-        r_ranked = rand_bl.retrieve(q, top_k=CANDIDATE_LIMIT)
+        g_ranked = truncate_by_token_budget(symbols, _graph_ranked(q, graph, reverse_graph))
+        b_ranked = truncate_by_token_budget(symbols, bm25.retrieve(q, top_k=CANDIDATE_LIMIT))
+        f_ranked = truncate_by_token_budget(symbols, file_bl.retrieve(q, top_k=CANDIDATE_LIMIT))
+        r_ranked = truncate_by_token_budget(symbols, rand_bl.retrieve(q, top_k=CANDIDATE_LIMIT))
 
         results["graph"].append(compute_metrics(g_ranked, gt))
         results["bm25"].append(compute_metrics(b_ranked, gt))
@@ -510,10 +536,10 @@ def run_ablation(
             return [s for s, _ in sorted(combined.items(), key=lambda x: x[1], reverse=True)
                     if s != q][:CANDIDATE_LIMIT]
 
-        gb_ranked  = _blend_ranked([(g_scores, 0.6), (b_scores, 0.4)])
-        gf_ranked  = _blend_ranked([(g_scores, 0.7), (f_scores, 0.3)])
-        gbf_ranked = _blend_ranked([(g_scores, 0.5), (b_scores, 0.35), (f_scores, 0.15)])
-        rrf_ranked = _rrf_ranked([g_ranked, b_ranked, f_ranked])
+        gb_ranked  = truncate_by_token_budget(symbols, _blend_ranked([(g_scores, 0.6), (b_scores, 0.4)]))
+        gf_ranked  = truncate_by_token_budget(symbols, _blend_ranked([(g_scores, 0.7), (f_scores, 0.3)]))
+        gbf_ranked = truncate_by_token_budget(symbols, _blend_ranked([(g_scores, 0.5), (b_scores, 0.35), (f_scores, 0.15)]))
+        rrf_ranked = truncate_by_token_budget(symbols, _rrf_ranked([g_ranked, b_ranked, f_ranked]))
 
         results["graph+bm25"].append(compute_metrics(gb_ranked, gt))
         results["graph+file"].append(compute_metrics(gf_ranked, gt))
@@ -524,13 +550,17 @@ def run_ablation(
         ranked_by_signal["graph+bm25+file"].append(gbf_ranked)
         ranked_by_signal["graph+bm25+file+rrf"].append(rrf_ranked)
 
-        oracle_seen = set()
-        oracle_ranked = []
+        # Oracle union: all GT instances findable by ANY signal at top-100.
+        # Merge by best rank across signals so MRR/MAP are not biased
+        # toward whichever signal happens to be listed first.
+        oracle_best_rank: Dict[str, int] = {}
         for ranked in (g_ranked, b_ranked, f_ranked):
-            for sid in ranked[:CANDIDATE_LIMIT]:
-                if sid not in oracle_seen:
-                    oracle_seen.add(sid)
-                    oracle_ranked.append(sid)
+            for rank, sid in enumerate(ranked[:CANDIDATE_LIMIT], 1):
+                if sid not in oracle_best_rank or rank < oracle_best_rank[sid]:
+                    oracle_best_rank[sid] = rank
+        oracle_ranked = truncate_by_token_budget(symbols, [
+            sid for sid, _ in sorted(oracle_best_rank.items(), key=lambda x: x[1])
+        ])
 
         results["oracle_top100_union"].append(compute_metrics(oracle_ranked, gt))
         ranked_by_signal["oracle_top100_union"].append(oracle_ranked)
@@ -613,13 +643,16 @@ def evaluate_repo(repo_path: str, max_cases: int = MAX_CASES) -> Optional[Dict]:
     contribution = contribution_analysis(valid_cases, symbol_id_set, ranked_by_signal)
 
     # ── Failure taxonomy (graph signal only) ─────────────────────────────
+    # Reuse ranked_by_signal["graph"] — run_ablation already computed these
+    # for every valid_cases entry in the same order, so index i is safe.
     failure_counts: Dict[str, int] = defaultdict(int)
     failure_cases:  Dict[str, List[str]] = defaultdict(list)
 
-    for case in valid_cases:
+    graph_ranked_list = ranked_by_signal.get("graph", [])
+    for i, case in enumerate(valid_cases):
         q  = case.query_symbol
         gt = set(case.ground_truth_symbols) & symbol_id_set
-        g_ranked = _graph_ranked(q, graph, reverse_graph)
+        g_ranked = graph_ranked_list[i] if i < len(graph_ranked_list) else []
         if not (set(g_ranked) & gt):   # zero recall
             reason = classify_failure(q, gt, graph, reverse_graph, g_ranked)
             failure_counts[reason] += 1

@@ -19,6 +19,16 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
     Returns:
         dict: local_name -> absolute_path_of_source_file
         e.g. {"helper": "/repo/utils.py", "Session": "/repo/sessions.py"}
+
+    __init__.py transparency:
+        When an import resolves to a package __init__.py, we scan that
+        __init__.py for re-export statements (`from .sub import Name`) and
+        follow them to the actual definition file. This means:
+
+            from flask import Flask
+            # resolves to src/flask/__init__.py
+            # __init__.py has: from .app import Flask
+            # final result: src/flask/app.py   ← correct
     """
     with open(filename, "rb") as f:
         raw = f.read()
@@ -63,7 +73,12 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
                 if submodule_resolved:
                     imports[local_name] = submodule_resolved
                 elif resolved:
-                    imports[local_name] = resolved
+                    # __init__.py transparency: follow re-exports one level
+                    if resolved.endswith("__init__.py"):
+                        real = _follow_init_reexport(resolved, alias.name, repo_abs)
+                        imports[local_name] = real if real else resolved
+                    else:
+                        imports[local_name] = resolved
 
         elif isinstance(node, ast.Import):
             for alias in node.names:
@@ -73,14 +88,7 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
                 resolved = _resolve_module_path(module_path)
 
                 if not resolved:
-                    # Bare `import x` with no dots doesn't always live at the
-                    # repo root -- a very common real pattern is sibling
-                    # script files in the same directory doing `import store`,
-                    # which only works at runtime because that directory is
-                    # on sys.path (CWD, or an explicit sys.path.insert).
-                    # Static analysis can't know the real sys.path, but
-                    # "the importing file's own directory" covers the
-                    # overwhelmingly common case correctly.
+                    # Bare `import x` — try the importing file's own directory
                     sibling_path = os.path.join(file_dir, alias.name.replace(".", os.sep))
                     resolved = _resolve_module_path(sibling_path)
 
@@ -88,6 +96,53 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
                     imports[local_name] = resolved
 
     return imports
+
+
+def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[str]:
+    """
+    Given a package __init__.py and a name imported from it, check whether
+    __init__.py re-exports that name from a submodule.
+
+    Example:
+        __init__.py contains:  from .app import Flask
+        name = "Flask"
+        → returns /abs/path/to/app.py
+
+    Only follows one level (no recursive re-export chasing) to stay fast.
+    Returns None if the name is not re-exported or the submodule can't be found.
+    """
+    try:
+        with open(init_path, "rb") as f:
+            raw = f.read()
+        source = raw.decode("utf-8", errors="ignore")
+        tree = ast.parse(source)
+    except (OSError, SyntaxError):
+        return None
+
+    init_dir = os.path.dirname(init_path)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level == 0:
+            continue  # only relative re-exports (from .sub import X)
+        for alias in node.names:
+            exported_name = alias.asname or alias.name
+            if exported_name != name:
+                continue
+            # Found the re-export — resolve the submodule
+            module = node.module or ""
+            base = init_dir
+            for _ in range(node.level - 1):
+                base = os.path.dirname(base)
+            sub_path = os.path.join(base, module.replace(".", os.sep))
+            # Check if alias.name itself is a submodule
+            submodule_path = os.path.join(sub_path, alias.name)
+            resolved = _resolve_module_path(submodule_path) or _resolve_module_path(sub_path)
+            if resolved:
+                return resolved
+
+    return None
 
 
 def _resolve_module_path(module_path: str) -> Optional[str]:
