@@ -11,6 +11,14 @@ Key fix over original:
     exception: changed symbols always fit (they're the reason we're here).
   - Added a per-symbol token cap so one giant function can't crowd out
     ten relevant small ones.
+
+Fix vs previous version:
+  The token cap logic was wrong: it counted a capped amount toward the
+  budget (250 tokens) but included the full symbol in the result, causing
+  silent overruns. The correct behavior is: if a symbol exceeds the cap,
+  SKIP IT ENTIRELY rather than including it at a lie. This means the
+  selector tries smaller candidates next instead of filling context with
+  one huge function and then claiming there's room for more.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -70,9 +78,14 @@ def select_context(
 
         sym_tokens = _estimate_tokens(symbols[sym_id].code)
 
-        # Per-symbol cap: don't let one big symbol eat the budget
-        if per_sym_cap and sym_tokens > per_sym_cap:
-            sym_tokens = per_sym_cap  # count capped amount toward budget
+        # FIX: if the symbol exceeds the per-symbol cap, skip it entirely.
+        # Previous code counted the capped amount toward the budget but
+        # still included the full symbol, silently overrunning the budget
+        # and then continuing to include more symbols as if there were room.
+        # Skipping is correct: the budget should gate what's actually included.
+        if per_sym_cap is not None and sym_tokens > per_sym_cap:
+            dropped.append(sym_id)
+            continue
 
         if max_tokens is not None and current_tokens + sym_tokens > max_tokens:
             dropped.append(sym_id)
