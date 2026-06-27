@@ -1,16 +1,17 @@
 """
 graph_builder.py — Build the full dependency graph for a Python repository.
 
-Performance fixes vs original:
-  1. Import maps are built ONCE in the pre-pass and reused everywhere.
-     Original called build_import_map from resolver.py during the main
-     graph-build loop, re-parsing every file's imports N times.
-  2. _resolve_owner_type results are memoized with functools.lru_cache
-     equivalent (manual dict cache) since the same (qualifier, bare_name,
-     rel_file) triple is resolved thousands of times on large repos.
-  3. reverse graph for inheritance resolution is built once, not per call.
+Edge types (v2):
+  1. Direct call edges           — f() calls g()  →  f→g
+  2. Inheritance override edges  — Child.method → Parent.method (child only)
+  3. Shared-import consumer edges— files co-importing same module (capped ≤10)
+  4. Decorator edges             — @decorator applied to a function  →  fn→decorator
+  5. Annotated return-type edges — def f() -> MyClass: ...  →  f→MyClass.__init__
+  6. Same-directory sibling edges— one representative per file, light connectivity
 
-Algorithm is otherwise identical to the original.
+Performance:
+  - Import maps built ONCE in pre-pass.
+  - _resolve_owner_type results memoized (manual dict cache).
 """
 
 import ast
@@ -30,6 +31,11 @@ from .symbols import (
 from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
 
 logger = logging.getLogger(__name__)
+
+# Fan-out caps — keep shared-import and sibling edges from becoming mega-hubs
+_SHARED_IMPORT_MAX_CONSUMERS = 10   # skip if >10 files share the same import
+_SAME_DIR_MAX_FILES = 20            # skip same-dir bonus if directory is huge
+_DECORATOR_EDGE_MAX = 6             # max decorator edges per function (guards chains)
 
 
 def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
@@ -51,6 +57,9 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
     classes_by_file: Dict[str, List[str]]           = {}   # rel_file -> [class_name, ...]
     inheritance:     Dict[str, List[Tuple]]         = {}   # "rel_file:ClassName" -> bases
     factory_returns: Dict[str, Tuple]               = {}   # "rel_file:func" -> (q, type)
+    # Module-level var types: rel_file -> {var_name: (qualifier, bare_name)}
+    # e.g. `app = Flask(__name__)` at module scope -> {"app": (None, "Flask")}
+    module_var_types: Dict[str, Dict[str, Tuple]]   = {}
 
     for filename in find_python_files(repo_path):
         with open(filename, "rb") as f:
@@ -66,10 +75,9 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
 
         relative_file = "./" + os.path.relpath(filename, repo_path)
         file_trees[relative_file]  = tree
-        # FIX: build import map ONCE here and store it. Downstream code
-        # uses import_maps[rel_file] instead of calling build_import_map again.
         import_maps[relative_file] = build_import_map(filename, repo_path)
 
+        mvt: Dict[str, Tuple] = {}
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 class_registry.setdefault(node.name, []).append(relative_file)
@@ -89,6 +97,40 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                 ref = _find_return_type(node)
                 if ref:
                     factory_returns[f"{relative_file}:{node.name}"] = ref
+                ann_ref = _find_annotated_return(node)
+                if ann_ref and not ref:
+                    factory_returns[f"{relative_file}:{node.name}"] = ann_ref
+
+            elif isinstance(node, ast.Assign):
+                # Track module-level: `app = Flask(__name__)`
+                if isinstance(node.value, ast.Call):
+                    func = node.value.func
+                    if isinstance(func, ast.Name):
+                        type_ref = (None, func.id)
+                    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+                        type_ref = (func.value.id, func.attr)
+                    else:
+                        type_ref = None
+                    if type_ref:
+                        for tgt in node.targets:
+                            if isinstance(tgt, ast.Name):
+                                mvt[tgt.id] = type_ref
+
+            elif isinstance(node, ast.AnnAssign):
+                # Track: `db: SQLAlchemy = SQLAlchemy(app)`
+                if node.value and isinstance(node.value, ast.Call):
+                    func = node.value.func
+                    if isinstance(func, ast.Name):
+                        type_ref = (None, func.id)
+                    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+                        type_ref = (func.value.id, func.attr)
+                    else:
+                        type_ref = None
+                    if type_ref and isinstance(node.target, ast.Name):
+                        mvt[node.target.id] = type_ref
+
+        if mvt:
+            module_var_types[relative_file] = mvt
 
     # ── Resolution cache ──────────────────────────────────────────────────
     # _resolve_owner_type is called O(symbols * calls_per_function) times.
@@ -111,6 +153,22 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
 
     # ── Attribute owners ──────────────────────────────────────────────────
     attribute_owners: Dict[str, str] = {}
+
+    # Also register module-level vars as attribute owners so that
+    # `app.run()` in a function body resolves to Flask.run.
+    for rel_file, mvt in module_var_types.items():
+        import_map = import_maps[rel_file]
+        for var_name, type_ref in mvt.items():
+            qualifier, bare_name = type_ref
+            resolved = _resolve_owner_type(
+                qualifier, bare_name, rel_file, import_map,
+                class_registry, factory_returns, import_maps, repo_path,
+                classes_by_file=classes_by_file,
+            )
+            if resolved:
+                # Key format matches attribute_owners: "ClassName.attr"
+                # but here var_name is the module-level variable.
+                attribute_owners[f"{rel_file}:{var_name}"] = resolved
 
     for relative_file, tree in file_trees.items():
         import_map = import_maps[relative_file]
@@ -203,6 +261,45 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                     if parent_method not in graph.get(fid, []):
                         graph.setdefault(fid, []).append(parent_method)
 
+    # ── Phase 1B: Decorator edges ─────────────────────────────────────────
+    # A function decorated with @my_decorator has an implicit dependency on
+    # my_decorator. This is one of the strongest co-change signals:
+    # if the decorator changes, all its callsites likely change too.
+    for relative_file, tree in file_trees.items():
+        import_map = import_maps[relative_file]
+        for fn_node, _is_method, _class_name in _collect_function_nodes(tree):
+            added = 0
+            for deco in fn_node.decorator_list:
+                if added >= _DECORATOR_EDGE_MAX:
+                    break
+                # @plain_name  or  @module.name  or  @name(args)
+                deco_func = deco.func if isinstance(deco, ast.Call) else deco
+                dep = None
+                if isinstance(deco_func, ast.Name):
+                    dep = _lookup(
+                        deco_func.id,
+                        {fid.split(":", 1)[1]: fid
+                         for fid in functions
+                         if fid.startswith(relative_file + ":")},
+                        import_map, functions, repo_path,
+                    )
+                elif isinstance(deco_func, ast.Attribute) and isinstance(deco_func.value, ast.Name):
+                    if deco_func.value.id in import_map:
+                        src = import_map[deco_func.value.id]
+                        rel_src = "./" + os.path.relpath(src, repo_path)
+                        dep = f"{rel_src}:{deco_func.attr}"
+                        if dep not in function_ids:
+                            dep = None
+                if dep:
+                    fn_name_local = (
+                        f"{_class_name}.{fn_node.name}"
+                        if _class_name else fn_node.name
+                    )
+                    fid = f"{relative_file}:{fn_name_local}"
+                    if fid in function_ids and dep != fid and dep not in graph.get(fid, []):
+                        graph.setdefault(fid, []).append(dep)
+                        added += 1
+
     # ── Build file_groups for use by shared-import edges ────────────────────
     file_groups: Dict[str, List[str]] = {}
     for fid in function_ids:
@@ -225,7 +322,7 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
     # Deduplicate consumer file lists, then connect representatives
     for _imported_mod, consumer_files in import_consumers.items():
         consumer_files = list(dict.fromkeys(consumer_files))  # deduplicate, preserve order
-        if len(consumer_files) < 2 or len(consumer_files) > 15:
+        if len(consumer_files) < 2 or len(consumer_files) > _SHARED_IMPORT_MAX_CONSUMERS:
             continue
         # Pick a representative symbol from each consumer file
         representatives = []
@@ -240,6 +337,89 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                     graph.setdefault(a, []).append(b)
                 if a not in graph.get(b, []):
                     graph.setdefault(b, []).append(a)
+
+    # ── Phase 1D: Same-directory sibling edges ────────────────────────────
+    # Files in the same package directory tend to co-change (tests ↔ impl,
+    # models ↔ serializers, etc.).  Connect one representative per file to
+    # one representative from every other file in the same directory.
+    # Cap: skip directories with >_SAME_DIR_MAX_FILES Python files to avoid
+    # linking unrelated utility grab-bags.
+    dir_files: Dict[str, List[str]] = {}
+    for rel_file in file_groups:
+        dir_part = os.path.dirname(rel_file)
+        dir_files.setdefault(dir_part, []).append(rel_file)
+
+    for _dir, dir_file_list in dir_files.items():
+        if len(dir_file_list) < 2 or len(dir_file_list) > _SAME_DIR_MAX_FILES:
+            continue
+        reps = []
+        for df in dir_file_list:
+            syms = file_groups.get(df, [])
+            if syms:
+                reps.append(syms[0])   # one rep per file
+        for i, a in enumerate(reps):
+            for b in reps[i + 1:]:
+                if b not in graph.get(a, []):
+                    graph.setdefault(a, []).append(b)
+                if a not in graph.get(b, []):
+                    graph.setdefault(b, []).append(a)
+
+    # ── Phase 1E: Sliding-window within-file edges ────────────────────────
+    # Functions defined near each other in the same file are empirically the
+    # strongest co-change signal after direct calls.  A sliding window of
+    # WINDOW_SIZE links each function to its closest neighbours in definition
+    # order.  Cap: skip files with >FILE_WINDOW_MAX_SYMS symbols (e.g. a
+    # 600-function god-file would create O(n*w) noise edges).
+    WINDOW_SIZE = 3          # each function linked to ±3 neighbours
+    FILE_WINDOW_MAX_SYMS = 60  # skip window edges in very large files
+
+    for rel_file, syms_in_file in file_groups.items():
+        if len(syms_in_file) < 2 or len(syms_in_file) > FILE_WINDOW_MAX_SYMS:
+            continue
+        for i, a in enumerate(syms_in_file):
+            for j in range(i + 1, min(i + 1 + WINDOW_SIZE, len(syms_in_file))):
+                b = syms_in_file[j]
+                if b not in graph.get(a, []):
+                    graph.setdefault(a, []).append(b)
+                if a not in graph.get(b, []):
+                    graph.setdefault(b, []).append(a)
+
+    # ── Phase 1F: Light parent→child inheritance edges ────────────────────
+    # Child→parent already exists (Phase 1A).  For parents with FEW children
+    # (≤PARENT_CHILD_MAX_CHILDREN), also add parent→child so that a change
+    # to the parent method surfaces its direct overriders.  We skip parents
+    # with many children to avoid creating mega-hubs (e.g. BaseModel in
+    # pydantic has 400+ subclasses — those would destroy ranking).
+    PARENT_CHILD_MAX_CHILDREN = 8
+
+    # Build a map: parent_method_id -> [child_method_ids]
+    parent_to_children: Dict[str, List[str]] = {}
+    for child_key, bases in inheritance.items():
+        child_file, child_class = child_key.split(":", 1)
+        for qualifier, base_name in bases:
+            base_owner = _resolve_owner_type(
+                qualifier, base_name, child_file,
+                import_maps.get(child_file, {}),
+                class_registry, factory_returns, import_maps, repo_path,
+                classes_by_file=classes_by_file,
+            )
+            if not base_owner:
+                continue
+            child_prefix = f"{child_key}."
+            for fid in function_ids:
+                if not fid.startswith(child_prefix):
+                    continue
+                method_name = fid[len(child_prefix):]
+                parent_method = f"{base_owner}.{method_name}"
+                if parent_method in function_ids and parent_method != fid:
+                    parent_to_children.setdefault(parent_method, []).append(fid)
+
+    for parent_method, children in parent_to_children.items():
+        if len(children) > PARENT_CHILD_MAX_CHILDREN:
+            continue   # too many — would create a mega-hub
+        for child_fid in children:
+            if child_fid not in graph.get(parent_method, []):
+                graph.setdefault(parent_method, []).append(child_fid)
 
     return graph
 
@@ -298,6 +478,43 @@ def _find_return_type(node):
             elif found != ref:
                 return None
     return found
+
+
+def _find_annotated_return(node):
+    """
+    Extract (qualifier, bare_name) from a PEP-3107 return annotation.
+
+        def f() -> MyClass: ...         ->  (None, "MyClass")
+        def f() -> module.MyClass: ...  ->  ("module", "MyClass")
+
+    Skips primitive annotations (str, int, bool, None, etc.) and generics
+    like List[X] where the outer type is not a class we own.
+    """
+    PRIMITIVES = frozenset({
+        "str", "int", "float", "bool", "bytes", "None",
+        "list", "dict", "set", "tuple", "Any", "Optional",
+        "List", "Dict", "Set", "Tuple", "Iterator", "Generator",
+        "Iterable", "Sequence", "Mapping", "Type", "Union",
+    })
+    ann = node.returns
+    if ann is None:
+        return None
+    if isinstance(ann, ast.Constant):
+        return None
+    if isinstance(ann, ast.Name):
+        if ann.id in PRIMITIVES:
+            return None
+        return (None, ann.id)
+    if isinstance(ann, ast.Attribute) and isinstance(ann.value, ast.Name):
+        if ann.attr in PRIMITIVES:
+            return None
+        return (ann.value.id, ann.attr)
+    # Subscript like Optional[Router] — unwrap one level
+    if isinstance(ann, ast.Subscript):
+        return _find_annotated_return(
+            type("_Stub", (), {"returns": ann.slice})()  # type: ignore[arg-type]
+        )
+    return None
 
 
 def _resolve_owner_type(
@@ -402,6 +619,13 @@ def _resolve_owner_of_expr(
             import_maps or {}, repo_path or "",
             classes_by_file=classes_by_file,
         )
+
+    # Module-level variable fallback: `app = Flask()` at module scope.
+    # attribute_owners stores these as "{rel_file}:{var_name}".
+    if isinstance(node, ast.Name) and attribute_owners:
+        module_key = f"{relative_file}:{node.id}"
+        if module_key in attribute_owners:
+            return attribute_owners[module_key]
 
     if isinstance(node, ast.Attribute):
         base_owner = _resolve_owner_of_expr(
