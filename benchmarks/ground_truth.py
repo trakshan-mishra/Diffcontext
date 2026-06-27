@@ -115,7 +115,7 @@ def _get_source_at_commit(
     """
     try:
         result = subprocess.run(
-            ["git", "show", f"{commit_hash}:{filepath}"],
+            ["git", "show", f"{commit_hash}:./{filepath}"],
             cwd=repo_path,
             capture_output=True,
             text=True,
@@ -240,7 +240,7 @@ def extract_cochange_cases(
         # Get changed Python source files in this commit
         try:
             files_result = subprocess.run(
-                ["git", "diff", "--name-only", "--diff-filter=M",
+                ["git", "diff", "--name-only", "--relative", "--diff-filter=M",
                  f"{commit_hash}~1", commit_hash],
                 cwd=repo_path,
                 capture_output=True,

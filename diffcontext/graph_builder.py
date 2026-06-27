@@ -174,6 +174,73 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                 if dep and dep != function_id and dep not in graph[function_id]:
                     graph[function_id].append(dep)
 
+    # ── Phase 1A: Inheritance override edges ─────────────────────────────
+    # When ChildClass overrides ParentClass.method, add child → parent edge.
+    # Only child → parent direction: "if I changed the child, show me the
+    # parent contract I might be violating." The reverse (parent → all 400
+    # children) would create mega-hubs that destroy ranking.
+    for child_key, bases in inheritance.items():
+        child_file, child_class = child_key.split(":", 1)
+        for qualifier, base_name in bases:
+            base_owner = _resolve_owner_type(
+                qualifier, base_name, child_file,
+                import_maps.get(child_file, {}),
+                class_registry, factory_returns, import_maps, repo_path,
+                classes_by_file=classes_by_file,
+            )
+            if not base_owner:
+                continue
+
+            # Find all methods in the child class and look for same-named parent methods
+            child_prefix = f"{child_key}."
+            for fid in function_ids:
+                if not fid.startswith(child_prefix):
+                    continue
+                method_name = fid[len(child_prefix):]
+                parent_method = f"{base_owner}.{method_name}"
+                if parent_method in function_ids and parent_method != fid:
+                    # Child → parent only (avoids mega-hub on parent side)
+                    if parent_method not in graph.get(fid, []):
+                        graph.setdefault(fid, []).append(parent_method)
+
+    # ── Build file_groups for use by shared-import edges ────────────────────
+    file_groups: Dict[str, List[str]] = {}
+    for fid in function_ids:
+        ffile = fid.split(":")[0]
+        file_groups.setdefault(ffile, []).append(fid)
+
+    # ── Phase 1C: Shared-import consumer edges ───────────────────────────
+    # If file_a and file_b both import from the same internal module,
+    # functions in file_a and file_b are likely to co-change when that
+    # module changes. Create edges between functions across those files.
+    import_consumers: Dict[str, List[str]] = {}
+    for rel_file, imap in import_maps.items():
+        for _local_name, abs_path in imap.items():
+            # Only track internal (in-repo) imports
+            rel_imported = "./" + os.path.relpath(abs_path, repo_path)
+            if not rel_imported.startswith("./"):
+                continue
+            import_consumers.setdefault(rel_imported, []).append(rel_file)
+
+    # Deduplicate consumer file lists, then connect representatives
+    for _imported_mod, consumer_files in import_consumers.items():
+        consumer_files = list(dict.fromkeys(consumer_files))  # deduplicate, preserve order
+        if len(consumer_files) < 2 or len(consumer_files) > 15:
+            continue
+        # Pick a representative symbol from each consumer file
+        representatives = []
+        for cfile in consumer_files:
+            rep_syms = file_groups.get(cfile, [])
+            if rep_syms:
+                representatives.append(rep_syms[0])
+        # Connect representatives pairwise
+        for i, a in enumerate(representatives):
+            for b in representatives[i + 1:]:
+                if b not in graph.get(a, []):
+                    graph.setdefault(a, []).append(b)
+                if a not in graph.get(b, []):
+                    graph.setdefault(b, []).append(a)
+
     return graph
 
 
