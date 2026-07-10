@@ -74,7 +74,6 @@ def main():
     )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
-    p_compile.add_argument("--sync", action="store_true", help="Sync output to CtxSync cloud")
 
     # --- blast (NEW: visual blast radius) ---
     p_blast = sub.add_parser("blast", help="Visual blast radius analysis")
@@ -88,16 +87,6 @@ def main():
         "--committed-only", action="store_true",
         help="Compare two commits only (ref vs HEAD); ignores uncommitted working-tree changes",
     )
-
-    # --- sync (push blast radius to CtxSync cloud) ---
-    p_sync = sub.add_parser("sync", help="Compile and push context to CtxSync cloud")
-    p_sync.add_argument("--ref", default="HEAD~1", help="Git ref to diff against (default: HEAD~1)")
-    p_sync.add_argument("--repo", default=".", help="Repository path")
-    p_sync.add_argument("--depth", type=int, default=2, help="Max dependency depth")
-    p_sync.add_argument("--max-tokens", type=int, default=10000, help="Token budget")
-    p_sync.add_argument("--project", default=None, help="Project name (default: repo directory name)")
-    p_sync.add_argument("--url", default=None, help="CtxSync URL (or set CTXSYNC_URL env var)")
-    p_sync.add_argument("--key", default=None, help="CtxSync API key (or set CTXSYNC_KEY env var)")
 
     args = parser.parse_args()
 
@@ -115,8 +104,6 @@ def main():
         _cmd_compile(args)
     elif args.command == "blast":
         _cmd_blast(args)
-    elif args.command == "sync":
-        _cmd_sync(args)
 
 
 def _cmd_index(args):
@@ -247,47 +234,6 @@ def _cmd_compile(args):
             "context": ctx.text,
         }
         print(json.dumps(result, indent=2))
-    elif getattr(args, "sync", False):
-        import urllib.request
-        import urllib.error
-        url = os.environ.get("CTXSYNC_URL")
-        key = os.environ.get("CTXSYNC_KEY")
-        if not url or not key:
-            print("Error: CTXSYNC_URL and CTXSYNC_KEY environment variables must be set.", file=sys.stderr)
-            sys.exit(1)
-        
-        url_event = url.rstrip("/") + "/event"
-        url_switch = url.rstrip("/") + "/project/switch"
-        project_name = os.path.basename(os.path.abspath(args.repo))
-        
-        # Switch active project first
-        try:
-            req_switch = urllib.request.Request(url_switch, data=json.dumps({"name": project_name}).encode("utf-8"), headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "User-Agent": "CtxSync-DiffContext/1.0"
-            })
-            urllib.request.urlopen(req_switch)
-        except Exception:
-            pass
-
-        data = json.dumps({
-            "type": "diffcontext_update",
-            "text": ctx.text,
-            "project": project_name
-        }).encode("utf-8")
-        req = urllib.request.Request(url_event, data=data, headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "User-Agent": "CtxSync-DiffContext/1.0"
-        })
-        try:
-            with urllib.request.urlopen(req) as res:
-                response_body = res.read().decode("utf-8")
-                print(f"☁️ Automatically synced blast radius to CtxSync Cloud!\nResponse: {response_body}")
-        except urllib.error.URLError as e:
-            print(f"Error syncing to CtxSync: {e}", file=sys.stderr)
-            sys.exit(1)
     else:
         print(ctx.text)
         print(f"\n--- Stats ---")
@@ -372,105 +318,6 @@ def _cmd_blast(args):
     print(f"  Indexed {len(idx.symbols)} symbols in {index_ms:.0f}ms")
     print(f"  Total analysis time: {total_ms:.0f}ms")
     print()
-
-
-def _cmd_sync(args):
-    """Compile blast radius and push to CtxSync cloud in one step."""
-    import urllib.request
-    import urllib.error
-
-    # --- Resolve credentials: CLI flags > env vars > ~/.ctxsync config ---
-    url = args.url or os.environ.get("CTXSYNC_URL")
-    key = args.key or os.environ.get("CTXSYNC_KEY")
-
-    if not url or not key:
-        config_path = os.path.expanduser("~/.ctxsync")
-        if os.path.exists(config_path):
-            with open(config_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k, v = k.strip(), v.strip()
-                    if k == "CTXSYNC_URL" and not url:
-                        url = v
-                    elif k == "CTXSYNC_KEY" and not key:
-                        key = v
-
-    if not url or not key:
-        print("Error: CtxSync credentials not found.", file=sys.stderr)
-        print("", file=sys.stderr)
-        print("Set them via any of:", file=sys.stderr)
-        print("  1. CLI flags:    diffcontext sync --url <URL> --key <KEY>", file=sys.stderr)
-        print("  2. Env vars:     export CTXSYNC_URL=... CTXSYNC_KEY=...", file=sys.stderr)
-        print("  3. Config file:  ~/.ctxsync with CTXSYNC_URL=... and CTXSYNC_KEY=...", file=sys.stderr)
-        sys.exit(1)
-
-    # --- Compile blast radius ---
-    idx = index_repository(args.repo)
-    changed = find_changed_symbols(
-        args.repo, idx.symbols, ref=args.ref,
-        broken_files=idx.broken_files,
-        known_broken_files=idx.broken_files,
-    )
-
-    if not changed:
-        print("No changes detected — nothing to sync.")
-        return
-
-    impact = analyze_impact(idx, changed, max_depth=args.depth)
-    max_tokens = args.max_tokens if args.max_tokens > 0 else None
-    ctx = compile(idx, impact, max_tokens=max_tokens)
-
-    project_name = args.project or os.path.basename(os.path.abspath(args.repo))
-
-    # --- Push to CtxSync ---
-    url_base = url.rstrip("/")
-
-    # Switch active project
-    try:
-        req_switch = urllib.request.Request(
-            url_base + "/project/switch",
-            data=json.dumps({"name": project_name}).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "User-Agent": "DiffContext-Sync/1.0",
-            },
-        )
-        urllib.request.urlopen(req_switch)
-    except Exception:
-        pass
-
-    # Push context
-    data = json.dumps({
-        "type": "diffcontext_update",
-        "text": ctx.text,
-        "project": project_name,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url_base + "/event",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "User-Agent": "DiffContext-Sync/1.0",
-        },
-    )
-
-    try:
-        with urllib.request.urlopen(req) as res:
-            body = json.loads(res.read().decode("utf-8"))
-            print(f"☁️  Synced to CtxSync!")
-            print(f"   Project : {project_name}")
-            print(f"   Symbols : {ctx.symbol_count} compiled ({ctx.reduction_pct:.1f}% reduction)")
-            print(f"   Tokens  : {ctx.token_estimate:,}")
-            print(f"   Nodes   : {body.get('nodes', '?')}")
-            print(f"   Errors  : {body.get('activeErrors', '?')}")
-    except urllib.error.URLError as e:
-        print(f"Error syncing to CtxSync: {e}", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
