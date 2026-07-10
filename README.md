@@ -1,112 +1,136 @@
 # DiffContext
 
-Static-analysis-powered repository context compiler for LLMs.
+**Hybrid code-retrieval engine for LLM context compilation.** Given a code
+change, DiffContext finds the other functions most likely to matter and
+compiles them into the smallest useful context package for a model — the
+selection primitive an AI coding-agent harness calls on every loop iteration.
 
-**Git diff + AST parsing + dependency graph + blast radius + impact scoring → optimized context package**
+- Benchmarked against real developer behavior: **423 distinct commits across
+  django, flask, click, httpx, and pydantic**, with baselines, confidence
+  intervals, and a published failure taxonomy ([benchmarks/EVAL_V2_REPORT.md](benchmarks/EVAL_V2_REPORT.md))
+- **86% hit rate / 69% recall** (cross-repo per-commit mean) at a 95–99%
+  token reduction versus pasting the codebase
+- Retrieval quality is **CI-gated**: every push re-runs the benchmark and
+  fails if quality drops below frozen floors
+- Zero runtime dependencies; Python 3.8+
 
-Instead of dumping an entire codebase (or doing keyword/vector search), DiffContext:
+```
+git change ──► changed functions ──► hybrid retrieval ──► token budget ──► LLM-ready context
+                                     graph ∪ BM25 ∪ file      top-k + tokens
+```
 
-1. **Parses** Python files via AST → extracts every function, method, class
-2. **Builds a dependency graph** → calls, imports, inheritance, attribute ownership, decorators
-3. **Detects changes** → via git diff (including uncommitted edits) or snapshot comparison
-4. **Computes blast radius** → everything transitively affected by the change
-5. **Scores impact** → prioritizes symbols by structural importance
-6. **Selects relevant code** → respects a token budget
-7. **Compiles context** → structured output ready to paste into an LLM
+## Why hybrid retrieval
 
-On a real ~1,100-symbol production repo, this reliably produces **95–99% token
-reduction** versus pasting the whole codebase, while keeping the functions that
-are actually call-graph-connected to your change.
+Most context tools pick one signal. We benchmarked them against each other on
+real co-change history — *"a developer changed these functions together;
+shown one, can you find the others?"* — and the honest result is that **no
+single signal wins**:
 
-## Quick Start
+| Signal | Hit | Recall | Where it's blind |
+|---|---|---|---|
+| Call graph alone | 0.748 | 0.558 | Thematically-related code that never calls each other |
+| BM25 keywords alone | 0.822 | 0.619 | Structure; ranks lexical noise |
+| Same file alone | 0.693 | 0.506 | Anything cross-file |
+| **Hybrid (this product)** | **0.856** | **0.690** | See [limitations](#known-limitations-measured-not-guessed) |
 
-### Step 1: Install
+The default scoring is a normalized blend — **graph 0.5 / BM25 0.35 /
+same-file 0.15** — the configuration that won recall on 4 of 5 benchmark
+repos (statistically significant on Django, the largest). `--graph-only`
+restores the pure call-graph signal when you want structural certainty only.
+
+## Quick start
 
 ```bash
 git clone https://github.com/trakshan-mishra/Diffcontext.git
 cd Diffcontext
 pip install -e .
-diffcontext --help
-```
 
-### Step 2: Index a repository
+# Index any Python repo (cold: seconds; warm re-index: ~0.02s)
+diffcontext index /path/to/project
 
-```bash
-diffcontext index /path/to/any/python/project
-```
-
-If any file fails to parse (a real `SyntaxError`), it's reported explicitly —
-not silently skipped:
-
-```
-Skipping broken_file.py due to SyntaxError: unmatched ')' (line 237)
-```
-
-### Step 3: Check impact of a function you're working on
-
-This is the recommended default mode while actively editing — it doesn't
-depend on git at all, so it works on uncommitted or untracked files too:
-
-```bash
+# Who is affected if I change this function? (works on uncommitted code)
 diffcontext blast --changed ./src/auth.py:validate_jwt
-```
 
-Shows who calls it, what it calls, and the full transitive blast radius.
-
-### Step 4: Auto-detect changes from git (optional)
-
-```bash
-diffcontext diff
-```
-
-Compares your working tree (including uncommitted edits to **tracked** files)
-against `HEAD~1` by default. Note: this only sees changes to files git
-already knows about — a brand-new untracked file is invisible to any
-git-diff-based tool until you `git add -N <file>` or commit it. Use
-`--committed-only` to compare two commits and ignore working-tree changes.
-
-### Step 5: Build LLM-ready context
-
-```bash
-# From a specific function:
-diffcontext compile --changed ./src/auth.py:validate_jwt
-
-# From git diff:
-diffcontext compile --ref HEAD~1
-
-# With a token budget:
+# Compile LLM-ready context for a change
 diffcontext compile --changed ./src/auth.py:validate_jwt --max-tokens 8000
 
-# JSON output (for piping into another tool):
+# From a git diff instead of a named symbol
+diffcontext compile --ref HEAD~1
+
+# Machine-readable
 diffcontext compile --changed ./src/auth.py:validate_jwt --json
 ```
 
-Then paste the output into Claude / ChatGPT / your LLM of choice, **with a
-specific question** — not just the raw context. E.g.:
+Useful `compile` flags: `--top-k 20` (default) caps context at the
+benchmarked sweet spot — ~89% of achievable recall at ~2.8× the precision of
+unlimited retrieval; `--graph-only` disables the hybrid blend.
 
-> "Is the dynamic SQL construction in `update_run` safe, given how `kwargs`
-> is validated against `_UPDATABLE_RUN_COLUMNS`?"
+Symbol IDs are always `./relative/path.py:ClassName.method` — no
+parentheses, no arguments.
 
-### Step 6: Use as a library
+## Architecture
+
+```
+                 ┌─────────────────────────────────────────────────┐
+                 │              RepositoryIndex (cached)            │
+   *.py files ──►│  scanner ─► parser ─► resolver ─► graph_builder  │
+                 │     content-addressed SQLite cache (cache.py):   │
+                 │     unchanged repo ~0.02s · 1-file edit ~0.5s    │
+                 └───────────────────────┬─────────────────────────┘
+                                         │
+  git diff ─► diff/git_diff ─► changed symbols
+                                         │
+                 ┌───────────────────────▼─────────────────────────┐
+                 │                 analyze_impact                   │
+                 │  impact/blast_radius: callers/callees traversal  │
+                 │  impact/scoring:  graph decay scores      (0.50) │
+                 │  lexical.py:      BM25 over symbol source (0.35) │
+                 │  same-file co-location                    (0.15) │
+                 └───────────────────────┬─────────────────────────┘
+                                         │  ranked candidates
+                 ┌───────────────────────▼─────────────────────────┐
+                 │              select + compile                    │
+                 │  context/selector: token budget + top-k, no      │
+                 │    silent overruns                               │
+                 │  context/compiler: text render + structured      │
+                 │    items + honest meta (what was DROPPED)        │
+                 └──────────────────────────────────────────────────┘
+```
+
+```
+diffcontext/
+├── pipeline.py          # Orchestrator: index → impact → compile; hybrid blend
+├── models.py            # Symbol, RepositoryIndex, ImpactResult, ContextPackage
+├── scanner.py           # File discovery
+├── parser.py            # AST symbol extraction
+├── resolver.py          # Import → filesystem path resolution
+├── symbols.py           # Attribute / local-var type tracking
+├── graph_builder.py     # Dependency graph (calls, inheritance, decorators…)
+├── lexical.py           # BM25 signal — pure stdlib, inverted index
+├── cache.py             # Content-addressed SQLite persistence
+├── diff/                # git diff / snapshot → changed symbols
+├── impact/              # blast radius, scoring, traversal, terminal trees
+├── context/             # token-budget selection, context compilation
+└── cli/                 # index · impact · diff · compile · blast
+```
+
+## Use as a library
 
 ```python
 from diffcontext.pipeline import index_repository, analyze_impact, compile
 
 idx = index_repository("/path/to/repo")
-impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])
-ctx = compile(idx, impact, max_tokens=10000)
+impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])   # hybrid by default
+ctx = compile(idx, impact, max_tokens=8000, top_k=20)
 
-print(ctx.text)             # the context to send to the LLM
-print(f"{ctx.token_estimate:,} / {ctx.total_repo_tokens:,} tokens")
-print(f"{ctx.reduction_pct:.1f}% reduction")
+print(ctx.text)                      # paste-ready context with meta-header
+print(ctx.dropped_symbols[:5])       # what the budget cut — never hidden
 ```
 
-See `USAGE.md` for the full day-to-day workflow, including shell aliases.
+### In an agent harness (incremental API)
 
-### Embedding in an agent harness (incremental API)
-
-DiffContext is built to be called on every iteration of an agent loop, so
-repeat calls are cheap and output is machine-consumable, not just a string:
+Built to be called on every agent-loop iteration — repeat calls are cheap and
+output is structured, not just a string:
 
 ```python
 from diffcontext.pipeline import index_repository, analyze_impact, compile
@@ -118,144 +142,107 @@ idx = index_repository("/path/to/repo")     # cold: full parse + graph build
 idx.update(["src/auth.py"])                 # re-parses ONLY the changed file
 
 impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"],
-                        scoring_config=ScoringConfig())   # weights are tunable
+                        scoring_config=ScoringConfig())    # weights tunable
 ctx = compile(idx, impact, max_tokens=8000,
-              token_counter=my_real_tokenizer)            # e.g. tiktoken
+              token_counter=my_real_tokenizer)             # e.g. tiktoken
 
-for item in ctx.items:      # structured: re-budget/filter/reorder yourself
+for item in ctx.items:       # structured: re-budget/filter/reorder yourself
     print(item.symbol_id, item.role, item.score, item.token_estimate)
 ```
 
 Measured on pydantic (405 files, ~1,830 symbols): cold index ~2.6–4.2s;
-re-index of an **unchanged** repo ~0.02s (the graph is persisted
-content-addressed in `.diffcontext_cache.db`, so even a new process gets the
-warm path); `index.update()` after a single-file edit ~0.4–0.6s vs ~1.6s for
-a full re-index. `update()` output is verified equal (symbols + graph) to a
-from-scratch rebuild by the test suite.
+re-index of an unchanged repo ~0.02s (graph persisted content-addressed in
+`.diffcontext_cache.db`, so a new process gets the warm path);
+`index.update()` after a one-file edit ~0.4–0.6s vs ~1.6s full re-index —
+verified equal to a from-scratch rebuild by the test suite.
 
-## What the resolver actually handles
+## Benchmarks
 
-Confirmed via an automated test suite (`tests/`) that builds small repos on
-the fly and asserts on real resolved call-graph edges — not just "it ran
-without crashing":
+The full methodology and results — distinct-commit sampling, four baselines,
+bootstrap CIs, a budget sweep, and a hand-audited failure taxonomy — are in
+[benchmarks/EVAL_V2_REPORT.md](benchmarks/EVAL_V2_REPORT.md). Headline
+(per-commit hit rate / recall, hybrid):
 
-- Function and method calls, including multi-hop attribute chains (`self.a.b.method()`)
-- Multiple inheritance / MRO, including cross-file base classes
-- Circular imports
-- Local variables instantiating a class inside a **free function** (not just
-  `self.x = ...` inside a method) — e.g. `h = Handler(); h.process()`
-- Annotated parameters as call receivers (`def run(h: Handler): h.process()`)
-- Import aliasing (`from .user import Handler as UserHandler`), including
-  disambiguating two same-named classes in different files
-- Bare `import x` where `x` lives in a sibling directory rather than the
-  repo root (common in script-style codebases)
-- **Decorators**: a decorated function's graph entry now correctly includes
-  calls made by its decorator's wrapper — e.g. `@require_auth` wrapping
-  `get_profile` correctly shows `get_profile` depending on whatever
-  `require_auth`'s wrapper calls (like a session check), not falsely
-  attributed to `require_auth` itself
-- Higher-order stdlib functions: `map(fn, items)`, `sorted(x, key=fn)`,
-  `filter(fn, items)` — a function passed *by reference* to these is
-  tracked as an implicit call
+| | django | click | flask | httpx | pydantic |
+|---|---|---|---|---|---|
+| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 |
+| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 |
 
-## Known limitations (genuinely unfixable by static analysis, not bugs)
-
-- **Dynamic dispatch / `getattr()`-based routing**: `getattr(obj, name)()`
-  can't be resolved statically when `name` is computed at runtime (from
-  config, user input, etc.) — no static analysis tool can do this in
-  general, including IDEs.
-- **Cross-file changes related by theme, not by function calls**: e.g. "remove
-  a dependency," touching 3 files for one conceptual reason with no direct
-  call-graph edges between them. Blast radius is a call-graph tool; it
-  cannot detect relatedness that isn't expressed as a function call.
-- **User-defined higher-order functions**: only the common stdlib cases
-  (`map`, `filter`, `sorted`/`max`/`min` with `key=`) are recognized.
-  A custom function like `def apply_twice(fn, value): return fn(fn(value))`
-  is not — this would need cross-function signature analysis to know which
-  parameter is expected to be callable.
-
-Run `grep -rn "function_name(" --include="*.py" .` to spot-check anything
-important before fully trusting "no callers found."
-
-## Architecture
-
-```
-diffcontext/
-├── __init__.py          # Package entry, high-level API
-├── models.py             # Data classes (Symbol, RepositoryIndex, etc.)
-├── scanner.py             # File discovery with exclusion list
-├── parser.py               # AST symbol extraction
-├── resolver.py              # Import -> filesystem path resolution
-├── symbols.py                 # Attribute / local-var type tracking
-├── graph_builder.py             # Core: dependency graph construction
-├── pipeline.py                    # Pipeline orchestrator
-├── _warn_once.py                    # De-duplicated warnings (broken files, encoding, unknown symbols)
-├── diff/
-│   ├── git_diff.py                    # Git diff -> changed symbols
-│   └── state_manager.py                # Snapshot-based change detection
-├── impact/
-│   ├── blast_radius.py                  # Reverse graph traversal
-│   ├── scoring.py                         # Impact scoring
-│   ├── traversal.py                         # Forward dependency expansion
-│   └── visualizer.py                          # Terminal tree rendering
-├── context/
-│   ├── selector.py                              # Token-budget-aware selection
-│   └── compiler.py                                # Structured output formatting
-└── cli/
-    └── __init__.py                                  # CLI: index, impact, diff, compile, blast, sync
-```
-
-## Try it (30 seconds)
+Reproduce everything:
 
 ```bash
-bash demos.sh         # interactive — pick from 5 famous repos or use your own
+pip install rank-bm25                          # benchmark-only dependency
+python benchmark_runner.py --clone             # clone the five eval repos
+python benchmarks/eval_v2_hardened.py          # full run (~10 min)
+python benchmarks/check_regression.py          # the CI quality gate (~1 min)
 ```
 
-## How symbol IDs work
+The gate (`check_regression.py`) enforces frozen hit/recall floors and runs
+in CI on every push — retrieval quality cannot silently regress.
 
-Every function gets a unique ID: `./relative/path.py:ClassName.method_name`
+## What the resolver handles
 
+Asserted by the test suite on real resolved edges, not "it ran":
+multi-hop attribute chains (`self.a.b.method()`), multiple inheritance and
+cross-file MRO, circular imports, local-variable instantiation in free
+functions, annotated-parameter receivers, import aliasing, sibling-directory
+bare imports, decorator wrapper attribution, and stdlib higher-order calls
+(`map`, `filter`, `sorted`/`max`/`min` with `key=`).
+
+## Known limitations (measured, not guessed)
+
+From the failure taxonomy — 60 hand-audited Django co-change pairs with no
+call-graph connection:
+
+- **Thematic siblings** (same feature, no call between them): the graph is
+  blind; the BM25 leg recovers these partially. *Fixable* — an adaptive
+  blend is the top roadmap item.
+- **Dispatch/override pairs** (same method name across a hierarchy):
+  *partially fixable* via synthetic override edges in the graph.
+- **Cross-subsystem conceptual links** (e.g. a settings flag and the
+  security check that reads it): graph, BM25, and hybrid all score **0/20**.
+  A structural ceiling for every static-analysis retriever — reachable only
+  with signals like git co-change history (roadmap item 3).
+- **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
+  metaclass-generated code are statically unresolvable — this is why
+  pydantic is the weakest benchmark repo for every method tested.
+
+When in doubt: `grep -rn "function_name(" --include="*.py" .` before fully
+trusting "no callers found."
+
+## Web service
+
+A FastAPI service + single-file web UI lives in
+[diffcontext-service/](diffcontext-service/): clone a GitHub repo by URL,
+index it, and query blast radius / search / context over HTTP. The
+[Dockerfile](Dockerfile) packages it for container platforms
+(e.g. Hugging Face Spaces).
+
+```bash
+pip install fastapi uvicorn python-multipart aiofiles
+uvicorn diffcontext-service.backend.main:app --port 8000
 ```
-./src/auth.py:validate_jwt
-./src/flask/app.py:Flask.route
-```
-
-**No parentheses, no arguments** — `validate_jwt`, never `validate_jwt(token)`.
 
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -v
+python3 -m pytest tests/ -q      # 68 tests, self-contained, <1s
 ```
 
-17 tests, all self-contained (no external clone needed), covering both
-correct resolution and the documented limitations above — including tests
-that were written to fail loudly if a future change silently regresses
-something that's currently working.
+## Roadmap
 
-## Status
+Ordered by measured impact (see the failure taxonomy above):
 
-This is a personal project, built and iteratively debugged against real
-production codebases (openai/whisper, pallets/click, pallets/flask). Several
-real resolver bugs were found and fixed through dogfooding — decorators,
-higher-order functions, and sibling-directory imports all required fixes
-that were only visible on real code, not toy examples. Treat blast-radius
-output as a strong starting point, not a guarantee, and spot-check with
-`grep` on anything load-bearing.
+1. **Adaptive blend** — up-weight BM25 when graph confidence is low
+2. **Override edges** — link same-named methods across class hierarchies
+3. **Git co-change history as a fourth signal** — the only known path past
+   the cross-subsystem ceiling
+4. **Calibrated confidence scores** — adaptive context cutting for agents
+5. **TypeScript support** — the architecture is language-agnostic; only
+   `parser.py`/`graph_builder.py` are Python-specific
+
+Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 
 ## License
 
 MIT
-
-## Benchmarks & Performance (Baseline)
-
-We adhere strictly to **Measure Before Optimizing**. Our baseline metrics demonstrate that traversal and compilation are nearly instantaneous, while parsing and graph construction are the primary bottlenecks. This data drives our roadmap for v0.4 (Incremental Caching).
-
-| Repo | Files | Symbols | Parse (ms) | Graph Build (ms) | Traversal (ms) | Compile (ms) | Token Reduction |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Flask** | 20 | 354 | 488 | 930 | 0.1 | 0.0 | 98.15% |
-| **Click** | 19 | 506 | 1273 | 1824 | 0.2 | 0.0 | 96.51% |
-| **HTTPX** | 21 | 434 | 665 | 1147 | 0.1 | 0.0 | 96.70% |
-| **Pydantic** | 90 | 1826 | 4519 | 7914 | 0.6 | 0.0 | 98.43% |
-
-*Note: Peak memory for Pydantic (the largest repo) was only 66.4 MB, validating that memory is not currently a bottleneck.*

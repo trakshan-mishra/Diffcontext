@@ -8,6 +8,31 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Hybrid retrieval (benchmark-driven; changes default ranking)
+- `analyze_impact(hybrid=True)` is now the default: scores blend call-graph
+  impact (0.5), BM25 lexical similarity (0.35), and same-file co-location
+  (0.15) — the configuration that won recall on 4/5 repos in the eval_v2
+  benchmark (django recall 0.660 → 0.782). `hybrid=False` (CLI
+  `--graph-only`) restores the pure graph signal.
+- New `diffcontext/lexical.py`: dependency-free BM25 over symbol source
+  (inverted index; rank_bm25-compatible scoring with a positive idf-floor
+  fix for tiny corpora). Cached per `RepositoryIndex`, invalidated by
+  `update()`.
+- `select_context(top_k=...)` / `compile(top_k=...)` / CLI `--top-k`
+  (default 20 per changed symbol): caps retrieved symbols at the
+  benchmarked recall/precision sweet spot.
+- New hardened benchmark `benchmarks/eval_v2_hardened.py` (423 distinct
+  commits, 5 repos, 4 baselines, budget sweep, failure taxonomy) with
+  report at `benchmarks/EVAL_V2_REPORT.md`, plus
+  `benchmarks/check_regression.py` and a CI `retrieval-quality-gate` job
+  enforcing frozen quality floors on every push.
+
+### Removed
+- CtxSync cloud sync (`diffcontext sync`, `compile --sync`): the server
+  side was never implemented and the integration required unavailable
+  credentials. Legacy harnesses `run_benchmark.py` / `run_metrics.py`
+  removed (superseded by `benchmarks/eval_v1.py` and eval_v2).
+
 ### Harness-facing API
 - `ContextPackage.items`: structured base representation of a compiled
   context — a list of `ContextItem {symbol_id, code, score, role, callers,
