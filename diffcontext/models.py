@@ -29,6 +29,9 @@ class RepositoryIndex:
     _file_trees: Optional[Dict] = field(default=None, repr=False, compare=False)
     _import_maps: Optional[Dict] = field(default=None, repr=False, compare=False)
     _warn_state: Optional[object] = field(default=None, repr=False, compare=False)
+    # Lazily built BM25 index (see lexical.get_lexical_index); invalidated
+    # by update_index() whenever symbols change.
+    _lexical: Optional[object] = field(default=None, repr=False, compare=False)
 
     def update(self, changed_files: List[str]) -> "RepositoryIndex":
         """

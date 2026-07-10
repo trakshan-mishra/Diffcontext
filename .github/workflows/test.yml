@@ -22,6 +22,24 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
+  retrieval-quality-gate:
+    # Re-runs the hardened co-change benchmark on flask and fails if
+    # retrieval quality drops below the frozen floors in
+    # benchmarks/check_regression.py. Guards against silent regressions in
+    # graph heuristics, scoring, or the hybrid blend.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + benchmark deps
+        run: pip install -e .[dev] rank-bm25
+      - name: Clone benchmark repo (flask)
+        run: git clone --depth 6000 https://github.com/pallets/flask benchmark_repos/flask
+      - name: Run regression gate
+        run: python benchmarks/check_regression.py benchmark_repos/flask
+
   build-check:
     # Assert the wheel builds cleanly and contains no stray fixture/benchmark
     # files — a packaging regression here should fail CI, not surprise PyPI.

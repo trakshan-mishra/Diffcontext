@@ -37,6 +37,7 @@ def select_context(
     changed: List[str],
     max_tokens: Optional[int] = None,
     token_counter: Optional[Callable[[str], int]] = None,
+    top_k: Optional[int] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -50,6 +51,11 @@ def select_context(
             model's real tokenizer (e.g. tiktoken, Anthropic counting) when
             enforcing a hard context-window limit; defaults to the
             ~4-chars-per-token heuristic, which is approximate.
+        top_k: Optional cap on the number of NON-changed symbols included,
+            applied on top of the token budget. The eval_v2 benchmark found
+            retrieval recall plateaus around 20 symbols per changed symbol
+            while precision keeps degrading, so a caller optimizing for
+            signal-to-noise should pass ~20 * len(changed).
 
     Returns:
         (selected_ids, dropped_ids)
@@ -81,8 +87,13 @@ def select_context(
         reverse=True,
     )
 
+    included_non_changed = 0
     for sym_id, score in scored:
         if sym_id not in symbols:
+            continue
+
+        if top_k is not None and included_non_changed >= top_k:
+            dropped.append(sym_id)
             continue
 
         sym_tokens = count(symbols[sym_id].code)
@@ -101,6 +112,7 @@ def select_context(
             continue
 
         result.append(sym_id)
+        included_non_changed += 1
         current_tokens += sym_tokens
 
     return result, dropped
