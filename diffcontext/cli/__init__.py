@@ -64,6 +64,14 @@ def main():
     p_compile.add_argument("--repo", default=".", help="Repository path")
     p_compile.add_argument("--depth", type=int, default=2, help="Max dependency depth")
     p_compile.add_argument("--max-tokens", type=int, default=10000, help="Token budget")
+    p_compile.add_argument(
+        "--top-k", type=int, default=20,
+        help="Max context symbols per changed symbol (benchmarked sweet spot: 20; 0 = unlimited)",
+    )
+    p_compile.add_argument(
+        "--graph-only", action="store_true",
+        help="Disable the hybrid (graph+BM25+same-file) blend and rank by call graph alone",
+    )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
     p_compile.add_argument("--sync", action="store_true", help="Sync output to CtxSync cloud")
@@ -223,9 +231,12 @@ def _cmd_compile(args):
         print("No changes detected.")
         return
 
-    impact = analyze_impact(idx, changed, max_depth=args.depth)
+    impact = analyze_impact(
+        idx, changed, max_depth=args.depth, hybrid=not args.graph_only,
+    )
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
-    ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes)
+    top_k = args.top_k * len(changed) if args.top_k > 0 else None
+    ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes, top_k=top_k)
 
     if args.json:
         result = {
