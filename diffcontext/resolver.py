@@ -12,7 +12,11 @@ from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
 logger = logging.getLogger(__name__)
 
 
-def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
+def build_import_map(
+    filename: str,
+    repo_path: str,
+    tree: "Optional[ast.Module]" = None,
+) -> Dict[str, str]:
     """
     Parse imports in a file and resolve them to absolute paths.
 
@@ -30,16 +34,19 @@ def build_import_map(filename: str, repo_path: str) -> Dict[str, str]:
             # __init__.py has: from .app import Flask
             # final result: src/flask/app.py   ← correct
     """
-    with open(filename, "rb") as f:
-        raw = f.read()
-    check_and_warn_encoding(logger, filename, raw)
-    source = raw.decode("utf-8", errors="ignore")
+    # Accept a pre-parsed AST to avoid re-reading and re-parsing the file
+    # (the pipeline parses each file exactly once and shares the tree).
+    if tree is None:
+        with open(filename, "rb") as f:
+            raw = f.read()
+        check_and_warn_encoding(logger, filename, raw)
+        source = raw.decode("utf-8", errors="ignore")
 
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as e:
-        warn_syntax_error_once(logger, filename, e)
-        return {}
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as e:
+            warn_syntax_error_once(logger, filename, e)
+            return {}
 
     imports: Dict[str, str] = {}
     file_dir = os.path.dirname(os.path.abspath(filename))
