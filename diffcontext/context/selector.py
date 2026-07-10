@@ -21,7 +21,7 @@ Fix vs previous version:
   one huge function and then claiming there's room for more.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ..models import Symbol
 
@@ -36,6 +36,8 @@ def select_context(
     scores: Dict[str, float],
     changed: List[str],
     max_tokens: Optional[int] = None,
+    token_counter: Optional[Callable[[str], int]] = None,
+    top_k: Optional[int] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -44,11 +46,24 @@ def select_context(
       1. Changed symbols always included (no budget bypass for anything else)
       2. All remaining symbols ranked by score, included until budget exhausted
 
+    Args:
+        token_counter: Optional callable text -> token count. Pass your
+            model's real tokenizer (e.g. tiktoken, Anthropic counting) when
+            enforcing a hard context-window limit; defaults to the
+            ~4-chars-per-token heuristic, which is approximate.
+        top_k: Optional cap on the number of NON-changed symbols included,
+            applied on top of the token budget. The eval_v2 benchmark found
+            retrieval recall plateaus around 20 symbols per changed symbol
+            while precision keeps degrading, so a caller optimizing for
+            signal-to-noise should pass ~20 * len(changed).
+
     Returns:
         (selected_ids, dropped_ids)
         dropped_ids: scored symbols that exist in `symbols` but were cut by
         the token budget. The LLM is told about these explicitly.
     """
+    count = token_counter or _estimate_tokens
+
     if not scores:
         return list(changed), []
 
@@ -63,7 +78,7 @@ def select_context(
     for sym_id in changed:
         if sym_id in symbols:
             result.append(sym_id)
-            current_tokens += _estimate_tokens(symbols[sym_id].code)
+            current_tokens += count(symbols[sym_id].code)
 
     # ── Pass 2: everything else ranked by score, budget-gated ────────────
     scored = sorted(
@@ -72,11 +87,16 @@ def select_context(
         reverse=True,
     )
 
+    included_non_changed = 0
     for sym_id, score in scored:
         if sym_id not in symbols:
             continue
 
-        sym_tokens = _estimate_tokens(symbols[sym_id].code)
+        if top_k is not None and included_non_changed >= top_k:
+            dropped.append(sym_id)
+            continue
+
+        sym_tokens = count(symbols[sym_id].code)
 
         # FIX: if the symbol exceeds the per-symbol cap, skip it entirely.
         # Previous code counted the capped amount toward the budget but
@@ -92,6 +112,7 @@ def select_context(
             continue
 
         result.append(sym_id)
+        included_non_changed += 1
         current_tokens += sym_tokens
 
     return result, dropped

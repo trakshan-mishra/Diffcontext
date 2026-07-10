@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiffContext — Code Blast Radius Analyser</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161e;
+    --surface2: #1a1e2a;
+    --border: #252a38;
+    --accent: #7c6fff;
+    --accent2: #ff6b6b;
+    --accent3: #43e97b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --warn: #f59e0b;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--text); }
+
+  .tagline {
+    color: var(--muted);
+    font-size: 13px;
+    margin-left: auto;
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 32px;
+  }
+
+  .tab {
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: flex;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .panel {
+    padding: 28px 32px;
+    overflow-y: auto;
+  }
+
+  .left { width: 380px; min-width: 320px; border-right: 1px solid var(--border); }
+  .right { flex: 1; }
+
+  /* ── Section headers ── */
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Input groups ── */
+  .input-group {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+
+  textarea { resize: vertical; min-height: 120px; }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+
+  .btn-primary:hover { background: #6b5fee; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-full { width: 100%; justify-content: center; }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 20px;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124, 111, 255, 0.04);
+  }
+
+  .upload-icon { font-size: 36px; margin-bottom: 10px; }
+
+  .upload-zone p { font-size: 13px; color: var(--muted); }
+  .upload-zone strong { color: var(--text); }
+
+  /* ── Result cards ── */
+  .result-area {
+    display: none;
+  }
+
+  .result-area.visible { display: block; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--mono);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Symbol lists ── */
+  .sym-section {
+    margin-bottom: 20px;
+  }
+
+  .sym-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .sym-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-family: var(--mono);
+  }
+
+  .badge-caller { background: rgba(255, 107, 107, 0.15); color: var(--accent2); }
+  .badge-callee { background: rgba(67, 233, 123, 0.15); color: var(--accent3); }
+  .badge-blast  { background: rgba(124, 111, 255, 0.15); color: var(--accent); }
+
+  .sym-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sym-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: border-color 0.1s;
+  }
+
+  .sym-item:hover { border-color: var(--accent); }
+
+  .sym-file { color: var(--muted); }
+  .sym-name { color: var(--text); font-weight: 500; }
+  .sym-dot { color: var(--border); }
+
+  /* ── File groups in blast radius ── */
+  .file-group {
+    margin-bottom: 14px;
+  }
+
+  .file-label {
+    font-size: 11px;
+    color: var(--accent);
+    font-family: var(--mono);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .file-fns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .fn-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+
+  /* ── Code paste tab ── */
+  .code-file-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+
+  .code-file-name {
+    width: 160px;
+    flex-shrink: 0;
+  }
+
+  .code-remove {
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 8px;
+    opacity: 0.6;
+  }
+
+  .code-remove:hover { opacity: 1; }
+
+  /* ── Context output ── */
+  .context-out {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+    max-height: 500px;
+    overflow-y: auto;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* ── Status / error ── */
+  .status {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .status.visible { display: block; }
+  .status.error   { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); color: var(--accent2); }
+  .status.success { background: rgba(67,233,123,0.1);  border: 1px solid rgba(67,233,123,0.3);  color: var(--accent3); }
+  .status.loading { background: rgba(124,111,255,0.1); border: 1px solid rgba(124,111,255,0.3); color: var(--accent); }
+
+  /* ── Tip box ── */
+  .tip {
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  .tip strong { color: var(--text); }
+
+  /* ── Symbol picker ── */
+  .sym-picker {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+
+  .sym-picker-item {
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  .sym-picker-item:hover { background: rgba(124,111,255,0.1); }
+  .sym-picker-item:last-child { border-bottom: none; }
+
+  /* ── API docs callout ── */
+  .api-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+  }
+
+  .api-endpoint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .method {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .method-post { background: rgba(124,111,255,0.2); color: var(--accent); }
+  .method-get  { background: rgba(67,233,123,0.2);  color: var(--accent3); }
+
+  .endpoint-path {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .endpoint-desc { font-size: 12px; color: var(--muted); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  /* ── Pane visibility ── */
+  .pane { display: none; }
+  .pane.active { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Diff<span>Context</span></div>
+  <div class="tagline">Which functions break when you change one?</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('upload')">📁 Upload Project</div>
+  <div class="tab" onclick="switchTab('paste')">📋 Paste Code</div>
+  <div class="tab" onclick="switchTab('api')">⚡ API & MCP</div>
+</div>
+
+<!-- ══════════════════ TAB: UPLOAD ══════════════════ -->
+<div class="pane active" id="pane-upload">
+  <div class="panel left">
+    <p class="section-title">Step 1 — Upload your project</p>
+
+    <div class="tip">
+      <strong>What to do:</strong> Zip your Python project folder, upload it here,
+      then pick a function to analyse. DiffContext will tell you what breaks if you change it.
+    </div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept=".zip" style="display:none" onchange="handleUpload(this)">
+      <div class="upload-icon">📦</div>
+      <p><strong>Click to upload a .zip</strong></p>
+      <p>of your Python project</p>
+    </div>
+
+    <div id="uploadStatus" class="status"></div>
+
+    <div id="symbolSection" style="display:none">
+      <hr class="divider">
+      <p class="section-title">Step 2 — Pick a function</p>
+      <div class="input-group">
+        <label>Search functions</label>
+        <input type="text" id="symSearch" placeholder="type to filter..." oninput="filterSymbols()">
+      </div>
+      <div class="sym-picker" id="symPicker"></div>
+
+      <div class="input-group" style="margin-top:14px">
+        <label>Selected function</label>
+        <input type="text" id="selectedSym" placeholder="./file.py:function_name" readonly>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="runBlast()" id="blastBtn">
+        ⚡ Analyse Blast Radius
+      </button>
+    </div>
+  </div>
+
+  <div class="panel right">
+    <div id="uploadResultArea" class="result-area">
+      <p class="section-title">Blast Radius Results</p>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-value" id="statCallers">—</div>
+          <div class="stat-label">Direct Callers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statCallees">—</div>
+          <div class="stat-label">Direct Callees</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statBlast">—</div>
+          <div class="stat-label">Total Affected</div>
+        </div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-caller">▲ CALLERS</span>
+          <span style="font-size:12px;color:var(--muted)">These will break if you change the function</span>
+        </div>
+        <div class="sym-list" id="callerList"></div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-callee">▼ CALLEES</span>
+          <span style="font-size:12px;color:var(--muted)">Functions this one depends on</span>
+        </div>
+        <div class="sym-list" id="calleeList"></div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-blast">◉ BLAST RADIUS</span>
+          <span style="font-size:12px;color:var(--muted)">All transitively affected, by file</span>
+        </div>
+        <div id="blastByFile"></div>
+      </div>
+
+      <hr class="divider">
+      <button class="btn btn-secondary" onclick="getContext()" style="width:100%">
+        📋 Get LLM Context (paste into Claude)
+      </button>
+      <div id="contextOut" style="display:none;margin-top:14px">
+        <div class="sym-header" style="justify-content:space-between">
+          <span class="section-title" style="margin:0">Context ready to paste</span>
+          <button class="btn btn-secondary" onclick="copyContext()" style="padding:6px 12px;font-size:12px">Copy</button>
+        </div>
+        <div class="context-out" id="contextText"></div>
+      </div>
+    </div>
+
+    <div id="uploadEmpty" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;color:var(--muted)">
+      <div style="font-size:48px">🎯</div>
+      <p>Upload a project and pick a function to see results here</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: PASTE ══════════════════ -->
+<div class="pane" id="pane-paste">
+  <div class="panel left">
+    <p class="section-title">Paste your Python code</p>
+
+    <div class="tip">
+      <strong>No upload needed.</strong> Paste one or more Python files below
+      and pick a function to analyse instantly.
+    </div>
+
+    <div id="codeFiles">
+      <div class="code-file-row" id="codeRow0">
+        <input class="code-file-name" type="text" value="main.py" placeholder="filename.py">
+        <textarea style="flex:1;height:140px;font-size:12px" placeholder="def greet(name):&#10;    msg = build_message(name)&#10;    print(msg)&#10;&#10;def build_message(name):&#10;    return f'Hello, {name}!'"></textarea>
+        <button class="code-remove" onclick="removeCodeFile(0)">✕</button>
+      </div>
+    </div>
+
+    <button class="btn btn-secondary" onclick="addCodeFile()" style="width:100%;margin-bottom:16px">
+      + Add another file
+    </button>
+
+    <div class="input-group">
+      <label>Function to analyse</label>
+      <input type="text" id="pasteSymbol" placeholder="./main.py:greet">
+    </div>
+
+    <div id="pasteStatus" class="status"></div>
+
+    <button class="btn btn-primary btn-full" onclick="runPasteBlast()">
+      ⚡ Analyse
+    </button>
+  </div>
+
+  <div class="panel right">
+    <div id="pasteResultArea" class="result-area">
+      <p class="section-title">Blast Radius Results</p>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-value" id="pStatCallers">—</div>
+          <div class="stat-label">Direct Callers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pStatCallees">—</div>
+          <div class="stat-label">Direct Callees</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pStatBlast">—</div>
+          <div class="stat-label">Total Affected</div>
+        </div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-caller">▲ CALLERS</span>
+        </div>
+        <div class="sym-list" id="pCallerList"></div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-callee">▼ CALLEES</span>
+        </div>
+        <div class="sym-list" id="pCalleeList"></div>
+      </div>
+
+      <div class="sym-section">
+        <div class="sym-header">
+          <span class="sym-badge badge-blast">◉ BLAST RADIUS</span>
+        </div>
+        <div id="pBlastByFile"></div>
+      </div>
+    </div>
+
+    <div id="pasteEmpty" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;color:var(--muted)">
+      <div style="font-size:48px">✏️</div>
+      <p>Paste some code and click Analyse</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: API ══════════════════ -->
+<div class="pane" id="pane-api">
+  <div class="panel" style="width:100%;max-width:820px;margin:0 auto">
+    <p class="section-title">API & MCP Integration</p>
+
+    <div class="tip" style="margin-bottom:24px">
+      Run DiffContext as a local server and call it from your own tools,
+      scripts, or connect it to Claude Desktop as an MCP server.
+    </div>
+
+    <div class="api-box">
+      <p style="font-size:14px;font-weight:600;margin-bottom:16px">🚀 Start the web server</p>
+      <div class="context-out" style="max-height:none">pip install fastapi uvicorn
+cd /path/to/Diffcontext
+uvicorn diffcontext-service.backend.main:app --reload --port 8000
+
+# Now open: http://localhost:8000/docs  ← interactive API docs</div>
+    </div>
+
+    <div class="api-box" style="margin-top:16px">
+      <p style="font-size:14px;font-weight:600;margin-bottom:16px">📡 REST API Endpoints</p>
+
+      <div class="api-endpoint">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/upload</span>
+        <span class="endpoint-desc">Upload a .zip of your project → get a repo_id</span>
+      </div>
+
+      <div class="api-endpoint">
+        <span class="method method-get">GET</span>
+        <span class="endpoint-path">/symbols?repo_id=abc123</span>
+        <span class="endpoint-desc">List all functions in your project</span>
+      </div>
+
+      <div class="api-endpoint">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/blast</span>
+        <span class="endpoint-desc">Get blast radius for a function</span>
+      </div>
+
+      <div class="api-endpoint">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/inline</span>
+        <span class="endpoint-desc">Analyse pasted code (no upload needed)</span>
+      </div>
+
+      <div class="api-endpoint">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/compile</span>
+        <span class="endpoint-desc">Get LLM-ready context string</span>
+      </div>
+
+      <hr class="divider">
+
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Example — call from Python:</p>
+      <div class="context-out" style="max-height:none">import requests
+
+# 1. Upload your project
+with open("myproject.zip", "rb") as f:
+    r = requests.post("http://localhost:8000/upload", files={"file": f})
+repo_id = r.json()["repo_id"]
+
+# 2. Get blast radius
+r = requests.post("http://localhost:8000/blast", json={
+    "repo_id": repo_id,
+    "symbol": "./src/auth.py:validate_jwt"
+})
+print(r.json())
+
+# 3. Get LLM context
+r = requests.post("http://localhost:8000/compile", json={
+    "repo_id": repo_id,
+    "symbol": "./src/auth.py:validate_jwt",
+    "max_tokens": 8000
+})
+print(r.json()["context_text"])  # paste this into Claude</div>
+    </div>
+
+    <div class="api-box" style="margin-top:16px">
+      <p style="font-size:14px;font-weight:600;margin-bottom:16px">🤖 Connect to Claude Desktop (MCP)</p>
+
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">1. Install MCP package:</p>
+      <div class="context-out" style="max-height:none">pip install mcp</div>
+
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 6px">2. Add to Claude Desktop config:</p>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Mac: <code style="color:var(--accent)">~/Library/Application Support/Claude/claude_desktop_config.json</code><br>
+        Windows: <code style="color:var(--accent)">%APPDATA%\Claude\claude_desktop_config.json</code>
+      </p>
+      <div class="context-out" style="max-height:none">{
+  "mcpServers": {
+    "diffcontext": {
+      "command": "python",
+      "args": ["/path/to/Diffcontext/diffcontext-service/mcp/mcp_server.py"]
+    }
+  }
+}</div>
+
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 6px">3. Restart Claude Desktop, then ask:</p>
+      <div class="context-out" style="max-height:none">"List all functions in /Users/me/myproject"
+"What is the blast radius of ./src/auth.py:validate_jwt in /Users/me/myproject?"
+"Compile context for ./service.py:onboard_user in /Users/me/myproject"</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+let repoId = null;
+let allSymbols = [];
+let codeFileCount = 1;
+let lastBlastResult = null;
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['upload','paste','api'][i] === tab);
+  });
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(`pane-${tab}`).classList.add('active');
+}
+
+// ── Status helpers ─────────────────────────────────────────────────────────────
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.className = `status visible ${type}`;
+  el.textContent = msg;
+}
+
+function clearStatus(id) {
+  const el = document.getElementById(id);
+  el.className = 'status';
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) doUpload(file);
+});
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+function handleUpload(input) {
+  if (input.files[0]) doUpload(input.files[0]);
+}
+
+async function doUpload(file) {
+  setStatus('uploadStatus', '⏳ Uploading and analysing...', 'loading');
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const r = await fetch(`${API}/upload`, { method: 'POST', body: form });
+    const data = await r.json();
+
+    if (!r.ok) {
+      setStatus('uploadStatus', data.detail || 'Upload failed.', 'error');
+      return;
+    }
+
+    repoId = data.repo_id;
+    allSymbols = data.sample_symbols || [];
+
+    // Fetch full symbol list
+    const symR = await fetch(`${API}/symbols?repo_id=${repoId}`);
+    if (symR.ok) {
+      const symData = await symR.json();
+      allSymbols = symData.symbols || [];
+    }
+
+    setStatus('uploadStatus', `✓ ${data.message}`, 'success');
+    document.getElementById('symbolSection').style.display = 'block';
+    renderSymbolPicker(allSymbols);
+
+  } catch (e) {
+    setStatus('uploadStatus',
+      'Could not connect to DiffContext server. Make sure it\'s running on localhost:8000',
+      'error'
+    );
+  }
+}
+
+// ── Symbol picker ──────────────────────────────────────────────────────────────
+function renderSymbolPicker(syms) {
+  const picker = document.getElementById('symPicker');
+  picker.innerHTML = syms.slice(0, 100).map(s => {
+    const [file, fn] = s.split(':');
+    return `<div class="sym-picker-item" onclick="selectSymbol('${s}')">
+      <span style="color:var(--muted);font-size:11px">${file}</span>
+      <span style="color:var(--text);font-weight:500">:${fn}</span>
+    </div>`;
+  }).join('');
+}
+
+function filterSymbols() {
+  const q = document.getElementById('symSearch').value.toLowerCase();
+  const filtered = allSymbols.filter(s => s.toLowerCase().includes(q));
+  renderSymbolPicker(filtered);
+}
+
+function selectSymbol(sym) {
+  document.getElementById('selectedSym').value = sym;
+  document.querySelectorAll('.sym-picker-item').forEach(el => {
+    el.style.background = el.textContent.includes(sym.split(':')[1]) ?
+      'rgba(124,111,255,0.15)' : '';
+  });
+}
+
+// ── Blast radius ───────────────────────────────────────────────────────────────
+async function runBlast() {
+  const symbol = document.getElementById('selectedSym').value.trim();
+  if (!symbol) { alert('Pick a function first.'); return; }
+  if (!repoId) { alert('Upload a project first.'); return; }
+
+  const btn = document.getElementById('blastBtn');
+  btn.innerHTML = '<span class="spinner"></span> Analysing...';
+  btn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/blast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_id: repoId, symbol }),
+    });
+    const data = await r.json();
+
+    if (data.error) {
+      setStatus('uploadStatus', data.error + (data.suggestions ? ' Did you mean: ' + data.suggestions.join(', ') : ''), 'error');
+      return;
+    }
+
+    lastBlastResult = data;
+    renderBlastResults(data, 'upload');
+    document.getElementById('uploadEmpty').style.display = 'none';
+    document.getElementById('uploadResultArea').classList.add('visible');
+    document.getElementById('contextOut').style.display = 'none';
+
+  } catch (e) {
+    setStatus('uploadStatus', 'Server not reachable. Is it running?', 'error');
+  } finally {
+    btn.innerHTML = '⚡ Analyse Blast Radius';
+    btn.disabled = false;
+  }
+}
+
+function renderBlastResults(data, prefix) {
+  const p = prefix === 'upload' ? '' : 'p';
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  document.getElementById(`${p}stat${p ? cap('Callers') : 'Callers'}`).textContent = data.direct_callers?.length ?? 0;
+  document.getElementById(`${p}stat${p ? cap('Callees') : 'Callees'}`).textContent = data.direct_callees?.length ?? 0;
+  document.getElementById(`${p}stat${p ? cap('Blast') : 'Blast'}`).textContent = data.blast_radius_count ?? 0;
+
+  // Helpers
+  const symItem = sym => {
+    const parts = sym.split(':');
+    return `<div class="sym-item">
+      <span class="sym-file">${parts[0]}</span>
+      <span class="sym-dot">:</span>
+      <span class="sym-name">${parts[1] || sym}</span>
+    </div>`;
+  };
+
+  const listEl = (id, items) => {
+    const el = document.getElementById(id);
+    el.innerHTML = items?.length
+      ? items.map(symItem).join('')
+      : '<div style="color:var(--muted);font-size:12px;padding:8px">(none found)</div>';
+  };
+
+  listEl(`${p === 'p' ? 'p' : ''}CallerList`, data.direct_callers);
+  listEl(`${p === 'p' ? 'p' : ''}CalleeList`, data.direct_callees);
+
+  const blastEl = document.getElementById(`${p === 'p' ? 'p' : ''}BlastByFile`);
+  const byFile = data.blast_radius_by_file || {};
+  if (Object.keys(byFile).length === 0) {
+    blastEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">(no transitive impact found)</div>';
+  } else {
+    blastEl.innerHTML = Object.entries(byFile).map(([file, fns]) => `
+      <div class="file-group">
+        <div class="file-label">📄 ${file} (${fns.length})</div>
+        <div class="file-fns">${fns.map(f => `<span class="fn-chip">${f}</span>`).join('')}</div>
+      </div>
+    `).join('');
+  }
+}
+
+// Fix the IDs for paste tab
+function renderBlastResults(data, tab) {
+  if (tab === 'upload') {
+    document.getElementById('statCallers').textContent = data.direct_callers?.length ?? 0;
+    document.getElementById('statCallees').textContent = data.direct_callees?.length ?? 0;
+    document.getElementById('statBlast').textContent = data.blast_radius_count ?? 0;
+    _renderList('callerList', data.direct_callers);
+    _renderList('calleeList', data.direct_callees);
+    _renderByFile('blastByFile', data.blast_radius_by_file);
+  } else {
+    document.getElementById('pStatCallers').textContent = data.direct_callers?.length ?? 0;
+    document.getElementById('pStatCallees').textContent = data.direct_callees?.length ?? 0;
+    document.getElementById('pStatBlast').textContent = data.blast_radius_count ?? 0;
+    _renderList('pCallerList', data.direct_callers);
+    _renderList('pCalleeList', data.direct_callees);
+    _renderByFile('pBlastByFile', data.blast_radius_by_file);
+  }
+}
+
+function _renderList(id, items) {
+  const el = document.getElementById(id);
+  el.innerHTML = items?.length
+    ? items.map(sym => {
+        const parts = sym.split(':');
+        return `<div class="sym-item">
+          <span class="sym-file">${parts[0]}</span>
+          <span class="sym-dot">:</span>
+          <span class="sym-name">${parts[1] || sym}</span>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--muted);font-size:12px;padding:8px">(none found)</div>';
+}
+
+function _renderByFile(id, byFile) {
+  const el = document.getElementById(id);
+  const obj = byFile || {};
+  if (!Object.keys(obj).length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">(no transitive impact)</div>';
+    return;
+  }
+  el.innerHTML = Object.entries(obj).map(([file, fns]) => `
+    <div class="file-group">
+      <div class="file-label">📄 ${file} (${fns.length})</div>
+      <div class="file-fns">${fns.map(f => `<span class="fn-chip">${f}</span>`).join('')}</div>
+    </div>
+  `).join('');
+}
+
+// ── Get LLM context ────────────────────────────────────────────────────────────
+async function getContext() {
+  const symbol = document.getElementById('selectedSym').value.trim();
+  if (!symbol || !repoId) return;
+
+  const btn = event.target;
+  btn.textContent = '⏳ Compiling...';
+  btn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/compile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_id: repoId, symbol, max_tokens: 8000 }),
+    });
+    const data = await r.json();
+
+    document.getElementById('contextText').textContent = data.context_text || JSON.stringify(data, null, 2);
+    document.getElementById('contextOut').style.display = 'block';
+  } catch (e) {
+    alert('Could not compile context. Is the server running?');
+  } finally {
+    btn.textContent = '📋 Get LLM Context (paste into Claude)';
+    btn.disabled = false;
+  }
+}
+
+function copyContext() {
+  const text = document.getElementById('contextText').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+// ── Paste tab ─────────────────────────────────────────────────────────────────
+function addCodeFile() {
+  const container = document.getElementById('codeFiles');
+  const idx = codeFileCount++;
+  const row = document.createElement('div');
+  row.className = 'code-file-row';
+  row.id = `codeRow${idx}`;
+  row.innerHTML = `
+    <input class="code-file-name" type="text" value="file${idx}.py" placeholder="filename.py">
+    <textarea style="flex:1;height:140px;font-size:12px" placeholder="def my_function(): ..."></textarea>
+    <button class="code-remove" onclick="removeCodeFile(${idx})">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeCodeFile(idx) {
+  const row = document.getElementById(`codeRow${idx}`);
+  if (row) row.remove();
+}
+
+async function runPasteBlast() {
+  const symbol = document.getElementById('pasteSymbol').value.trim();
+  if (!symbol) { setStatus('pasteStatus', 'Enter a function name like ./main.py:greet', 'error'); return; }
+
+  const files = {};
+  document.querySelectorAll('.code-file-row').forEach(row => {
+    const name = row.querySelector('input').value.trim();
+    const code = row.querySelector('textarea').value.trim();
+    if (name && code) files[name] = code;
+  });
+
+  if (!Object.keys(files).length) {
+    setStatus('pasteStatus', 'Paste some Python code first.', 'error');
+    return;
+  }
+
+  setStatus('pasteStatus', '⏳ Analysing...', 'loading');
+
+  try {
+    const r = await fetch(`${API}/inline`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files, symbol }),
+    });
+    const data = await r.json();
+
+    clearStatus('pasteStatus');
+
+    if (data.error) {
+      setStatus('pasteStatus', data.error + (data.suggestions ? ' Try: ' + data.suggestions.join(', ') : ''), 'error');
+      return;
+    }
+
+    renderBlastResults(data, 'paste');
+    document.getElementById('pasteEmpty').style.display = 'none';
+    document.getElementById('pasteResultArea').classList.add('visible');
+
+  } catch (e) {
+    setStatus('pasteStatus', 'Could not reach server. Is it running on localhost:8000?', 'error');
+  }
+}
+</script>
+</body>
+</html>

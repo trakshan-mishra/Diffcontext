@@ -1,0 +1,73 @@
+name: tests
+
+on:
+  push:
+    branches: [main, stable, "feature/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package with dev extras
+        run: pip install -e .[dev]
+      - name: Run tests
+        run: pytest tests/ -v
+
+  retrieval-quality-gate:
+    # Re-runs the hardened co-change benchmark on flask and fails if
+    # retrieval quality drops below the frozen floors in
+    # benchmarks/check_regression.py. Guards against silent regressions in
+    # graph heuristics, scoring, or the hybrid blend.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + benchmark deps
+        run: pip install -e .[dev] rank-bm25
+      - name: Clone benchmark repo (flask)
+        run: git clone --depth 6000 https://github.com/pallets/flask benchmark_repos/flask
+      - name: Run regression gate
+        run: python benchmarks/check_regression.py benchmark_repos/flask
+
+  build-check:
+    # Assert the wheel builds cleanly and contains no stray fixture/benchmark
+    # files — a packaging regression here should fail CI, not surprise PyPI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Verify wheel contents are scoped to the package
+        run: |
+          pip install check-wheel-contents
+          check-wheel-contents dist/*.whl
+          # No test fixtures, benchmarks, or service code may leak into the wheel
+          python - <<'EOF'
+          import sys, zipfile, glob
+          whl = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          bad = [n for n in names if any(
+              n.startswith(p) for p in ("tests", "benchmarks", "benchmark_repos", "diffcontext-service", "diffcontext_service")
+          )]
+          if bad:
+              print("Stray files in wheel:", bad)
+              sys.exit(1)
+          assert any(n.endswith("diffcontext/py.typed") for n in names), "py.typed missing from wheel"
+          print(f"Wheel clean: {len(names)} files, py.typed present")
+          EOF

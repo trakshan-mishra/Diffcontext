@@ -1,0 +1,9 @@
+# Pinned dependencies for reproducing the eval_v1 benchmark results.
+# The core diffcontext library itself has zero runtime dependencies;
+# these are needed only by the code under benchmarks/.
+#
+#   pip install -e . -r requirements-benchmark.txt
+#   python -m benchmarks.eval_v1
+#
+rank_bm25==0.2.2
+numpy==2.5.0        # transitive requirement of rank_bm25

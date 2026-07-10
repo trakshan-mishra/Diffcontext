@@ -38,21 +38,35 @@ _SAME_DIR_MAX_FILES = 20            # skip same-dir bonus if directory is huge
 _DECORATOR_EDGE_MAX = 6             # max decorator edges per function (guards chains)
 
 
-def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
+def build_repository_graph(
+    repo_path: str,
+    functions: Optional[Dict[str, object]] = None,
+    file_trees: Optional[Dict[str, ast.Module]] = None,
+    import_maps: Optional[Dict[str, Dict[str, str]]] = None,
+) -> Dict[str, List[str]]:
     """
     Build the complete call graph for a repository.
+
+    Args:
+        repo_path:   Repository root.
+        functions:   Pre-extracted symbol table (id -> Symbol). Extracted
+                     fresh when None.
+        file_trees:  Pre-parsed ASTs keyed by relative file ("./x.py").
+                     When provided, no file is read or parsed here — this is
+                     how the pipeline avoids double-parsing every file.
+        import_maps: Pre-built import maps keyed by relative file. Built
+                     from `file_trees` when None.
 
     Returns:
         dict mapping function_id -> [list of called function_ids]
     """
     repo_path = os.path.abspath(repo_path)
 
-    functions = extract_all_symbols(repo_path)
+    if functions is None:
+        functions = extract_all_symbols(repo_path)
     function_ids = set(functions)
 
     # ── pre-pass: per-file ASTs, import maps, class registry ─────────────
-    file_trees:      Dict[str, ast.Module]          = {}
-    import_maps:     Dict[str, Dict[str, str]]      = {}
     class_registry:  Dict[str, List[str]]           = {}   # class_name -> [rel_file, ...]
     classes_by_file: Dict[str, List[str]]           = {}   # rel_file -> [class_name, ...]
     inheritance:     Dict[str, List[Tuple]]         = {}   # "rel_file:ClassName" -> bases
@@ -61,22 +75,32 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
     # e.g. `app = Flask(__name__)` at module scope -> {"app": (None, "Flask")}
     module_var_types: Dict[str, Dict[str, Tuple]]   = {}
 
-    for filename in find_python_files(repo_path):
-        with open(filename, "rb") as f:
-            raw = f.read()
-        check_and_warn_encoding(logger, filename, raw)
-        source = raw.decode("utf-8", errors="ignore")
+    if file_trees is None:
+        file_trees = {}
+        for filename in find_python_files(repo_path):
+            with open(filename, "rb") as f:
+                raw = f.read()
+            check_and_warn_encoding(logger, filename, raw)
+            source = raw.decode("utf-8", errors="ignore")
 
-        try:
-            tree = ast.parse(source)
-        except SyntaxError as e:
-            warn_syntax_error_once(logger, filename, e)
-            continue
+            try:
+                tree = ast.parse(source)
+            except SyntaxError as e:
+                warn_syntax_error_once(logger, filename, e)
+                continue
 
-        relative_file = "./" + os.path.relpath(filename, repo_path)
-        file_trees[relative_file]  = tree
-        import_maps[relative_file] = build_import_map(filename, repo_path)
+            file_trees["./" + os.path.relpath(filename, repo_path)] = tree
 
+    if import_maps is None:
+        import_maps = {}
+    for relative_file, tree in file_trees.items():
+        if relative_file not in import_maps:
+            abs_file = os.path.join(repo_path, relative_file[2:])
+            import_maps[relative_file] = build_import_map(
+                abs_file, repo_path, tree=tree
+            )
+
+    for relative_file, tree in file_trees.items():
         mvt: Dict[str, Tuple] = {}
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
@@ -301,10 +325,19 @@ def build_repository_graph(repo_path: str) -> Dict[str, List[str]]:
                         added += 1
 
     # ── Build file_groups for use by shared-import edges ────────────────────
+    # Sorted by line number within each file: window edges below genuinely
+    # follow definition order, and representative picks (syms[0]) are
+    # deterministic. Building this from set iteration order made those
+    # edges vary with hash seed / insertion order — nondeterministic graphs
+    # are a reproducibility hazard for the benchmark.
     file_groups: Dict[str, List[str]] = {}
     for fid in function_ids:
         ffile = fid.split(":")[0]
         file_groups.setdefault(ffile, []).append(fid)
+    for ffile in file_groups:
+        file_groups[ffile].sort(
+            key=lambda fid: (getattr(functions.get(fid), "lineno", 0) or 0, fid)
+        )
 
     # ── Phase 1C: Shared-import consumer edges ───────────────────────────
     # If file_a and file_b both import from the same internal module,
