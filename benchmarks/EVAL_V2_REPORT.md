@@ -174,3 +174,13 @@ Pairs were criteria-mined from ~250 distinct Django commits and manually audited
 
 ---
 *Reproduce: `python benchmarks/eval_v2_hardened.py` (all repos + Django buckets). Raw per-case data: `benchmarks/results/eval_v2/<repo>_cases.csv` (one row per commit × query × method). Summaries with CIs and strata: `<repo>_summary.json`, `all_summaries.json`.*
+
+## Postscript (2026-07-10): hybrid shipped in the product
+
+Following these results, the winning configuration was wired into the product itself:
+- `diffcontext/lexical.py` — dependency-free BM25 (inverted index, rank_bm25-compatible math with a positive-idf-floor fix for tiny corpora)
+- `analyze_impact(hybrid=True)` is now the default: graph 0.5 / BM25 0.35 / same-file 0.15 (`hybrid=False` restores graph-only)
+- `select_context(top_k=...)` + CLI `--top-k` (default 20/changed symbol) implement the benchmarked precision operating point
+- `benchmarks/check_regression.py` + a CI `retrieval-quality-gate` job freeze these numbers as floors
+
+Validation: running the **actual product path** (`index_repository` + `analyze_impact`) over the same ground truth reproduces the benchmark hybrid numbers exactly — flask hit 0.831 / recall 0.667 / R@20 0.598; django hit 0.887 / recall 0.782 / R@20 0.727 (vs 0.783/0.660/0.622 graph-only). The product's default retrieval improved by +12 recall points on Django.
