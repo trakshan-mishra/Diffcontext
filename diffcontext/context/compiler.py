@@ -13,9 +13,10 @@ Key additions over the naive "dump code blocks" approach:
 
 import ast
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from ..models import Symbol, ContextPackage
+from ..models import Symbol, ContextPackage, ContextItem
+from ..impact.scoring import describe_scoring_basis, ScoringConfig
 
 
 def _get_module_docstring(abs_file_path: str) -> str:
@@ -53,23 +54,33 @@ def compile_context(
     dropped_ids: Optional[List[str]] = None,
     skipped_files: Optional[List[str]] = None,
     notes: Optional[str] = None,
+    token_counter: Optional[Callable[[str], int]] = None,
+    scoring_config: Optional[ScoringConfig] = None,
 ) -> ContextPackage:
     """
-    Build the final context text from selected symbols.
+    Build the final context package from selected symbols.
+
+    The structured `items` list is the base representation; the formatted
+    `text` (meta-header + sections + suggestions) is rendered from it.
 
     Args:
-        symbols:       Full symbol table for the repo.
-        selected_ids:  Symbols chosen for this context (respects token budget).
-        changed_ids:   The symbols that actually changed (always selected).
-        scores:        Impact scores for all scored symbols.
-        graph:         Full call graph (id -> [dep ids]). Enables relationship
-                       annotations and confidence calculation.
-        dropped_ids:   Symbols that were scored but cut by token budget.
-        skipped_files: Files that raised SyntaxError (graph has holes here).
-        notes:         Optional user notes injected into meta header.
+        symbols:        Full symbol table for the repo.
+        selected_ids:   Symbols chosen for this context (respects token budget).
+        changed_ids:    The symbols that actually changed (always selected).
+        scores:         Impact scores for all scored symbols.
+        graph:          Full call graph (id -> [dep ids]). Enables relationship
+                        annotations and confidence calculation.
+        dropped_ids:    Symbols that were scored but cut by token budget.
+        skipped_files:  Files that raised SyntaxError (graph has holes here).
+        notes:          Optional user notes injected into meta header.
+        token_counter:  Optional text -> token count callable (real tokenizer);
+                        defaults to the len//4 heuristic.
+        scoring_config: The ScoringConfig used for scoring, so the meta-header
+                        describes the actual run; defaults when None.
     """
     dropped_ids   = dropped_ids   or []
     skipped_files = skipped_files or []
+    count = token_counter or (lambda text: max(1, len(text) // 4))
 
     changed_set  = set(changed_ids)
     selected_set = set(selected_ids)
@@ -86,39 +97,48 @@ def compile_context(
 
     # Token bookkeeping
     total_repo_code   = "\n\n".join(s.code for s in symbols.values())
-    total_repo_tokens = max(1, len(total_repo_code) // 4)
+    total_repo_tokens = count(total_repo_code)
 
-    # --- Bucket symbols into sections ---
-    sections: Dict[str, List[str]] = {"CHANGED": [], "IMPACTED": [], "DEPENDENCIES": []}
-
+    # --- Structured items: the base representation ---
+    items: List[ContextItem] = []
     for sym_id in selected_ids:
         if sym_id not in symbols:
             continue
-
         sym   = symbols[sym_id]
         score = scores.get(sym_id, 0)
-        file_name, func_name = sym_id.split(":", 1)
+        if sym_id in changed_set:
+            role = "changed"
+        elif score >= 70:
+            role = "impacted"
+        else:
+            role = "dependency"
+        items.append(ContextItem(
+            symbol_id      = sym_id,
+            code           = sym.code,
+            score          = score,
+            role           = role,
+            callers        = sorted(reverse.get(sym_id, set())),
+            callees        = list(graph.get(sym_id, [])) if graph else [],
+            token_estimate = count(sym.code),
+        ))
 
-        # Relationship annotation block
+    # --- Render text sections from the items ---
+    sections: Dict[str, List[str]] = {"CHANGED": [], "IMPACTED": [], "DEPENDENCIES": []}
+    section_of_role = {"changed": "CHANGED", "impacted": "IMPACTED", "dependency": "DEPENDENCIES"}
+
+    for item in items:
+        file_name, func_name = item.symbol_id.split(":", 1)
         rel_block = _build_relationship_block(
-            sym_id, graph, reverse, selected_set, symbols
+            item.symbol_id, graph, reverse, selected_set, symbols
         )
-
         entry = (
             f"FILE: {file_name}\n"
-            f"FUNCTION: {func_name} (score: {score:.0f})\n"
+            f"FUNCTION: {func_name} (score: {item.score:.0f})\n"
             + rel_block +
-            f"\n{sym.code}"
+            f"\n{item.code}"
         )
+        sections[section_of_role[item.role]].append(entry)
 
-        if sym_id in changed_set:
-            sections["CHANGED"].append(entry)
-        elif score >= 70:
-            sections["IMPACTED"].append(entry)
-        else:
-            sections["DEPENDENCIES"].append(entry)
-
-    # --- Assemble code sections ---
     parts = []
     for label, entries in sections.items():
         if entries:
@@ -126,7 +146,7 @@ def compile_context(
             parts.append("\n\n---\n\n".join(entries))
 
     code_text = "\n\n".join(parts)
-    context_tokens = max(1, len(code_text) // 4)
+    context_tokens = count(code_text)
 
     # --- Build meta-header (prepended so LLM reads it first) ---
     meta = _build_meta_header(
@@ -142,6 +162,7 @@ def compile_context(
         context_tokens = context_tokens,
         scores         = scores,
         notes          = notes,
+        scoring_config = scoring_config,
     )
 
     # --- Build suggestions block (appended at bottom) ---
@@ -164,6 +185,7 @@ def compile_context(
         symbol_count       = len(selected_ids),
         token_estimate     = context_tokens,
         total_repo_tokens  = total_repo_tokens,
+        items              = items,
         dropped_symbols    = dropped_ids,
         skipped_files      = skipped_files,
         graph_confidence   = graph_confidence,
@@ -187,6 +209,7 @@ def _build_meta_header(
     context_tokens: int,
     scores: Dict[str, float],
     notes: Optional[str] = None,
+    scoring_config: Optional[ScoringConfig] = None,
 ) -> str:
     total_syms    = len(symbols)
     selected_cnt  = len(selected_ids)
@@ -216,8 +239,7 @@ def _build_meta_header(
         f"Direct callers found  : {direct_callers}",
         f"Direct callees found  : {direct_callees}",
         f"Context tokens (est.) : {context_tokens:,}",
-        f"Scoring basis         : changed=100 | direct_callee=90 | direct_caller=80 "
-          f"| 2hop_callee=60 | 2hop_caller=50 | indegree*2+outdegree bonus",
+        f"Scoring basis         : {describe_scoring_basis(scoring_config)}",
     ]
 
     # --- Repository Architecture Snapshot ---

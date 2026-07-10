@@ -1,24 +1,26 @@
+# Python build artifacts
 __pycache__/
 *.pyc
 *.pyo
+*.egg
 *.egg-info/
 dist/
 build/
 .pytest_cache/
-*.egg
-state.json
-diffcontext_state.json
-benchmark_results.json
+
+# Virtual environments
 .venv/
 venv/
-yt-dlp/
-benchmark_repos/
-a.txt
-ctxsync/
-demo-visual.html
 node_modules/
-sync-context.sh
-test_fixtures.tar.gz
-test_graph_resolution.py
+
+# DiffContext runtime caches (content-addressed, regenerated on demand)
 .diffcontext_cache.db
+.diffcontext_cache.db-shm
+.diffcontext_cache.db-wal
+state.json
+diffcontext_state.json
+
+# Benchmark working data (regenerate: python benchmarks/eval_v2_hardened.py)
+benchmark_repos/
 benchmarks/results/
+benchmark_results.json
