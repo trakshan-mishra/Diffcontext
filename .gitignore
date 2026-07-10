@@ -22,3 +22,5 @@ test_fixtures.tar.gz
 test_graph_resolution.py
 .diffcontext_cache.db
 benchmarks/results/
+.diffcontext_cache.db-shm
+.diffcontext_cache.db-wal
