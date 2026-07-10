@@ -9,7 +9,6 @@ This captures the actual workflow that works, based on real use against a
 alias dcb='diffcontext blast --changed'
 alias dcc='diffcontext compile --changed'
 alias dci='diffcontext index'
-alias dcs='diffcontext sync'
 ```
 
 To make these permanent, append the three lines above to `~/.bashrc` (or
