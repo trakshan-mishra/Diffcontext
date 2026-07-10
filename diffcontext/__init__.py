@@ -34,14 +34,30 @@ Usage as a library:
 
 __version__ = "0.2.0"
 
+# Public, semver-covered API. Everything not listed here (graph_builder,
+# resolver, symbols, scanner, parser internals) is importable but carries no
+# stability guarantee across releases.
+__all__ = [
+    "__version__",
+    "BlastResult",
+    "ContextItem",
+    "ScoringConfig",
+    "blast_radius",
+    "index",
+    "diff",
+    "compile_context",
+]
+
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from .pipeline import index_repository, analyze_impact
 from .pipeline import compile as _compile_pipeline
 from .diff.git_diff import find_changed_symbols
 from .impact.blast_radius import get_blast_radius
+from .impact.scoring import ScoringConfig
+from .models import ContextItem
 
 
 # ---------------------------------------------------------------------------
@@ -170,16 +186,28 @@ def compile_context(
     repo: str = ".",
     depth: int = 2,
     max_tokens: int = 10000,
+    token_counter: Optional[Callable[[str], int]] = None,
+    scoring_config: Optional[ScoringConfig] = None,
 ):
     """
     Full pipeline: detect changes → blast radius → compile LLM context.
 
-    Returns a ContextPackage with .text, .token_estimate, .reduction_pct.
+    Returns a ContextPackage with .text (rendered), .items (structured
+    ContextItem list a harness can re-budget itself), .token_estimate,
+    and .reduction_pct.
+
+    Args:
+        token_counter:  text -> token count callable. Pass your model's
+                        real tokenizer to enforce hard window limits;
+                        defaults to a ~4-chars/token heuristic.
+        scoring_config: Custom impact-scoring weights (ScoringConfig);
+                        tuned defaults when None.
 
     Example:
         >>> from diffcontext import compile_context
         >>> ctx = compile_context(ref="HEAD~1", repo="/path/to/project")
         >>> print(ctx.text)          # LLM-ready context
+        >>> ctx.items[0].symbol_id   # structured form for harnesses
         >>> print(ctx.reduction_pct) # e.g. 99.2
     """
     idx = index_repository(repo)
@@ -195,5 +223,8 @@ def compile_context(
         from .models import ContextPackage
         return ContextPackage(text="", symbol_count=0, token_estimate=0, total_repo_tokens=0)
 
-    impact = analyze_impact(idx, changed, max_depth=depth)
-    return _compile_pipeline(idx, impact, max_tokens=max_tokens)
+    impact = analyze_impact(idx, changed, max_depth=depth, scoring_config=scoring_config)
+    return _compile_pipeline(
+        idx, impact, max_tokens=max_tokens,
+        token_counter=token_counter, scoring_config=scoring_config,
+    )

@@ -103,6 +103,36 @@ print(f"{ctx.reduction_pct:.1f}% reduction")
 
 See `USAGE.md` for the full day-to-day workflow, including shell aliases.
 
+### Embedding in an agent harness (incremental API)
+
+DiffContext is built to be called on every iteration of an agent loop, so
+repeat calls are cheap and output is machine-consumable, not just a string:
+
+```python
+from diffcontext.pipeline import index_repository, analyze_impact, compile
+from diffcontext import ScoringConfig
+
+idx = index_repository("/path/to/repo")     # cold: full parse + graph build
+
+# ... agent edits src/auth.py ...
+idx.update(["src/auth.py"])                 # re-parses ONLY the changed file
+
+impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"],
+                        scoring_config=ScoringConfig())   # weights are tunable
+ctx = compile(idx, impact, max_tokens=8000,
+              token_counter=my_real_tokenizer)            # e.g. tiktoken
+
+for item in ctx.items:      # structured: re-budget/filter/reorder yourself
+    print(item.symbol_id, item.role, item.score, item.token_estimate)
+```
+
+Measured on pydantic (405 files, ~1,830 symbols): cold index ~2.6–4.2s;
+re-index of an **unchanged** repo ~0.02s (the graph is persisted
+content-addressed in `.diffcontext_cache.db`, so even a new process gets the
+warm path); `index.update()` after a single-file edit ~0.4–0.6s vs ~1.6s for
+a full re-index. `update()` output is verified equal (symbols + graph) to a
+from-scratch rebuild by the test suite.
+
 ### Step 7: Cloud sync (CtxSync) (yet to be impemented)
 
 ```bash
@@ -112,28 +142,7 @@ diffcontext sync
 One command. Compiles blast radius and pushes to your CtxSync cloud endpoint.
 Credentials are read from `~/.ctxsync`, env vars, or `--url`/`--key` flags.
 
-### Step 8: Use as an MCP Server (Claude Desktop / Cursor)
 
-DiffContext includes a built-in **Model Context Protocol (MCP)** server, allowing AI assistants to natively query your codebase's blast radius without manual copy-pasting.
-
-**1. Install with MCP support:**
-```bash
-pip install -e .[mcp]
-```
-
-**2. Configure your AI client:**
-For Claude Desktop (`claude_desktop_config.json`) or Cursor:
-```json
-{
-  "mcpServers": {
-    "diffcontext": {
-      "command": "diffcontext-mcp"
-    }
-  }
-}
-```
-
-Now you can just ask your AI: *"What is the blast radius of validate_jwt in the diffcontext repo?"* and it will autonomously use DiffContext to find the precise context!
 
 ## What the resolver actually handles
 
