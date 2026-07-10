@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diffcontext"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Static-analysis-powered repository context compiler for LLMs"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [
-    { name = "Your Name" },
+    { name = "Trakshan Mishra", email = "trakshanmishra477@gmail.com" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -23,16 +23,18 @@ dependencies = []
 dev = [
     "pytest>=7.0",
 ]
-mcp = [
-    "mcp>=1.0.0",
-]
+
 
 [project.scripts]
 diffcontext = "diffcontext.cli:cli_main"
-diffcontext-mcp = "diffcontext.mcp_server:main"
+
 
 [tool.setuptools.packages.find]
 include = ["diffcontext*"]
+exclude = ["diffcontext-service*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "diffcontext.__version__" }
 
 [tool.setuptools.package-data]
 diffcontext = ["py.typed"]
