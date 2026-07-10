@@ -110,13 +110,3 @@ look for the `⚠ N file(s) failed to parse` block in the output.
 
 When in doubt: grep first, trust second.
 
-## Cloud sync (CtxSync)
-
-Push your blast radius to the cloud in one command:
-
-```bash
-diffcontext sync
-```
-
-Reads credentials from `~/.ctxsync` (or `--url`/`--key` flags, or env vars).
-The system prompt URL can be pasted into any AI tool for live context awareness.

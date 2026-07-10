@@ -133,17 +133,6 @@ warm path); `index.update()` after a single-file edit ~0.4–0.6s vs ~1.6s for
 a full re-index. `update()` output is verified equal (symbols + graph) to a
 from-scratch rebuild by the test suite.
 
-### Step 7: Cloud sync (CtxSync) (yet to be impemented)
-
-```bash
-diffcontext sync
-```
-
-One command. Compiles blast radius and pushes to your CtxSync cloud endpoint.
-Credentials are read from `~/.ctxsync`, env vars, or `--url`/`--key` flags.
-
-
-
 ## What the resolver actually handles
 
 Confirmed via an automated test suite (`tests/`) that builds small repos on
