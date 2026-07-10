@@ -19,20 +19,58 @@ issue_once exists so this corruption is at least visible once per file.
 import logging
 import os
 import threading
-from typing import Set
-
-_warned_files: Set[str] = set()
-_warned_encoding_files: Set[str] = set()
-_lock = threading.Lock()
+from typing import Optional, Set
 
 
-def warn_syntax_error_once(logger: logging.Logger, filename: str, exc: SyntaxError) -> None:
-    """Log a SyntaxError warning for `filename`, but only the first time it's seen."""
+class WarnState:
+    """
+    De-dup state for warn-once semantics, scoped to whoever owns it.
+
+    A long-lived process (an agent harness serving many repos/sessions)
+    should create one WarnState per indexing session so one session's
+    warnings never suppress another's; the module-level default preserves
+    the old process-wide behavior for direct callers.
+    """
+
+    def __init__(self):
+        self.syntax_files: Set[str] = set()
+        self.encoding_files: Set[str] = set()
+        self._lock = threading.Lock()
+
+    def first_syntax(self, key: str) -> bool:
+        with self._lock:
+            if key in self.syntax_files:
+                return False
+            self.syntax_files.add(key)
+            return True
+
+    def first_encoding(self, key: str) -> bool:
+        with self._lock:
+            if key in self.encoding_files:
+                return False
+            self.encoding_files.add(key)
+            return True
+
+    def reset(self) -> None:
+        with self._lock:
+            self.syntax_files.clear()
+            self.encoding_files.clear()
+
+
+_default_state = WarnState()
+
+
+def warn_syntax_error_once(
+    logger: logging.Logger,
+    filename: str,
+    exc: SyntaxError,
+    state: Optional[WarnState] = None,
+) -> None:
+    """Log a SyntaxError warning for `filename`, but only the first time it's
+    seen by `state` (the process-wide default when None)."""
     key = os.path.abspath(filename)
-    with _lock:
-        if key in _warned_files:
-            return
-        _warned_files.add(key)
+    if not (state or _default_state).first_syntax(key):
+        return
 
     logger.warning(
         "\033[93mSkipping %s due to SyntaxError: %s (line %s)\033[0m",
@@ -40,7 +78,12 @@ def warn_syntax_error_once(logger: logging.Logger, filename: str, exc: SyntaxErr
     )
 
 
-def check_and_warn_encoding(logger: logging.Logger, filename: str, raw_bytes: bytes) -> None:
+def check_and_warn_encoding(
+    logger: logging.Logger,
+    filename: str,
+    raw_bytes: bytes,
+    state: Optional[WarnState] = None,
+) -> None:
     """
     Check whether `raw_bytes` is valid UTF-8. If not, warn once per file --
     the caller will go on to decode with errors="ignore", which silently
@@ -53,10 +96,8 @@ def check_and_warn_encoding(logger: logging.Logger, filename: str, raw_bytes: by
         return
     except UnicodeDecodeError as e:
         key = os.path.abspath(filename)
-        with _lock:
-            if key in _warned_encoding_files:
-                return
-            _warned_encoding_files.add(key)
+        if not (state or _default_state).first_encoding(key):
+            return
 
         logger.warning(
             "\033[93m%s is not valid UTF-8 (%s at byte %d) -- invalid bytes "
@@ -67,7 +108,5 @@ def check_and_warn_encoding(logger: logging.Logger, filename: str, raw_bytes: by
 
 
 def reset_warned_files() -> None:
-    """Clear the de-dup caches. Mainly useful for tests."""
-    with _lock:
-        _warned_files.clear()
-        _warned_encoding_files.clear()
+    """Clear the process-wide de-dup caches. Mainly useful for tests."""
+    _default_state.reset()

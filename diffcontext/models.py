@@ -23,6 +23,24 @@ class RepositoryIndex:
     graph: Dict[str, List[str]] = field(default_factory=dict)    # id -> [dependency ids]
     broken_files: List[str] = field(default_factory=list)
 
+    # Incremental-update state, populated by pipeline.index_repository().
+    # Private: not part of the public API, excluded from repr/comparison.
+    _repo_path: Optional[str] = field(default=None, repr=False, compare=False)
+    _file_trees: Optional[Dict] = field(default=None, repr=False, compare=False)
+    _import_maps: Optional[Dict] = field(default=None, repr=False, compare=False)
+    _warn_state: Optional[object] = field(default=None, repr=False, compare=False)
+
+    def update(self, changed_files: List[str]) -> "RepositoryIndex":
+        """
+        Incrementally re-index after `changed_files` were edited, created,
+        or deleted. Only those files are re-read and re-parsed; the graph
+        is rebuilt from in-memory ASTs. Mutates and returns this index.
+
+        Only available on indexes created by pipeline.index_repository().
+        """
+        from .pipeline import update_index
+        return update_index(self, changed_files)
+
     @property
     def reverse_graph(self) -> Dict[str, Set[str]]:
         """Build reverse graph (callers of each symbol)."""
@@ -78,12 +96,35 @@ class ImpactResult:
 
 
 @dataclass
+class ContextItem:
+    """
+    One selected symbol, in structured form. The base representation of a
+    compiled context: a harness can filter, reorder, and re-budget these
+    itself instead of consuming the pre-rendered text.
+    """
+    symbol_id: str                 # "./path.py:ClassName.method"
+    code: str                      # full source of the symbol
+    score: float                   # impact score (higher = more relevant)
+    role: str                      # "changed" | "impacted" | "dependency"
+    callers: List[str] = field(default_factory=list)   # full list, untruncated
+    callees: List[str] = field(default_factory=list)   # full list, untruncated
+    token_estimate: int = 0
+
+
+@dataclass
 class ContextPackage:
-    """Final compiled context for an LLM."""
+    """
+    Final compiled context for an LLM.
+
+    `items` is the structured base representation; `text` is one renderer
+    over it (meta-header + sections + suggestions) for direct LLM pasting.
+    """
     text: str
     symbol_count: int
     token_estimate: int
     total_repo_tokens: int
+    # Structured selection — the machine-consumable form of `text`'s body.
+    items: List[ContextItem] = field(default_factory=list)
     # LLM self-awareness fields
     dropped_symbols: List[str] = field(default_factory=list)   # scored but cut by budget
     skipped_files: List[str] = field(default_factory=list)     # SyntaxError'd files

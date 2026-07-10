@@ -48,6 +48,8 @@ def extract_symbols(
     filename: str,
     repo_path: str,
     broken_files: "Optional[List[str]]" = None,
+    source: "Optional[str]" = None,
+    tree: "Optional[ast.Module]" = None,
 ) -> Dict[str, Symbol]:
     """
     Parse a single Python file, return dict of symbol_id -> Symbol.
@@ -57,21 +59,26 @@ def extract_symbols(
     If parsing fails and `broken_files` is provided (a list), the file's
     relative path is appended to it so callers can distinguish "file failed
     to parse" from "file legitimately has no functions."
-    """
-    with open(filename, "rb") as f:
-        raw = f.read()
-    check_and_warn_encoding(logger, filename, raw)
-    source = raw.decode("utf-8", errors="ignore")
 
+    `source` and `tree` may be supplied together to reuse an already-read,
+    already-parsed file (the pipeline parses each file exactly once and
+    shares the result); both must correspond to the same file contents.
+    """
     relative_file = "./" + os.path.relpath(filename, repo_path)
 
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as e:
-        warn_syntax_error_once(logger, filename, e)
-        if broken_files is not None:
-            broken_files.append(relative_file)
-        return {}
+    if source is None or tree is None:
+        with open(filename, "rb") as f:
+            raw = f.read()
+        check_and_warn_encoding(logger, filename, raw)
+        source = raw.decode("utf-8", errors="ignore")
+
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as e:
+            warn_syntax_error_once(logger, filename, e)
+            if broken_files is not None:
+                broken_files.append(relative_file)
+            return {}
 
     collector = _FunctionCollector()
     collector.visit(tree)
