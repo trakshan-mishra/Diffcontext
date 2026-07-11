@@ -8,6 +8,23 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Fixed (honest token accounting under tight budgets)
+- `ContextPackage.token_estimate` now reports the FULL output (meta-header +
+  relationship annotations + code + suggestions) — the number an agent
+  harness actually pays — instead of the code sections only. Stress testing
+  on psf/black (648 symbols) showed `--max-tokens 500` silently emitting
+  ~2,600 tokens because the meta scaled with repo size, not with the budget.
+- The meta-header is now budget-proportionate: under tight budgets the
+  per-module architecture snapshot compacts to a summary line, the dropped
+  manifest shows 5 entries instead of 15, and per-symbol CALLERS/CALLEES
+  annotations cap at 3. Disclosure is never sacrificed — the full dropped
+  COUNT and blind-spot count remain in every output. Same black case now
+  emits ~1,390 tokens (was ~2,600); `compile(max_tokens=...)` is threaded
+  through to the compiler to enable this.
+- The meta line `Context tokens (est.)` was replaced by two lines:
+  `Context tokens (code)` and `Output tokens (full)`, so the overhead is
+  visible in the output itself.
+
 ### Fixed (resolver — src-layout and module-attribute calls)
 - **Absolute imports now resolve under `src/` layouts.** Previously,
   absolute imports were resolved only against the repository root, so for
