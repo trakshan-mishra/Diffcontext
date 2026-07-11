@@ -228,6 +228,7 @@ def build_repository_graph(
 
             param_types    = extract_param_types(fn_node)
             local_var_types = {**param_types, **extract_local_var_types(fn_node, param_types)}
+            param_names    = _all_param_names(fn_node)
 
             for child in ast.walk(fn_node):
                 if not isinstance(child, ast.Call):
@@ -255,6 +256,43 @@ def build_repository_graph(
 
                 if dep and dep != function_id and dep not in graph[function_id]:
                     graph[function_id].append(dep)
+
+                # Function references passed as arguments are dependencies
+                # too: `partial(black.format_file_contents, ...)` in blackd
+                # never calls the function, but a change to it absolutely
+                # lands in blackd's blast radius. Covers positional and
+                # keyword args (`sorted(xs, key=fn)`).
+                for arg in list(child.args) + [kw.value for kw in child.keywords]:
+                    if isinstance(arg, ast.Name):
+                        # Parameters/locals shadow module-level functions —
+                        # `run(task)` where task is a param is not a
+                        # reference to a same-named function.
+                        if arg.id in param_names or arg.id in local_var_types:
+                            continue
+                    elif not isinstance(arg, ast.Attribute):
+                        continue
+
+                    ref = _resolve_func_expr(
+                        arg,
+                        is_method,
+                        class_name,
+                        relative_file,
+                        local_name_to_id,
+                        import_map,
+                        functions,
+                        function_ids,
+                        repo_path,
+                        attribute_owners,
+                        inheritance,
+                        class_registry,
+                        factory_returns,
+                        import_maps,
+                        local_var_types,
+                        classes_by_file,
+                        _cached_resolve_owner_type,
+                    )
+                    if ref and ref != function_id and ref not in graph[function_id]:
+                        graph[function_id].append(ref)
 
     # ── Phase 1A: Inheritance override edges ─────────────────────────────
     # When ChildClass overrides ParentClass.method, add child → parent edge.
@@ -719,7 +757,25 @@ def _resolve_call(
     factory_returns, import_maps, local_var_types=None,
     classes_by_file=None, _cached_resolve=None,
 ):
-    func = call_node.func
+    return _resolve_func_expr(
+        call_node.func, is_method, class_name, relative_file,
+        local_name_to_id, import_map, all_functions, function_ids,
+        repo_path, attribute_owners, inheritance, class_registry,
+        factory_returns, import_maps, local_var_types,
+        classes_by_file, _cached_resolve,
+    )
+
+
+def _resolve_func_expr(
+    func, is_method, class_name, relative_file,
+    local_name_to_id, import_map, all_functions, function_ids,
+    repo_path, attribute_owners, inheritance, class_registry,
+    factory_returns, import_maps, local_var_types=None,
+    classes_by_file=None, _cached_resolve=None,
+):
+    """Resolve a Name/Attribute expression that denotes a function — either
+    the callee of a Call node or a function reference passed as an argument
+    (`partial(black.format_file_contents, ...)`, `sorted(xs, key=fn)`)."""
 
     if isinstance(func, ast.Name):
         return _lookup(func.id, local_name_to_id, import_map, all_functions, repo_path)
@@ -748,13 +804,50 @@ def _resolve_call(
                 return resolved
             return None
 
-        if isinstance(func.value, ast.Name) and func.value.id in import_map:
-            source_file = import_map[func.value.id]
+        # Module-attribute call: `black.format_file_contents(...)` after
+        # `import black`, or `mypkg.core.fn(...)` after `import mypkg.core`.
+        dotted = _dotted_module_name(func.value)
+        if dotted and dotted in import_map:
+            source_file = import_map[dotted]
             relative_source = "./" + os.path.relpath(source_file, repo_path)
             candidate = f"{relative_source}:{method_name}"
             if candidate in all_functions:
                 return candidate
+            # __init__ transparency: the attribute may be re-exported from a
+            # submodule (`black.parse_ast` lives in black/parsing.py). The
+            # __init__.py's own import map IS its re-export table — no
+            # re-parsing needed.
+            if relative_source.endswith("__init__.py"):
+                init_map = import_maps.get(relative_source, {})
+                target = init_map.get(method_name)
+                if target:
+                    real_source = "./" + os.path.relpath(target, repo_path)
+                    candidate = f"{real_source}:{method_name}"
+                    if candidate in all_functions:
+                        return candidate
 
+    return None
+
+
+def _all_param_names(fn_node):
+    """Every parameter name of a function, including * / ** and kw-only."""
+    a = fn_node.args
+    names = {p.arg for p in a.args + a.posonlyargs + a.kwonlyargs}
+    if a.vararg:
+        names.add(a.vararg.arg)
+    if a.kwarg:
+        names.add(a.kwarg.arg)
+    return names
+
+
+def _dotted_module_name(expr):
+    """`Name(a)` → "a"; `Attribute(Name(a), b)` → "a.b"; anything else → None."""
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute):
+        base = _dotted_module_name(expr.value)
+        if base:
+            return f"{base}.{expr.attr}"
     return None
 
 
