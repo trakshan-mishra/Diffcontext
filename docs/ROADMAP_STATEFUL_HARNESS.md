@@ -2,7 +2,7 @@
 
 The uniqueness thesis, the architecture to get there, and how to see each
 piece work live. Written to be handed to an implementer (see the prompt in
-`FABLE5_PROMPT.md`).
+`IMPLEMENTER_PROMPT.md`).
 
 ## The unclaimed niche (why this isn't "another PageRank")
 
