@@ -12,7 +12,7 @@ Three separate bars, in increasing order of difficulty:
 2. **The context/loop-engineering primitive for AI coding agents.** Not a CLI toy — the thing an agent *harness* (Claude Code-style, Aider-style, SWE-agent-style) calls on every loop iteration to decide what code to put in the model's context window. This means the bar is "embeddable infrastructure," not "nice CLI output."
 3. **A benchmark rigorous enough to defend in a paper.** The eval machinery already in `benchmarks/eval_v1.py` is unusually good for a solo project (P@K/R@K/MRR/MAP/nDCG@20, bootstrap CIs, per-signal ablation, failure taxonomy) — but there are specific gaps that a reviewer would flag in the first pass, detailed below.
 
-These three pulls are in tension in one way worth naming up front: (2) wants the library *fast and stateful* (index once, mutate incrementally, called hundreds of times per agent session); (1) wants it *simple and stable* (a clean pip package with a frozen API); (3) wants the *heuristics themselves* to be defensible (not overfit to the handful of repos already used for tuning). The plan below sequences things so each pillar's work de-risks the next, but Fable 5 should know these three "customers" of the same codebase can pull in different directions and treat that explicitly rather than silently picking one.
+These three pulls are in tension in one way worth naming up front: (2) wants the library *fast and stateful* (index once, mutate incrementally, called hundreds of times per agent session); (1) wants it *simple and stable* (a clean pip package with a frozen API); (3) wants the *heuristics themselves* to be defensible (not overfit to the handful of repos already used for tuning). The plan below sequences things so each pillar's work de-risks the next, but note that these three "customers" of the same codebase can pull in different directions and treat that explicitly rather than silently picking one.
 
 ---
 
@@ -116,7 +116,7 @@ Bootstrap CIs (already implemented) tell you the uncertainty of one method's sco
 
 ---
 
-## 4. Sequenced roadmap for Fable 5
+## 4. Sequenced roadmap
 
 Ordered so each phase de-risks the next; Pillar A and the P0/P1 fixes from the prior review are prerequisites, not alternatives, to B and C.
 
@@ -155,8 +155,8 @@ A realistic target given no academic affiliation: an arXiv preprint / technical 
 
 ---
 
-## 6. Open questions before Fable 5 starts
+## 6. Open questions before implementation starts
 
-- **Held-out repos**: do you want to hand-pick the held-out set now (so heuristics are never touched again after this point), or should Fable 5 propose a sampling methodology and pick them programmatically? (Recommend the latter — removes any appearance of cherry-picking, which matters more for the paper than for the library.)
+- **Held-out repos**: do you want to hand-pick the held-out set now (so heuristics are never touched again after this point), or should the implementation propose a sampling methodology and pick them programmatically? (Recommend the latter — removes any appearance of cherry-picking, which matters more for the paper than for the library.)
 - **Publish cadence**: ship Phase 1 (PyPI-ready package) as soon as it's done, independent of Phases 3-5 landing? Or hold the first PyPI release until the incremental-index work (Phase 3) is in, so v0.1/v1.0 on PyPI is already the "harness-ready" version rather than shipping a slow v0.1 first and a breaking v0.2 later? (Recommend: ship Phase 1+2 as an honest `0.2.x` now — fixing real bugs and packaging hygiene doesn't need to wait — then treat Phase 3's incremental index as the `1.0.0` milestone, since that's the point the public API becomes something worth promising semver stability on.)
 - **Paper venue ambition**: arXiv-only technical report (fast, no review gate, citable immediately) vs. actually targeting a workshop submission (slower, adds a real review bar, but carries more weight)? This affects how much of Phase 5 is "good enough to publish code + numbers" vs. "good enough to survive peer review."
