@@ -8,6 +8,36 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Fixed (resolver — src-layout and module-attribute calls)
+- **Absolute imports now resolve under `src/` layouts.** Previously,
+  absolute imports were resolved only against the repository root, so for
+  the standard setuptools src-layout (used by black, flask, and most
+  modern PyPI projects) *every* import of the project's own package
+  silently failed — e.g. on psf/black, the import map for
+  `src/blackd/__init__.py` contained a single entry and the call graph
+  had no `blackd → black` edges at all, truncating blast radii one hop
+  before the code under change. Absolute imports are now resolved against
+  the repo root and `src/`, in that order. (Found by running the tool on
+  psf/black; regression-tested by `tests/test_src_layout.py` on a
+  src-layout fixture.)
+- `import a.b` no longer binds the local name `a` to `a/b.py` (which sent
+  `a.other()` calls into the wrong file); `a` now binds to package `a`,
+  and the full dotted name `a.b` is bound as well so `a.b.fn()` resolves.
+- Module-attribute calls through package re-exports now resolve:
+  `black.parse_ast(...)` finds the definition in `black/parsing.py` via
+  the `__init__.py`'s own import map (no extra parsing). `_follow_init_
+  reexport` also follows absolute re-exports (`from black.parsing import
+  X`), not just relative ones.
+
+### Added (graph — function references as arguments)
+- Function references passed as call arguments now create graph edges:
+  `partial(black.format_file_contents, ...)`, `sorted(xs, key=fn)`,
+  `map(fn, xs)`. On psf/black this is the only way `blackd`'s request
+  handler references the formatting entry point — a call-only graph
+  missed the edge entirely. Parameter and typed-local names shadow
+  module-level functions and are skipped, so passing a parameter along
+  never fabricates an edge to a same-named function.
+
 ### Hybrid retrieval (benchmark-driven; changes default ranking)
 - `analyze_impact(hybrid=True)` is now the default: scores blend call-graph
   impact (0.5), BM25 lexical similarity (0.35), and same-file co-location

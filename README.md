@@ -186,8 +186,12 @@ Asserted by the test suite on real resolved edges, not "it ran":
 multi-hop attribute chains (`self.a.b.method()`), multiple inheritance and
 cross-file MRO, circular imports, local-variable instantiation in free
 functions, annotated-parameter receivers, import aliasing, sibling-directory
-bare imports, decorator wrapper attribution, and stdlib higher-order calls
-(`map`, `filter`, `sorted`/`max`/`min` with `key=`).
+bare imports, decorator wrapper attribution, `src/`-layout packages
+(`import black` resolving to `src/black/`), module-attribute calls through
+package re-exports (`black.parse_ast()` → `black/parsing.py`), dotted module
+calls (`import a.b; a.b.fn()`), and function references passed as arguments
+(`functools.partial(fn, ...)`, `sorted(xs, key=fn)`) with parameter-shadowing
+guarded against.
 
 ## Known limitations (measured, not guessed)
 

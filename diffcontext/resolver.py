@@ -64,11 +64,16 @@ def build_import_map(
                 for _ in range(level - 1):
                     base = os.path.dirname(base)
                 module_path = os.path.join(base, module.replace(".", os.sep))
+                resolved = _resolve_module_path(module_path)
             else:
                 # Absolute import: from requests.utils import helper
-                module_path = os.path.join(repo_abs, module.replace(".", os.sep))
-
-            resolved = _resolve_module_path(module_path)
+                # Resolved against every source root (repo root, then src/):
+                # black, flask, and most modern PyPI projects keep their
+                # packages under src/, where a repo-root-only lookup finds
+                # nothing and silently drops every edge into the package.
+                module_path, resolved = _resolve_absolute_module(
+                    module, repo_abs
+                )
 
             for alias in node.names:
                 local_name = alias.asname or alias.name
@@ -90,19 +95,75 @@ def build_import_map(
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 top_module = alias.name.split(".")[0]
-                local_name = alias.asname or top_module
-                module_path = os.path.join(repo_abs, alias.name.replace(".", os.sep))
-                resolved = _resolve_module_path(module_path)
 
+                if alias.asname:
+                    # `import a.b as ab` — ab refers to the submodule a.b
+                    _mp, resolved = _resolve_absolute_module(alias.name, repo_abs)
+                    if not resolved:
+                        sibling = os.path.join(
+                            file_dir, alias.name.replace(".", os.sep)
+                        )
+                        resolved = _resolve_module_path(sibling)
+                    if resolved:
+                        imports[alias.asname] = resolved
+                    continue
+
+                # `import a` / `import a.b` — the bound local name is the TOP
+                # package `a` (binding it to a/b.py, as previously done, sent
+                # `a.other()` calls into the wrong file).
+                _mp, resolved = _resolve_absolute_module(top_module, repo_abs)
                 if not resolved:
                     # Bare `import x` — try the importing file's own directory
-                    sibling_path = os.path.join(file_dir, alias.name.replace(".", os.sep))
+                    sibling_path = os.path.join(
+                        file_dir, top_module.replace(".", os.sep)
+                    )
                     resolved = _resolve_module_path(sibling_path)
-
                 if resolved:
-                    imports[local_name] = resolved
+                    imports[top_module] = resolved
+
+                # `import a.b` also makes `a.b.fn()` callable — record the
+                # full dotted path (dots can't collide with identifiers).
+                if "." in alias.name:
+                    _mp, sub_resolved = _resolve_absolute_module(
+                        alias.name, repo_abs
+                    )
+                    if sub_resolved:
+                        imports[alias.name] = sub_resolved
 
     return imports
+
+
+# Conventional source roots tried, in order, when resolving absolute
+# imports. "" is the repo root itself (flat layout); "src" is the
+# setuptools src-layout used by black, flask, requests, and most modern
+# PyPI projects.
+_SOURCE_ROOT_NAMES = ("", "src")
+
+
+def _resolve_absolute_module(module: str, repo_abs: str):
+    """
+    Resolve a dotted absolute module name against each candidate source
+    root of the repository.
+
+    Returns (module_path, resolved_file):
+      module_path   — directory-ish path for the module under the root that
+                      matched (used for submodule probing by the caller);
+                      falls back to the repo-root join when nothing matched.
+      resolved_file — the module's .py / package __init__.py, or None.
+    """
+    rel = module.replace(".", os.sep)
+    fallback = os.path.join(repo_abs, rel)
+    for root_name in _SOURCE_ROOT_NAMES:
+        root = os.path.join(repo_abs, root_name) if root_name else repo_abs
+        candidate = os.path.join(root, rel)
+        resolved = _resolve_module_path(candidate)
+        if resolved:
+            return candidate, resolved
+        # Namespace package (no __init__.py): a real directory still lets
+        # the caller find `from pkg import submodule` targets inside it.
+        if os.path.isdir(candidate):
+            return candidate, None
+    return fallback, None
 
 
 def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[str]:
@@ -115,8 +176,11 @@ def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[
         name = "Flask"
         → returns /abs/path/to/app.py
 
-    Only follows one level (no recursive re-export chasing) to stay fast.
-    Returns None if the name is not re-exported or the submodule can't be found.
+    Both relative (`from .app import Flask`, flask style) and absolute
+    (`from black.parsing import parse_ast`, black style) re-exports are
+    followed. Only follows one level (no recursive re-export chasing) to
+    stay fast. Returns None if the name is not re-exported or the
+    submodule can't be found.
     """
     try:
         with open(init_path, "rb") as f:
@@ -131,22 +195,25 @@ def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
             continue
-        if node.level == 0:
-            continue  # only relative re-exports (from .sub import X)
         for alias in node.names:
             exported_name = alias.asname or alias.name
             if exported_name != name:
                 continue
             # Found the re-export — resolve the submodule
             module = node.module or ""
-            base = init_dir
-            for _ in range(node.level - 1):
-                base = os.path.dirname(base)
-            sub_path = os.path.join(base, module.replace(".", os.sep))
+            if node.level > 0:
+                # Relative re-export: from .sub import X
+                base = init_dir
+                for _ in range(node.level - 1):
+                    base = os.path.dirname(base)
+                sub_path = os.path.join(base, module.replace(".", os.sep))
+            else:
+                # Absolute re-export: from black.parsing import X
+                sub_path, _resolved = _resolve_absolute_module(module, repo_abs)
             # Check if alias.name itself is a submodule
             submodule_path = os.path.join(sub_path, alias.name)
             resolved = _resolve_module_path(submodule_path) or _resolve_module_path(sub_path)
-            if resolved:
+            if resolved and resolved != os.path.normpath(init_path):
                 return resolved
 
     return None
