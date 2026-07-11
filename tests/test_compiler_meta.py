@@ -74,3 +74,60 @@ class TestScoringBasisDerivation:
         # follow automatically, with no compiler.py edit.
         monkeypatch.setattr(scoring, "CALLER_BASE", 77.0)
         assert "direct_caller=77" in describe_scoring_basis()
+
+
+class TestMetaBudgetProportionality:
+    """Regression: the meta-header must not dwarf the code it annotates.
+
+    Found via stress testing on psf/black (648 symbols): `--max-tokens 500`
+    produced ~2,600 tokens of output because the architecture snapshot (one
+    line per repo file) and the top-15 dropped manifest were rendered with no
+    awareness of the requested budget. Under tight budgets the snapshot must
+    compact to a summary line and the dropped manifest must shrink — while
+    the dropped COUNT stays fully disclosed.
+    """
+
+    def _many_symbols(self, n_files=40):
+        syms = {}
+        for i in range(n_files):
+            sid = f"./mod{i}.py:fn{i}"
+            syms[sid] = Symbol(
+                id=sid, file=f"/abs/mod{i}.py", name=f"fn{i}",
+                code=f"def fn{i}():\n    return {i}", lineno=1,
+            )
+        return syms
+
+    def test_tight_budget_compacts_snapshot(self):
+        syms = self._many_symbols()
+        selected = ["./mod0.py:fn0"]
+        dropped = [s for s in syms if s != selected[0]]
+        ctx = compile_context(
+            syms, selected, selected, {s: 50.0 for s in syms},
+            graph={}, dropped_ids=dropped, max_tokens=500,
+        )
+        assert "snapshot omitted under tight budget" in ctx.text
+        assert "KNOWN MODULES" not in ctx.text
+        # honesty is not sacrificed: full dropped count still disclosed
+        assert f"DROPPED SYMBOLS ({len(dropped)})" in ctx.text
+
+    def test_generous_budget_keeps_full_snapshot(self):
+        syms = self._many_symbols()
+        selected = ["./mod0.py:fn0"]
+        dropped = [s for s in syms if s != selected[0]]
+        ctx = compile_context(
+            syms, selected, selected, {s: 50.0 for s in syms},
+            graph={}, dropped_ids=dropped, max_tokens=50000,
+        )
+        assert "KNOWN MODULES" in ctx.text
+
+    def test_token_estimate_is_full_output(self):
+        syms = self._many_symbols(n_files=5)
+        selected = list(syms)[:2]
+        ctx = compile_context(
+            syms, selected, selected[:1], {s: 50.0 for s in syms},
+            graph={}, max_tokens=4000,
+        )
+        # the reported estimate must cover the ENTIRE text the caller pays
+        # for, not just the code sections
+        assert ctx.token_estimate == max(1, len(ctx.text) // 4)
+        assert "Output tokens (full)" in ctx.text

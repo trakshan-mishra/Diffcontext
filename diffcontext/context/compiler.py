@@ -56,6 +56,7 @@ def compile_context(
     notes: Optional[str] = None,
     token_counter: Optional[Callable[[str], int]] = None,
     scoring_config: Optional[ScoringConfig] = None,
+    max_tokens: Optional[int] = None,
 ) -> ContextPackage:
     """
     Build the final context package from selected symbols.
@@ -77,6 +78,10 @@ def compile_context(
                         defaults to the len//4 heuristic.
         scoring_config: The ScoringConfig used for scoring, so the meta-header
                         describes the actual run; defaults when None.
+        max_tokens:     The symbol-code budget the selection ran under (None =
+                        unlimited). Used to keep the meta-header proportionate:
+                        under tight budgets the architecture snapshot is
+                        compacted so meta can't dwarf the code it annotates.
     """
     dropped_ids   = dropped_ids   or []
     skipped_files = skipped_files or []
@@ -126,10 +131,14 @@ def compile_context(
     sections: Dict[str, List[str]] = {"CHANGED": [], "IMPACTED": [], "DEPENDENCIES": []}
     section_of_role = {"changed": "CHANGED", "impacted": "IMPACTED", "dependency": "DEPENDENCIES"}
 
+    # Hub symbols carry long caller/callee annotations; under a tight budget
+    # cap them harder so annotations can't crowd out actual code.
+    rel_cap = 3 if (max_tokens and max_tokens < 2000) else 6
+
     for item in items:
         file_name, func_name = item.symbol_id.split(":", 1)
         rel_block = _build_relationship_block(
-            item.symbol_id, graph, reverse, selected_set, symbols
+            item.symbol_id, graph, reverse, selected_set, symbols, cap=rel_cap
         )
         entry = (
             f"FILE: {file_name}\n"
@@ -163,6 +172,8 @@ def compile_context(
         scores         = scores,
         notes          = notes,
         scoring_config = scoring_config,
+        max_tokens     = max_tokens,
+        count          = count,
     )
 
     # --- Build suggestions block (appended at bottom) ---
@@ -180,10 +191,25 @@ def compile_context(
     if suggestions:
         full_text += "\n\n" + suggestions
 
+    # token_estimate is the FULL output (meta + annotated code + suggestions)
+    # — the number an agent harness actually pays, not just the code portion.
+    # Substituting the number changes the text length, so iterate to a fixed
+    # point (the digit count stabilizes after one or two rounds).
+    full_tokens = count(full_text.replace("{FULL_OUTPUT_TOKENS}", "0", 1))
+    for _ in range(3):
+        candidate = full_text.replace(
+            "{FULL_OUTPUT_TOKENS}", f"{full_tokens:,}", 1
+        )
+        recount = count(candidate)
+        if recount == full_tokens:
+            break
+        full_tokens = recount
+    full_text = candidate
+
     return ContextPackage(
         text               = full_text,
         symbol_count       = len(selected_ids),
-        token_estimate     = context_tokens,
+        token_estimate     = full_tokens,
         total_repo_tokens  = total_repo_tokens,
         items              = items,
         dropped_symbols    = dropped_ids,
@@ -210,7 +236,10 @@ def _build_meta_header(
     scores: Dict[str, float],
     notes: Optional[str] = None,
     scoring_config: Optional[ScoringConfig] = None,
+    max_tokens: Optional[int] = None,
+    count: Optional[Callable[[str], int]] = None,
 ) -> str:
+    count = count or (lambda text: max(1, len(text) // 4))
     total_syms    = len(symbols)
     selected_cnt  = len(selected_ids)
     dropped_cnt   = len(dropped_ids)
@@ -238,7 +267,8 @@ def _build_meta_header(
         f"Changed symbols       : {len(changed_ids)}",
         f"Direct callers found  : {direct_callers}",
         f"Direct callees found  : {direct_callees}",
-        f"Context tokens (est.) : {context_tokens:,}",
+        f"Context tokens (code) : {context_tokens:,}",
+        "Output tokens (full)  : {FULL_OUTPUT_TOKENS}",
         f"Scoring basis         : {describe_scoring_basis(scoring_config)}",
     ]
 
@@ -257,7 +287,7 @@ def _build_meta_header(
     for sym_id in symbols:
         file_name = sym_id.split(":", 1)[0]
         modules_total[file_name] = modules_total.get(file_name, 0) + 1
-        
+
     for sym_id in selected_ids:
         if sym_id in symbols:
             file_name = sym_id.split(":", 1)[0]
@@ -265,13 +295,13 @@ def _build_meta_header(
 
     lines.append("")
     lines.append("=== REPOSITORY ARCHITECTURE SNAPSHOT ===")
-    
+
     loaded_files = []
     blind_files = []
-    
+
     for file_name, total in sorted(modules_total.items()):
         selected = modules_selected.get(file_name, 0)
-        
+
         doc_snippet = ""
         if file_name.endswith(".py"):
             # FIX: use absolute path, not the relative file_name
@@ -279,24 +309,46 @@ def _build_meta_header(
             doc_str = _get_module_docstring(abs_path) if abs_path else ""
             if doc_str:
                 doc_snippet = f" — {doc_str}"
-                
+
         if selected > 0:
             loaded_files.append(f"  - {file_name} ({selected}/{total} symbols loaded){doc_snippet}")
         else:
             blind_files.append(f"  - {file_name} ({total} symbols){doc_snippet}")
 
-    lines.append("MODULES IN CONTEXT:")
-    if loaded_files:
-        lines.extend(loaded_files)
+    # Budget proportionality: the snapshot scales with repo size, not with
+    # the requested budget. Under a tight budget an uncapped snapshot can
+    # cost multiples of the code it annotates (measured: --max-tokens 500 on
+    # black produced ~2,600 total tokens, 5x the request). Compact it when
+    # it would exceed ~25% of the symbol budget.
+    snapshot_cost = count("\n".join(loaded_files + blind_files))
+    snapshot_budget = max(max_tokens // 4, 150) if max_tokens else None
+    if snapshot_budget is not None and snapshot_cost > snapshot_budget:
+        n_loaded = len(loaded_files)
+        n_blind = len(blind_files)
+        lines.append(
+            f"MODULES: {len(modules_total)} files — {n_loaded} in context, "
+            f"{n_blind} blind spots"
+        )
+        lines.append(
+            "  (per-module snapshot omitted under tight budget — raise "
+            "--max-tokens to see it)"
+        )
     else:
-        lines.append("  (none)")
-        
-    lines.append("")
-    lines.append("KNOWN MODULES (NOT IN CONTEXT - BLIND SPOTS):")
-    if blind_files:
-        lines.extend(blind_files)
-    else:
-        lines.append("  (none)")
+        lines.append("MODULES IN CONTEXT:")
+        if loaded_files:
+            lines.extend(loaded_files)
+        else:
+            lines.append("  (none)")
+
+        lines.append("")
+        lines.append("KNOWN MODULES (NOT IN CONTEXT - BLIND SPOTS):")
+        if blind_files:
+            _BLIND_CAP = 25
+            lines.extend(blind_files[:_BLIND_CAP])
+            if len(blind_files) > _BLIND_CAP:
+                lines.append(f"  ... and {len(blind_files) - _BLIND_CAP} more modules")
+        else:
+            lines.append("  (none)")
 
     if skipped_files:
         lines.append("")
@@ -305,12 +357,15 @@ def _build_meta_header(
             lines.append(f"  ✗ {f}")
 
     if dropped_cnt > 0:
+        # Under a tight budget, the top-15 manifest itself costs more than
+        # some requested budgets — show the top 5 and keep the count honest.
+        drop_cap = 5 if (max_tokens and max_tokens < 2000) else 15
         lines.append("")
         lines.append(f"DROPPED SYMBOLS ({dropped_cnt}) — scored but cut by token budget:")
-        for d in dropped_ids[:15]:
+        for d in dropped_ids[:drop_cap]:
             lines.append(f"  - {d}  (score: {scores.get(d, 0):.0f})")
-        if dropped_cnt > 15:
-            lines.append(f"  ... and {dropped_cnt - 15} more")
+        if dropped_cnt > drop_cap:
+            lines.append(f"  ... and {dropped_cnt - drop_cap} more")
         lines.append("  → If any of these are critical, re-run with a higher --max-tokens.")
 
     warnings = []
@@ -352,6 +407,7 @@ def _build_relationship_block(
     reverse: Dict[str, Set[str]],
     selected_set: Set[str],
     symbols: Dict[str, Symbol],
+    cap: int = 6,
 ) -> str:
     if not graph:
         return ""
@@ -363,20 +419,20 @@ def _build_relationship_block(
 
     if callers:
         caller_parts = []
-        for c in callers[:6]:
+        for c in callers[:cap]:
             tag = "" if c in selected_set else " [NOT IN CONTEXT]"
             caller_parts.append(c + tag)
-        if len(callers) > 6:
-            caller_parts.append(f"... +{len(callers) - 6} more")
+        if len(callers) > cap:
+            caller_parts.append(f"... +{len(callers) - cap} more")
         lines.append(f"CALLERS: {', '.join(caller_parts)}")
 
     if callees:
         callee_parts = []
-        for c in callees[:6]:
+        for c in callees[:cap]:
             tag = "" if c in selected_set else " [NOT IN CONTEXT]"
             callee_parts.append(c + tag)
-        if len(callees) > 6:
-            callee_parts.append(f"... +{len(callees) - 6} more")
+        if len(callees) > cap:
+            callee_parts.append(f"... +{len(callees) - cap} more")
         lines.append(f"CALLEES: {', '.join(callee_parts)}")
 
     if not callers and not callees:

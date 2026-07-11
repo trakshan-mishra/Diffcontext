@@ -65,6 +65,12 @@ Useful `compile` flags: `--top-k 20` (default) caps context at the
 benchmarked sweet spot — ~89% of achievable recall at ~2.8× the precision of
 unlimited retrieval; `--graph-only` disables the hybrid blend.
 
+Token accounting: `--max-tokens` budgets the symbol *code*; the meta-header
+and caller/callee annotations add overhead on top, which is reported
+honestly (`token_estimate` and the meta's `Output tokens (full)` line cover
+the entire output) and auto-compacts under tight budgets so meta can never
+dwarf the code it annotates.
+
 Symbol IDs are always `./relative/path.py:ClassName.method` — no
 parentheses, no arguments.
 

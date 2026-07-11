@@ -493,6 +493,7 @@ def compile(
         notes=notes,
         token_counter=token_counter,
         scoring_config=scoring_config,
+        max_tokens=max_tokens,
     )
 
 
