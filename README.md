@@ -92,6 +92,11 @@ diffcontext compile --ref HEAD~1
 
 # 5. Machine-readable, for scripts and agents
 diffcontext compile --changed ./src/auth.py:validate_jwt --json
+
+# 6. Is the compiled context actually SUFFICIENT? Score it, test it,
+#    and calibrate the score against your repo's own git history
+diffcontext verify --ref HEAD~1
+diffcontext verify --from-history 30 --calibrate
 ```
 
 Symbol IDs are always `./relative/path.py:ClassName.method` — no
@@ -359,10 +364,33 @@ pip install fastapi uvicorn python-multipart aiofiles
 uvicorn diffcontext-service.backend.main:app --port 8000
 ```
 
+## Verify: sufficiency, test cases, calibration
+
+`compile` says "here is relevant context." `verify` answers the harder
+question — *is it sufficient, and how would you know?*
+
+```bash
+# Structural sufficiency report for a change (CI-gateable exit code)
+diffcontext verify --ref HEAD~1
+
+# Grade retrieval against expectations YOU know to be true about your repo
+diffcontext verify --cases cases.json
+
+# Mine real test cases from git co-change history, then check whether the
+# sufficiency score actually tracks measured recall on this repo
+diffcontext verify --from-history 30 --calibrate
+```
+
+The score is a structural proxy (direct-neighbor closure, budget-cut
+pressure, graph confidence, parse health), not a guarantee — and the
+calibration mode says so out loud when the proxy doesn't track reality on
+your repo. Case file format, methodology, and the honesty contract:
+[docs/VERIFY.md](docs/VERIFY.md).
+
 ## Testing
 
 ```bash
-python3 -m pytest tests/ -q      # 85 tests, self-contained, <3s
+python3 -m pytest tests/ -q      # 103 tests, self-contained, <3s
 ```
 
 ## Roadmap
@@ -376,7 +404,9 @@ Ordered by measured impact (see the failure taxonomy above):
 4. **Chain-complete budgeting** — finish one causal chain deeply before
    spreading breadth across many symbols (evidence: case studies where the
    right function was retrieved but its explanatory dependency was cut)
-5. **Calibrated confidence scores** — adaptive context cutting for agents
+5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
+   (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
+   component weights fit on accumulated case results
 6. **TypeScript support** — the architecture is language-agnostic; only
    `parser.py`/`graph_builder.py` are Python-specific
 
