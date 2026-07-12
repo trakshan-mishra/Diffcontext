@@ -96,6 +96,19 @@ If a file shows as broken (`Skipping X due to SyntaxError`), diffcontext
 will still report a best-effort diff using the prior committed version —
 look for the `⚠ N file(s) failed to parse` block in the output.
 
+### 7. Checking the context is actually sufficient
+
+```bash
+diffcontext verify --ref HEAD~1              # structural sufficiency report
+diffcontext verify --cases cases.json        # your own known-true expectations
+diffcontext verify --from-history 30 --calibrate   # is the score trustworthy here?
+```
+
+The report tells you which direct callers/callees of your change were cut
+by the token budget (with remediation), and the calibration mode measures
+whether the score tracks real recall mined from your repo's own commit
+history. Case file format and methodology: [docs/VERIFY.md](docs/VERIFY.md).
+
 ## Known limitations (don't trust blast radius blindly here)
 
 - **Dynamic dispatch / `getattr()`-based routing**: common in CLI
