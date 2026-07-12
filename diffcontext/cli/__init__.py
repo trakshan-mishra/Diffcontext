@@ -8,6 +8,9 @@ Usage:
     diffcontext compile --changed ./api.py:get_user
     diffcontext blast --ref HEAD~1          # visual blast radius
     diffcontext blast --ref HEAD~1 --verify # with proof chains
+    diffcontext verify --ref HEAD~1                    # sufficiency report
+    diffcontext verify --cases cases.json              # user test cases
+    diffcontext verify --from-history 30 --calibrate   # score vs measured recall
 """
 
 import argparse
@@ -88,6 +91,38 @@ def main():
         help="Compare two commits only (ref vs HEAD); ignores uncommitted working-tree changes",
     )
 
+    # --- verify (sufficiency + test cases + calibration) ---
+    p_verify = sub.add_parser(
+        "verify",
+        help="Score context sufficiency; run user test cases; calibrate the score",
+    )
+    p_verify.add_argument("--changed", nargs="+", help="Changed symbol IDs")
+    p_verify.add_argument("--ref", default=None, help="Git ref (auto-detect changes)")
+    p_verify.add_argument("--repo", default=".", help="Repository path")
+    p_verify.add_argument("--depth", type=int, default=2, help="Max dependency depth")
+    p_verify.add_argument("--max-tokens", type=int, default=10000, help="Token budget (0 = unlimited)")
+    p_verify.add_argument(
+        "--top-k", type=int, default=20,
+        help="Max context symbols per changed symbol (0 = unlimited)",
+    )
+    p_verify.add_argument(
+        "--cases", default=None, metavar="FILE",
+        help="Run test cases from a JSON/YAML file (see docs/VERIFY.md for format)",
+    )
+    p_verify.add_argument(
+        "--from-history", type=int, default=None, metavar="N",
+        help="Auto-generate up to N test cases from git co-change history",
+    )
+    p_verify.add_argument(
+        "--out", default=None, metavar="FILE",
+        help="With --from-history: write generated cases to FILE instead of running them",
+    )
+    p_verify.add_argument(
+        "--calibrate", action="store_true",
+        help="With --cases/--from-history: report how the structural score tracks measured recall",
+    )
+    p_verify.add_argument("--json", action="store_true", help="Output as JSON")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -104,6 +139,8 @@ def main():
         _cmd_compile(args)
     elif args.command == "blast":
         _cmd_blast(args)
+    elif args.command == "verify":
+        _cmd_verify(args)
 
 
 def _cmd_index(args):
@@ -318,6 +355,88 @@ def _cmd_blast(args):
     print(f"  Indexed {len(idx.symbols)} symbols in {index_ms:.0f}ms")
     print(f"  Total analysis time: {total_ms:.0f}ms")
     print()
+
+
+def _cmd_verify(args):
+    """Sufficiency report, user test cases, and calibration."""
+    from ..verify import (
+        analyze_sufficiency, load_cases, save_cases, run_cases,
+        cases_from_history, calibrate, render_results, render_calibration,
+        CaseFormatError,
+    )
+
+    # ── Mode 1/2: test cases (from file or from git history) ─────────────
+    if args.cases or args.from_history is not None:
+        if args.cases:
+            try:
+                cases = load_cases(args.cases)
+            except (CaseFormatError, OSError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            cases = cases_from_history(args.repo, max_cases=args.from_history)
+            if not cases:
+                print(
+                    "No co-change cases found in git history. Need commits that "
+                    "modify 2+ functions (non-test .py files).",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if args.out:
+                save_cases(cases, args.out)
+                print(f"Wrote {len(cases)} case(s) to {args.out}")
+                print("Edit them (they're noisy — commits touch unrelated code too),")
+                print(f"then run: diffcontext verify --cases {args.out} --calibrate")
+                return
+
+        results = run_cases(args.repo, cases)
+
+        if args.json:
+            payload = {"results": [r.to_dict() for r in results]}
+            if args.calibrate:
+                payload["calibration"] = calibrate(results).to_dict()
+            print(json.dumps(payload, indent=2))
+        else:
+            print(render_results(results))
+            if args.calibrate:
+                print()
+                print(render_calibration(calibrate(results)))
+
+        sys.exit(0 if all(r.passed for r in results) else 1)
+
+    # ── Mode 3: single sufficiency report for a change ────────────────────
+    idx = index_repository(args.repo)
+
+    if args.changed:
+        changed = args.changed
+    elif args.ref:
+        changed = find_changed_symbols(
+            args.repo, idx.symbols, ref=args.ref,
+            broken_files=idx.broken_files,
+            known_broken_files=idx.broken_files,
+        )
+    else:
+        print("Error: provide --changed, --ref, --cases, or --from-history", file=sys.stderr)
+        sys.exit(1)
+
+    if not changed:
+        print("No changes detected.")
+        return
+
+    warn_unknown_symbols(idx, changed)
+    impact = analyze_impact(idx, changed, max_depth=args.depth)
+    max_tokens = args.max_tokens if args.max_tokens > 0 else None
+    top_k = args.top_k * len(changed) if args.top_k > 0 else None
+    ctx = compile(idx, impact, max_tokens=max_tokens, top_k=top_k)
+
+    report = analyze_sufficiency(idx, impact, ctx)
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(report.render())
+
+    # Exit code mirrors the verdict so CI can gate on it.
+    sys.exit(0 if report.verdict == "SUFFICIENT" else 1)
 
 
 if __name__ == "__main__":
