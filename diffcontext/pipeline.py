@@ -273,7 +273,9 @@ def update_index(index: RepositoryIndex, changed_files: List[str]) -> Repository
         # Symbols changed: the cached BM25 index no longer matches them.
         index._lexical = None
 
-        # Rebuild graph from in-memory state (no file I/O, no parsing)
+        # Rebuild graph from in-memory state (no file I/O, no parsing);
+        # the cached reverse graph goes stale with it.
+        index._reverse_graph = None
         index.graph = build_repository_graph(
             repo_path,
             functions=index.symbols,
@@ -412,12 +414,13 @@ def analyze_impact(
     warn_unknown_symbols(index, changed_symbols)
 
     # ── Blast radius (reverse graph / callers) ────────────────────────────
+    reverse = index.reverse_graph
     blast_radii: Dict[str, List[str]] = {}
     all_blast: List[str] = []
 
     for sym_id in changed_symbols:
         if sym_id in index.graph:
-            radius = get_blast_radius(index.graph, sym_id)
+            radius = get_blast_radius(index.graph, sym_id, reverse=reverse)
             blast_radii[sym_id] = radius
             all_blast.extend(radius)
 
@@ -436,6 +439,7 @@ def analyze_impact(
         changed_symbols,
         blast_radii,
         expanded_deps=deps,
+        reverse=reverse,
         config=scoring_config,
     )
 
@@ -481,6 +485,7 @@ def compile(
         token_counter=token_counter,
         top_k=top_k,
         graph=index.graph,
+        reverse=index.reverse_graph,
     )
 
     return compile_context(
@@ -489,6 +494,7 @@ def compile(
         impact.changed,
         impact.scores,
         graph=index.graph,
+        reverse=index.reverse_graph,
         dropped_ids=dropped,
         skipped_files=index.broken_files,
         notes=notes,

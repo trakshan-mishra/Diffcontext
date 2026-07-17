@@ -32,6 +32,9 @@ class RepositoryIndex:
     # Lazily built BM25 index (see lexical.get_lexical_index); invalidated
     # by update_index() whenever symbols change.
     _lexical: Optional[object] = field(default=None, repr=False, compare=False)
+    # Lazily built reverse call graph; invalidated by update_index()
+    # whenever the forward graph is rebuilt.
+    _reverse_graph: Optional[Dict[str, Set[str]]] = field(default=None, repr=False, compare=False)
 
     def update(self, changed_files: List[str]) -> "RepositoryIndex":
         """
@@ -46,12 +49,18 @@ class RepositoryIndex:
 
     @property
     def reverse_graph(self) -> Dict[str, Set[str]]:
-        """Build reverse graph (callers of each symbol)."""
-        rev: Dict[str, Set[str]] = {}
-        for caller, callees in self.graph.items():
-            for callee in callees:
-                rev.setdefault(callee, set()).add(caller)
-        return rev
+        """
+        Reverse graph (callers of each symbol), computed once per index
+        state and cached. Treat the returned dict as read-only: it is
+        shared across callers and only invalidated by update().
+        """
+        if self._reverse_graph is None:
+            rev: Dict[str, Set[str]] = {}
+            for caller, callees in self.graph.items():
+                for callee in callees:
+                    rev.setdefault(callee, set()).add(caller)
+            self._reverse_graph = rev
+        return self._reverse_graph
 
     @property
     def total_edges(self) -> int:
