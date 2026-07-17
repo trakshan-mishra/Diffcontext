@@ -362,6 +362,14 @@ def _build_meta_header(
         f"Graph edges total     : {total_edges}",
         f"Graph confidence      : {graph_confidence * 100:.0f}%"
           + ("  ✓" if graph_confidence >= 0.9 else "  ⚠ incomplete"),
+        # Always-present disclosure, same category as the DROPPED manifest:
+        # benchmarked cross-subsystem conceptual co-changes score 0% recall
+        # for every static method (see EVAL_V2_REPORT.md failure taxonomy),
+        # so a confident-looking 100% must not read as "nothing was missed".
+        "Note: graph confidence = STRUCTURAL completeness only. Static "
+        "analysis cannot see cross-subsystem conceptual coupling (e.g. a "
+        "settings flag and the unrelated code that reads it) — such "
+        "related code may exist and not be listed anywhere above.",
         f"Changed symbols       : {len(changed_ids)}",
         f"Direct callers found  : {direct_callers}",
         f"Direct callees found  : {direct_callees}",
