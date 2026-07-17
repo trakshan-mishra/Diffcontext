@@ -6,15 +6,20 @@ Implements:
 1. BM25 (keyword search) — the standard IR baseline
 2. File-level co-location — "same file = related"
 3. Random — lower bound sanity check
+4. Embedding (dense retrieval) — what most RAG-for-code tooling actually
+   runs in production; sentence-transformers when installed, with an
+   explicitly-labeled TF-IDF-cosine fallback otherwise
 
 These are what DiffContext must beat to prove it's actually useful.
 """
 
+import math
 import os
 import re
 import random
 import hashlib
-from typing import Dict, List, Set
+from collections import Counter
+from typing import Dict, List, Optional, Set
 
 from rank_bm25 import BM25Okapi
 
@@ -96,6 +101,106 @@ class FileCoLocationBaseline:
             if sid != query_symbol_id
         ]
         return same_file[:top_k]
+
+
+class EmbeddingBaseline:
+    """
+    Dense-retrieval baseline — the comparison a developer evaluating this
+    tool against modern RAG-for-code tooling actually wants.
+
+    Two encoders, recorded in `self.encoder` so every result file states
+    which one produced the numbers:
+
+    * "sentence-transformers/<model>": real dense retrieval. Each symbol's
+      full source is embedded with a small locally-runnable model (default
+      all-MiniLM-L6-v2, no paid API); retrieval is cosine over normalized
+      vectors. Used when sentence-transformers is importable.
+    * "tfidf-cosine-approx": pure-Python TF-IDF cosine over the same
+      identifier tokenization BM25 uses. This is NOT dense retrieval — it
+      is a lexical-vector approximation, kept only so the benchmark runs
+      in environments where installing torch is undesirable (e.g. CI).
+      Results produced with this encoder must not be presented as an
+      embedding comparison; the eval harness labels them.
+    """
+
+    ST_MODEL = "all-MiniLM-L6-v2"
+
+    def __init__(self, symbols: Dict[str, Symbol], prefer_dense: bool = True):
+        self.symbol_ids = list(symbols.keys())
+        self.symbols = symbols
+        self._st_model = None
+        self._matrix = None          # dense path: (n_symbols, dim) normalized
+        self._tfidf_vecs = None      # fallback path: list of {token: weight}
+        self._idf: Optional[Dict[str, float]] = None
+
+        if prefer_dense:
+            try:
+                from sentence_transformers import SentenceTransformer
+                self._st_model = SentenceTransformer(self.ST_MODEL)
+                self.encoder = f"sentence-transformers/{self.ST_MODEL}"
+            except Exception as e:  # noqa: BLE001 — ImportError, or model
+                # download failure (offline / network-policy environments).
+                # Fall back rather than abort the whole benchmark run; the
+                # encoder label makes the substitution visible in results.
+                print(f"  [embedding baseline] dense encoder unavailable "
+                      f"({type(e).__name__}); using tfidf-cosine-approx")
+                self._st_model = None
+
+        if self._st_model is not None:
+            import numpy as np
+            texts = [symbols[sid].code for sid in self.symbol_ids]
+            emb = self._st_model.encode(
+                texts, batch_size=64, show_progress_bar=False,
+                convert_to_numpy=True, normalize_embeddings=True,
+            )
+            self._matrix = np.asarray(emb)
+        else:
+            self.encoder = "tfidf-cosine-approx"
+            n = len(self.symbol_ids)
+            df: Counter = Counter()
+            token_lists = []
+            for sid in self.symbol_ids:
+                toks = _tokenize(symbols[sid].code)
+                token_lists.append(toks)
+                df.update(set(toks))
+            self._idf = {t: math.log((n + 1) / (c + 1)) + 1 for t, c in df.items()}
+            self._tfidf_vecs = []
+            for toks in token_lists:
+                tf = Counter(toks)
+                vec = {t: (1 + math.log(c)) * self._idf[t] for t, c in tf.items()}
+                norm = math.sqrt(sum(w * w for w in vec.values())) or 1.0
+                self._tfidf_vecs.append({t: w / norm for t, w in vec.items()})
+        self._id_to_idx = {sid: i for i, sid in enumerate(self.symbol_ids)}
+
+    def retrieve(self, query_symbol_id: str, top_k: int = 30) -> List[str]:
+        """Top-k most similar symbols to the query symbol's source."""
+        qi = self._id_to_idx.get(query_symbol_id)
+        if qi is None:
+            return []
+
+        if self._matrix is not None:
+            sims = self._matrix @ self._matrix[qi]
+            order = sims.argsort()[::-1]
+            out = []
+            for i in order:
+                sid = self.symbol_ids[int(i)]
+                if sid != query_symbol_id:
+                    out.append(sid)
+                if len(out) >= top_k:
+                    break
+            return out
+
+        qvec = self._tfidf_vecs[qi]
+        scored = []
+        for i, vec in enumerate(self._tfidf_vecs):
+            if i == qi:
+                continue
+            small, large = (qvec, vec) if len(qvec) < len(vec) else (vec, qvec)
+            sim = sum(w * large.get(t, 0.0) for t, w in small.items())
+            if sim > 0:
+                scored.append((self.symbol_ids[i], sim))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [sid for sid, _ in scored[:top_k]]
 
 
 class RandomBaseline:

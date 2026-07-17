@@ -20,6 +20,12 @@ Bootstrap 95% CIs (1,000 resamples) are computed over *commit-level* means.
 - `diffcontext` — call-graph retrieval (bidirectional BFS decay scoring, dynamic score cutoff), the product's core signal
 - `hybrid` — graph+BM25+same-file score blend (0.5/0.35/0.15), the configuration eval_v1 identified as best
 - `bm25` — BM25Okapi over full function source
+- `embedding` — dense retrieval over full function source (added 2026-07-17,
+  after an external audit correctly flagged its absence; results in §8):
+  sentence-transformers/all-MiniLM-L6-v2 when installed, else a TF-IDF-cosine
+  fallback explicitly labeled `tfidf-cosine-approx`. Every summary records
+  which encoder ran (`config.embedding_encoder`) — fallback numbers are a
+  second lexical-vector baseline, NOT a dense comparison, and are labeled so
 - `samefile` — every other symbol in the query's file
 - `random_k` — deterministic random sample, **k matched per-query to DiffContext's retrieval count**
 
