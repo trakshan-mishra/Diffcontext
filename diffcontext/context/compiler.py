@@ -12,11 +12,20 @@ Key additions over the naive "dump code blocks" approach:
 """
 
 import ast
+import os
 import re
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from ..models import Symbol, ContextPackage, ContextItem
 from ..impact.scoring import describe_scoring_basis, ScoringConfig
+
+
+# (path -> ((mtime_ns, size), first_line)). Every compile renders the
+# architecture snapshot, which needs one docstring per repo file; without
+# this memo each compile re-parses the whole repo (measured: 67% of
+# `verify --from-history` runtime). mtime+size invalidation keeps it
+# correct when a harness edits files between compiles in one process.
+_DOCSTRING_CACHE: Dict[str, Tuple[Tuple[int, int], str]] = {}
 
 
 def _get_module_docstring(abs_file_path: str) -> str:
@@ -26,16 +35,23 @@ def _get_module_docstring(abs_file_path: str) -> str:
     Must receive sym.file (absolute), NOT the relative path from sym_id.
     """
     try:
+        st = os.stat(abs_file_path)
+        stamp = (st.st_mtime_ns, st.st_size)
+        cached = _DOCSTRING_CACHE.get(abs_file_path)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
         with open(abs_file_path, "r", encoding="utf-8") as f:
             source = f.read()
         tree = ast.parse(source)
         doc = ast.get_docstring(tree)
+        first_line = ""
         if doc:
             first_line = doc.strip().split("\n")[0]
             first_line = re.sub(r'^[\w/\-\.]+\.py\s*[—\-]+\s*', '', first_line).strip()
             if len(first_line) > 60:
-                return first_line[:57] + "..."
-            return first_line
+                first_line = first_line[:57] + "..."
+        _DOCSTRING_CACHE[abs_file_path] = (stamp, first_line)
+        return first_line
     except Exception:
         pass
     return ""
