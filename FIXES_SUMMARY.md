@@ -25,8 +25,15 @@ sizing), `diffcontext/pipeline.py` (threads the graph through),
 `CHANGELOG.md`.
 
 **Evidence — the audit's exact repro on psf/black
-(`compile --changed ./src/black/__init__.py:format_file_contents`),
-"Output tokens (full)" vs requested budget:**
+(`compile --changed ./src/black/__init__.py:format_file_contents`, black @
+`51abf530`), "Output tokens (full)" vs requested budget. Measurement
+discipline note: these are the numbers with ALL fixes in this pass applied,
+including the §6 disclosure line (~60 meta tokens at every budget); an
+intermediate sweep taken between fix 1 and fix 6 read ~60 lower
+(e.g. 8,000→7,269) and briefly appeared in the changelog — corrected there,
+with the delta explained rather than papered over. Rerunning at a different
+black HEAD will shift symbol content and therefore these numbers; pin the
+SHA to compare.**
 
 | Budget | Before | After | |
 |---|---|---|---|
@@ -77,7 +84,10 @@ a second, stronger lexical baseline; a true dense run is still an open item
 and the harness records the encoder per-run so the two can never be
 conflated.
 
-**Results (full six-method re-run on pinned SHAs, `EVAL_V2_REPORT.md` §8):**
+**Results (full six-method re-run on pinned SHAs, `EVAL_V2_REPORT.md` §8;
+n=424 valid commits on this snapshot vs the frozen tables' 423 — repo HEADs
+moved between runs, so one more django commit survived mining; this is why
+runs are now SHA-pinned):**
 the new baseline beats BM25 on recall in **5/5 repos** (cross-repo mean
 0.664 vs 0.624), making it the strongest single baseline tested. The
 shipped hybrid still leads in 4/5 repos (mean recall 0.693, R@20 0.629 vs
