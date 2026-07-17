@@ -178,6 +178,98 @@ Pairs were criteria-mined from ~250 distinct Django commits and manually audited
 
 **Bottom line:** the call graph is not a competitive standalone retriever — full-code BM25 matches or beats it on most measures across five repos. It *is* a complementary signal that makes a hybrid the best available method, decisively so on the largest, most call-dense codebase tested. Claims should be phrased accordingly.
 
+**2026-07-17 update:** this conclusion was written against five methods with
+no dense-retrieval baseline. §8 adds one (with an honestly-labeled lexical
+fallback in the environment it ran in): the new baseline beats BM25 in 5/5
+repos, the hybrid still leads in 4/5, and **the hybrid loses to it on
+pydantic** — the graph-blind regime. "Best available method" now carries
+that qualification, and no claim is made against true dense embeddings
+until someone runs them (§8 explains exactly how).
+
+## 8. Embedding baseline re-run (2026-07-17)
+
+An external audit correctly flagged that none of the five methods above is a
+dense/embedding retriever — the comparison a developer evaluating this tool
+against modern RAG-for-code tooling actually wants. `EmbeddingBaseline` was
+added as a sixth method, run through the identical per-commit pipeline
+(same mining, budgets, CIs, strata, buckets).
+
+**What this run is, and is not.** The baseline prefers
+sentence-transformers/all-MiniLM-L6-v2 (local, no paid API). The environment
+this re-run executed in blocks huggingface.co downloads, so it fell back to
+the explicitly-labeled **`tfidf-cosine-approx`** encoder: pure-Python TF-IDF
+cosine over the same identifier tokenization BM25 uses. **These numbers are
+therefore a second lexical-vector baseline, NOT a dense-embedding
+comparison.** They still answer a real question — does a differently-weighted
+lexical vector space beat BM25 and the hybrid? — but the true dense run
+remains open, and every summary records `config.embedding_encoder` so the two
+can never be conflated. Anyone with unrestricted network can produce the
+dense numbers by installing sentence-transformers and re-running.
+
+**Snapshot pinning.** The §2 tables above are the frozen 2026-07-10 run;
+repo HEADs have moved since, and a different HEAD mines different commits.
+Mixing one new column into those tables would corrupt them, so this section
+reports a **complete six-method re-run on one pinned snapshot** (now recorded
+in every summary): click `7df2f823`, django `274df4df`, flask `36e4a824`,
+httpx `b5addb64`, pydantic `859945e4`. Existing methods' numbers shift a few
+points vs §2 for exactly this reason; rankings are consistent.
+
+### Per-commit aggregates, all six methods (hit / prec / recall / F1 / R@20)
+
+| Repo (n) | diffcontext | hybrid | bm25 | embedding | samefile | random_k |
+|---|---|---|---|---|---|---|
+| click (95) | .723/.064/.574/.084/.509 | **.881**/.069/**.734**/.112/**.647** | .856/.075/.653/.120/.625 | .868/.069/.683/.113/.625 | .637/.056/.488/.091/.270 | .203/.008/.075/.010/.053 |
+| django (87) | .795/.040/.664/.064/.629 | **.899**/.052/**.781**/.086/**.737** | .791/.051/.613/.082/.544 | .861/.045/.723/.071/.580 | .762/.120/.631/.159/.530 | .019/.000/.004/.001/.001 |
+| flask (74) | .773/.057/.579/.081/.493 | **.834**/.071/**.670**/.101/**.614** | .803/.078/.612/.109/.583 | .823/.068/.634/.098/.587 | .669/.091/.508/.113/.419 | .300/.018/.115/.021/.059 |
+| httpx (83) | .823/.060/.579/.079/.462 | **.934**/.092/**.755**/.124/**.646** | .902/.113/.709/.142/.608 | .911/.105/.719/.134/.602 | .860/.140/.599/.165/.414 | .470/.022/.165/.028/.054 |
+| pydantic (85) | .621/.058/.380/.090/.353 | .752/.078/.524/.123/.502 | .763/.104/.531/.154/.512 | **.781**/.094/**.561**/.141/**.532** | .547/.093/.312/.112/.256 | .067/.003/.025/.004/.023 |
+
+### Cross-repo mean (unweighted over 5 repos, this snapshot)
+
+| Method | Hit | Prec | Recall | F1 | R@20 |
+|---|---|---|---|---|---|
+| diffcontext | 0.747 | 0.056 | 0.555 | 0.080 | 0.489 |
+| **hybrid** | **0.860** | 0.072 | **0.693** | 0.109 | **0.629** |
+| embedding | 0.849 | 0.076 | 0.664 | 0.111 | 0.585 |
+| bm25 | 0.823 | 0.084 | 0.624 | 0.121 | 0.574 |
+| samefile | 0.695 | 0.100 | 0.508 | 0.128 | 0.378 |
+| random_k | 0.212 | 0.010 | 0.077 | 0.013 | 0.038 |
+
+### Failure-mode buckets (Django, same criteria as §5)
+
+| Bucket | n | diffcontext | bm25 | embedding | hybrid |
+|---|---|---|---|---|---|
+| thematic_no_edge | 20 | 0% | 50% | 50% | 15% |
+| backend_dispatch | 20 | 0% | 30% | 30% | 25% |
+| cross_subsystem | 20 | 0% | 0% | **15%** | 0% |
+
+### Honest reading
+
+- **The embedding baseline is the strongest single baseline tested.** It
+  beats BM25 on recall in **5/5 repos** (mean 0.664 vs 0.624) and on hit
+  rate in 5/5. The "beats BM25" bar the earlier sections cleared is
+  therefore no longer the relevant bar.
+- **The hybrid still leads — in 4 of 5 repos, not 5.** Mean recall 0.693 vs
+  0.664 and R@20 0.629 vs 0.585 favor the hybrid, with the largest margins
+  where the call graph is densest (django +5.8 recall points, click +5.1).
+  On **pydantic the hybrid loses to the embedding baseline outright**
+  (recall 0.524 vs 0.561, hit 0.752 vs 0.781): where metaclass-generated
+  code blinds the graph, the graph's 0.5 blend weight actively costs recall
+  against a good lexical-vector retriever. That is the adaptive-blend
+  roadmap item stated as a measured loss, not a hypothesis.
+- **Cross-subsystem: 3/20 vs everyone else's 0/20.** The TF-IDF vector's
+  soft term weighting recovered 3 pairs that BM25, graph, and hybrid all
+  miss. With n=20 and pairs clustered in few commits this is weak evidence,
+  but it suggests the "structural ceiling" of §5 is a ceiling for the
+  *shipped* signals, and a semantic leg may lower it — one more reason the
+  missing true-dense run matters.
+- **What a true dense model would change is unknown.** all-MiniLM-L6-v2
+  typically beats TF-IDF on natural-language similarity; on code the gap is
+  less predictable. Until someone runs it, the defensible statement is:
+  the hybrid beats every lexical method tested, including a TF-IDF-cosine
+  stand-in for dense retrieval, in 4/5 repos — and loses where its graph
+  leg is blind. No claim is made against actual embedding models yet.
+
 ---
 *Reproduce: `python benchmarks/eval_v2_hardened.py` (all repos + Django buckets). Raw per-case data: `benchmarks/results/eval_v2/<repo>_cases.csv` (one row per commit × query × method). Summaries with CIs and strata: `<repo>_summary.json`, `all_summaries.json`.*
 
