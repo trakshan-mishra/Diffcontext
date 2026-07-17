@@ -8,6 +8,37 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Fixed (token budget now bounds the full output — follow-up to the earlier accounting fix)
+- The earlier "honest token accounting" fix (below) made the meta-header
+  budget-proportionate and made `token_estimate` report the full output —
+  but it did not fix the selector/compiler mismatch in the code section
+  itself: `select_context()` still budgeted on `token_count(symbol.code)`
+  alone, while `compile_context()` rendered each selected symbol with a
+  `FILE:`/`FUNCTION:` header and a CALLERS/CALLEES relationship block on
+  top of the code. The gap reproduced on psf/black at every budget from
+  500 to 8000 as a systematic 25-41% overshoot of `--max-tokens` (e.g.
+  8000 requested → 11,268 emitted).
+- The per-symbol rendering is now a shared function
+  (`compiler.render_symbol_block`); the selector measures each candidate
+  at its full rendered size (using a pessimistic empty selected-set so
+  every relationship entry counts its longer `[NOT IN CONTEXT]` form),
+  and the compiler enforces the budget against the final full output with
+  a post-render trim pass that drops the lowest-scored non-changed
+  symbols (disclosed in the DROPPED manifest) until the output fits.
+  Same black sweep now: 1000→932, 2000→1,682, 4000→3,600, 8000→7,269.
+- Remaining bounded exception, on purpose: the meta-header and the changed
+  symbols themselves are never dropped (disclosure and the diff are the
+  point of the output), so when that floor alone exceeds the requested
+  budget the floor is emitted — e.g. the black case at `--max-tokens 500`
+  emits 713 tokens (355 meta + 358 changed-symbol block). The overshoot is
+  visible in the meta's own token lines, never silent.
+  Regression-tested by `tests/test_token_budget.py`, which fails against
+  the previous behavior.
+- Library callers of `select_context()` that don't pass the new optional
+  `graph` argument keep the old code-only accounting (and its overshoot);
+  `pipeline.compile()` passes the graph, so the CLI and public API get the
+  corrected behavior.
+
 ### Fixed (honest token accounting under tight budgets)
 - `ContextPackage.token_estimate` now reports the FULL output (meta-header +
   relationship annotations + code + suggestions) — the number an agent

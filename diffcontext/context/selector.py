@@ -19,11 +19,26 @@ Fix vs previous version:
   SKIP IT ENTIRELY rather than including it at a lie. This means the
   selector tries smaller candidates next instead of filling context with
   one huge function and then claiming there's room for more.
+
+Fix vs previous version (token-accounting mismatch):
+  The selector used to budget on token_count(symbol.code) — the bare
+  function body — while the compiler renders each symbol with a FILE:/
+  FUNCTION: header and a CALLERS/CALLEES relationship block on top of the
+  code, and reports tokens over that full rendered block. The gap between
+  what was budgeted and what was emitted produced a systematic 25-41%
+  overshoot of --max-tokens (reproduced on psf/black at every budget from
+  500 to 8000). Now, when the caller passes the call graph, each candidate
+  is measured with compiler.render_symbol_block() — the exact rendering the
+  compiler will emit — using a pessimistic empty selected_set so every
+  relationship entry counts the longer " [NOT IN CONTEXT]" tag. Without a
+  graph the old code-only behavior is preserved so existing library callers
+  don't silently change.
 """
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from ..models import Symbol
+from .compiler import build_reverse_graph, relationship_cap, render_symbol_block
 
 
 # A single symbol can burn at most this fraction of the total budget.
@@ -38,6 +53,9 @@ def select_context(
     max_tokens: Optional[int] = None,
     token_counter: Optional[Callable[[str], int]] = None,
     top_k: Optional[int] = None,
+    graph: Optional[Dict[str, List[str]]] = None,
+    reverse: Optional[Dict[str, Set[str]]] = None,
+    rel_cap: Optional[int] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -56,6 +74,17 @@ def select_context(
             retrieval recall plateaus around 20 symbols per changed symbol
             while precision keeps degrading, so a caller optimizing for
             signal-to-noise should pass ~20 * len(changed).
+        graph: Optional call graph (id -> [dep ids]). When provided, each
+            candidate is budgeted at its FULL rendered size (headers +
+            relationship annotations + code) via render_symbol_block, which
+            is what the compiler actually emits. Omit for the legacy
+            code-only accounting (kept for backward compatibility, but it
+            undercounts and the compiled output will overshoot the budget).
+        reverse: Optional precomputed reverse graph (callee -> callers).
+            Derived from `graph` when absent.
+        rel_cap: Relationship-block entry cap used for size measurement;
+            defaults to compiler.relationship_cap(max_tokens) so selector
+            and compiler always measure the same rendering.
 
     Returns:
         (selected_ids, dropped_ids)
@@ -66,6 +95,22 @@ def select_context(
 
     if not scores:
         return list(changed), []
+
+    if graph is not None and reverse is None:
+        reverse = build_reverse_graph(graph)
+    if rel_cap is None:
+        rel_cap = relationship_cap(max_tokens)
+
+    def rendered_size(sym_id: str) -> int:
+        """Tokens this symbol will actually cost in the compiled output."""
+        if graph is None:
+            return count(symbols[sym_id].code)
+        # Empty selected_set = every relationship entry gets the longer
+        # " [NOT IN CONTEXT]" tag = safe upper bound on the real rendering.
+        return count(render_symbol_block(
+            sym_id, symbols, scores.get(sym_id, 0), graph, reverse,
+            set(), rel_cap=rel_cap,
+        ))
 
     per_sym_cap = int(max_tokens * MAX_SINGLE_SYMBOL_FRACTION) if max_tokens else None
 
@@ -78,7 +123,7 @@ def select_context(
     for sym_id in changed:
         if sym_id in symbols:
             result.append(sym_id)
-            current_tokens += count(symbols[sym_id].code)
+            current_tokens += rendered_size(sym_id)
 
     # ── Pass 2: everything else ranked by score, budget-gated ────────────
     scored = sorted(
@@ -96,7 +141,7 @@ def select_context(
             dropped.append(sym_id)
             continue
 
-        sym_tokens = count(symbols[sym_id].code)
+        sym_tokens = rendered_size(sym_id)
 
         # FIX: if the symbol exceeds the per-symbol cap, skip it entirely.
         # Previous code counted the capped amount toward the budget but
