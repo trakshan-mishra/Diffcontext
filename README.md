@@ -74,7 +74,7 @@ So DiffContext blends all three — **graph 0.5 / BM25 0.35 / same-file
 0.15** — the exact weights that won recall on 4 of 5 benchmark repos.
 `--graph-only` turns the blend off when you want structural certainty only.
 
-## Quick start (5 commands)
+## Quick start
 
 ```bash
 git clone https://github.com/trakshan-mishra/Diffcontext.git
@@ -114,6 +114,54 @@ diffcontext blast --changed ./src/black/__init__.py:format_file_contents
 # → correctly reports that blackd (the HTTP server, a DIFFERENT package)
 #   is affected — an edge that only exists via functools.partial
 ```
+
+## Don't trust our benchmarks — run yours (2 minutes)
+
+Every retrieval number in this README was measured on repos *we* picked.
+`verify` exists so you can grade DiffContext against **your** repo's real
+history and your own known-true expectations — and get an honest answer,
+including "this tool doesn't work well here."
+
+```bash
+cd your-repo
+
+# 1. Mine 20 test cases from YOUR git history (symbols that actually
+#    changed together in past commits) and grade retrieval against them
+diffcontext verify --from-history 20 --calibrate
+
+# 2. Save the mined cases, edit out the noise, keep what you know is true
+diffcontext verify --from-history 20 --out cases.json
+
+# 3. Re-run your curated suite any time — exit code 1 on failure, so it
+#    can gate CI
+diffcontext verify --cases cases.json
+```
+
+Or write a case by hand — one JSON object per expectation you know is
+true about your codebase:
+
+```json
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "auth-touches-middleware",
+      "changed": ["./api/auth.py:validate_jwt"],
+      "must_include": ["./api/middleware.py:check_auth"],
+      "min_recall": 1.0
+    }
+  ]
+}
+```
+
+That case says: *"if I change `validate_jwt`, a sufficient context MUST
+contain `check_auth`."* Symbol names are typo-checked with fuzzy
+suggestions, so a wrong path fails loudly instead of silently passing.
+And if calibration finds the sufficiency score doesn't track measured
+recall on your repo, `verify` prints **NULL RESULT** in plain text rather
+than a decorative number — finding out the tool doesn't fit your repo *is*
+the feature. Full case format and methodology:
+[docs/VERIFY.md](docs/VERIFY.md).
 
 ## What you get back (and why it's shaped that way)
 
