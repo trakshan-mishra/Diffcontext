@@ -131,3 +131,35 @@ class TestMetaBudgetProportionality:
         # for, not just the code sections
         assert ctx.token_estimate == max(1, len(ctx.text) // 4)
         assert "Output tokens (full)" in ctx.text
+
+
+class TestStructuralCeilingCaveat:
+    """The meta-header must always disclose that graph confidence measures
+    STRUCTURAL completeness only — benchmarked cross-subsystem conceptual
+    co-changes score 0% recall for every static method (EVAL_V2_REPORT.md
+    failure taxonomy), so a confident '100%' line must never be readable as
+    'nothing was missed'. This is a disclosure, same category as the DROPPED
+    manifest: it may not be compacted away under any budget."""
+
+    CAVEAT = "STRUCTURAL completeness only"
+
+    def _compile_at(self, max_tokens):
+        syms = _make_symbols()
+        return compile_context(
+            syms, list(syms), ["./a.py:f"], {s: 50.0 for s in syms},
+            graph={"./a.py:f": ["./a.py:g"]}, max_tokens=max_tokens,
+        )
+
+    def test_caveat_present_at_every_budget(self):
+        # 60 is tighter than the meta's own floor — the floor path must
+        # still carry the disclosure; None is the unlimited path.
+        for budget in (60, 300, 2000, 50000, None):
+            ctx = self._compile_at(budget)
+            assert self.CAVEAT in ctx.text, f"caveat missing at max_tokens={budget}"
+            assert "cross-subsystem conceptual coupling" in ctx.text
+
+    def test_caveat_adjacent_to_graph_confidence(self):
+        ctx = self._compile_at(4000)
+        lines = ctx.text.split("\n")
+        conf_idx = next(i for i, l in enumerate(lines) if l.startswith("Graph confidence"))
+        assert self.CAVEAT in lines[conf_idx + 1]

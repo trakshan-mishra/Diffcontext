@@ -36,6 +36,20 @@ it as a ranked warning system. If calibration comes back flat or negative,
 proxy that doesn't track reality on your repo should not be trusted there,
 and knowing that is worth more than a decorative number.
 
+One class of insufficiency is **structurally invisible to every predictor
+above, by construction**: cross-subsystem conceptual coupling — code related
+to your change through shared *meaning* rather than any call, import, name,
+or file relationship. The canonical example from the benchmark's failure
+taxonomy: a settings flag and the security check that reads it through a
+config lookup. On hand-audited pairs of exactly this kind, graph, BM25, and
+the hybrid blend all scored **0/20 recall** (see
+`benchmarks/EVAL_V2_REPORT.md`). No static signal reaches these — a perfect
+sufficiency score and "graph confidence: 100%" are both fully consistent
+with such a partner existing and being absent from context. This is why the
+compiled meta-header carries a permanent note that graph confidence means
+*structural* completeness only, and why git co-change history (which does
+see this class) is the roadmap's fourth signal.
+
 ---
 
 ## Mode 1: sufficiency report
