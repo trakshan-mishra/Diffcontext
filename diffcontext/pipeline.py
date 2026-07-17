@@ -38,8 +38,42 @@ logger = logging.getLogger(__name__)
 
 
 def _suggest_similar_symbol(unknown_id: str, known_ids) -> Optional[str]:
-    """Fuzzy-match an unknown symbol ID against known ones (typo correction)."""
-    matches = difflib.get_close_matches(unknown_id, known_ids, n=1, cutoff=0.6)
+    """
+    Fuzzy-match an unknown symbol ID against known ones (typo correction).
+
+    Not plain difflib.get_close_matches over full IDs: symbol IDs share
+    long path prefixes, so difflib's quick-ratio prefilters pass nearly
+    every candidate and it computes a full ratio against the whole index
+    per unknown symbol (measured: ~2s per unknown on a 9k-symbol index —
+    dominated `verify --from-history` on a repo whose recent commits
+    renamed benchmark symbols). Instead, match on the name part:
+      1. exact name match first — a symbol that moved files (the common
+         churn case) resolves with a dict lookup, no fuzz at all;
+      2. otherwise fuzz over UNIQUE name parts only — short strings with
+         no shared prefixes, where the prefilters actually discriminate —
+         then pick the closest full ID within the winning name.
+    """
+    known_list = list(known_ids)
+    name = unknown_id.rsplit(":", 1)[1] if ":" in unknown_id else unknown_id
+
+    by_name: dict = {}
+    for k in known_list:
+        by_name.setdefault(k.rsplit(":", 1)[-1], []).append(k)
+
+    same_name = by_name.get(name)
+    if same_name:
+        # moved/renamed file — pick the closest full ID among exact
+        # name matches (tiny pool, full difflib is fine here)
+        matches = difflib.get_close_matches(unknown_id, same_name, n=1, cutoff=0.0)
+        return matches[0]
+
+    # Typo in the name part: fuzz over unique names only. Short strings
+    # without shared path prefixes let difflib's quick-ratio prefilters
+    # actually discriminate, and the pool is unique names, not every ID.
+    close = difflib.get_close_matches(name, by_name.keys(), n=1, cutoff=0.6)
+    if not close:
+        return None
+    matches = difflib.get_close_matches(unknown_id, by_name[close[0]], n=1, cutoff=0.0)
     return matches[0] if matches else None
 
 

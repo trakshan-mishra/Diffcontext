@@ -237,8 +237,11 @@ def cases_from_history(repo_path: str, max_cases: int = 30) -> List[Case]:
 # ---------------------------------------------------------------------------
 
 def _suggest(unknown: str, known) -> str:
-    matches = difflib.get_close_matches(unknown, known, n=1, cutoff=0.6)
-    return matches[0] if matches else ""
+    # Shared fast path — see _suggest_similar_symbol for why plain
+    # get_close_matches chokes on symbol IDs (long shared path prefixes
+    # defeat difflib's prefilters).
+    from ..pipeline import _suggest_similar_symbol
+    return _suggest_similar_symbol(unknown, known) or ""
 
 
 def run_cases(
