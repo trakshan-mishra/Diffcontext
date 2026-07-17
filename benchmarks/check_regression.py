@@ -25,6 +25,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from benchmarks.eval_v2_hardened import evaluate_repo
 
 # floors: repo -> {method: {metric: floor}}   (per-commit aggregates)
+#
+# Only the product's own methods (diffcontext, hybrid) have floors. Baselines
+# (bm25, embedding, samefile, random_k) are comparison points, not guarded
+# behavior — and the embedding baseline's numbers depend on which encoder is
+# installed in the environment (sentence-transformers vs the TF-IDF fallback),
+# so freezing a floor for it would make the gate flaky by construction.
 FLOORS = {
     "flask": {
         "diffcontext": {"hit": 0.65, "recall": 0.45},

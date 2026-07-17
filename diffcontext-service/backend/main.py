@@ -11,12 +11,15 @@ New in this version:
 """
 
 import ast
+import ipaddress
 import json
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -24,8 +27,9 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -132,6 +136,123 @@ class RootResponse(BaseModel):
     service: str
     docs: str
     endpoints: List[str]
+
+
+# ── /clone hardening: URL validation, size cap, rate limit ───────────────────
+#
+# The blast radius of an open /clone endpoint is real for self-hosters: it
+# can be pointed at internal git servers (SSRF-adjacent), used to fill the
+# disk with a huge repo (--depth=1 does not cap blob size), or hammered in a
+# loop. Hugging Face Spaces' sandboxed network happens to mitigate the first
+# one, but that's a property of where you deploy, not of this code — so the
+# code enforces its own floor. See "Security notes for self-hosters" in
+# diffcontext-service/README.md for what is and is NOT covered.
+
+MAX_CLONE_MB = int(os.environ.get("DIFFCONTEXT_MAX_CLONE_MB", "500"))
+CLONE_RATE_LIMIT = int(os.environ.get("DIFFCONTEXT_CLONE_RATE_LIMIT", "5"))
+CLONE_RATE_WINDOW_S = int(os.environ.get("DIFFCONTEXT_CLONE_RATE_WINDOW_S", "600"))
+
+
+def _hostname_of_git_url(git_url: str) -> str:
+    """Extract the host from https://host/..., http://host/..., or git@host:path."""
+    if git_url.startswith("git@"):
+        # scp-like syntax: git@host:owner/repo.git
+        rest = git_url[len("git@"):]
+        return rest.split(":", 1)[0]
+    parsed = urlparse(git_url)
+    return parsed.hostname or ""
+
+
+def _validate_clone_url(git_url: str) -> None:
+    """
+    Reject clone targets that resolve to loopback, link-local, or private
+    (RFC1918 / ULA) addresses. The hostname is resolved BEFORE cloning and
+    every resolved address must be public — one private A/AAAA record is
+    enough to reject, so a DNS name that round-robins between a public and
+    an internal address doesn't slip through.
+
+    Known residual risk (documented, not solved here): DNS rebinding — a
+    resolver returning a public IP now and a private one when git connects.
+    Closing that requires pinning the resolved IP for the actual connection,
+    which git does not expose; treat this check as a floor, not a boundary.
+    """
+    host = _hostname_of_git_url(git_url)
+    if not host:
+        raise HTTPException(400, "Could not parse a hostname from git URL.")
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise HTTPException(400, f"Hostname '{host}' does not resolve.")
+
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr.split("%")[0])
+        except ValueError:
+            continue
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise HTTPException(
+                400,
+                f"Refusing to clone from '{host}': resolves to a private/"
+                f"internal address ({addr}). Only public hosts are allowed.",
+            )
+
+
+def _dir_size_bytes(path: str) -> int:
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            fp = os.path.join(root, f)
+            try:
+                total += os.path.getsize(fp)
+            except OSError:
+                pass
+    return total
+
+
+def _check_clone_size(repo_path: str, tmp_dir: str) -> None:
+    """Reject and clean up clones over MAX_CLONE_MB (post-clone check —
+    --depth=1 bounds history, not blob size)."""
+    size_mb = _dir_size_bytes(repo_path) / (1024 * 1024)
+    if size_mb > MAX_CLONE_MB:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(
+            413,
+            f"Cloned repository is {size_mb:.0f}MB, over the "
+            f"{MAX_CLONE_MB}MB limit (DIFFCONTEXT_MAX_CLONE_MB).",
+        )
+
+
+class _RateLimiter:
+    """
+    Fixed-window per-key counter: CLONE_RATE_LIMIT requests per
+    CLONE_RATE_WINDOW_S seconds. In-memory and per-process on purpose —
+    fine for the single-instance deployments this service targets. A
+    multi-instance deployment needs a shared store (e.g. Redis) instead;
+    this class is the seam to replace.
+    """
+
+    def __init__(self, limit: int, window_s: int):
+        self.limit = limit
+        self.window_s = window_s
+        self._lock = threading.Lock()
+        self._hits: Dict[str, List[float]] = {}
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            hits = [t for t in self._hits.get(key, []) if now - t < self.window_s]
+            if len(hits) >= self.limit:
+                self._hits[key] = hits
+                return False
+            hits.append(now)
+            self._hits[key] = hits
+            return True
+
+
+_clone_limiter = _RateLimiter(CLONE_RATE_LIMIT, CLONE_RATE_WINDOW_S)
 
 
 # ── DiffContext pipeline helpers ──────────────────────────────────────────────
@@ -326,7 +447,7 @@ def list_repos():
 
 
 @app.post("/clone")
-def clone_repo(req: CloneRequest):
+def clone_repo(req: CloneRequest, request: Request):
     """
     Clone a public GitHub (or any public git) repository by URL,
     index it, and return a repo_id for use in all other endpoints.
@@ -337,9 +458,19 @@ def clone_repo(req: CloneRequest):
       "name": "flask"
     }
     """
+    client_ip = request.client.host if request.client else "unknown"
+    if not _clone_limiter.allow(client_ip):
+        raise HTTPException(
+            429,
+            f"Rate limit: max {CLONE_RATE_LIMIT} clones per "
+            f"{CLONE_RATE_WINDOW_S}s per IP. Try again later.",
+        )
+
     git_url = req.git_url.strip()
     if not git_url.startswith(("https://", "http://", "git@")):
         raise HTTPException(400, "Invalid git URL. Must start with https:// or git@")
+
+    _validate_clone_url(git_url)
 
     name = req.name or git_url.rstrip("/").split("/")[-1].replace(".git", "")
     tmp_dir = tempfile.mkdtemp(prefix="diffctx_clone_")
@@ -356,6 +487,8 @@ def clone_repo(req: CloneRequest):
     except subprocess.TimeoutExpired:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise HTTPException(408, "git clone timed out (120s). Try a smaller repo.")
+
+    _check_clone_size(repo_path, tmp_dir)
 
     py_files = list(Path(repo_path).rglob("*.py"))
     if not py_files:
