@@ -113,6 +113,7 @@ def compile_context(
     changed_ids: List[str],
     scores: Dict[str, float],
     graph: Optional[Dict[str, List[str]]] = None,
+    reverse: Optional[Dict[str, Set[str]]] = None,
     dropped_ids: Optional[List[str]] = None,
     skipped_files: Optional[List[str]] = None,
     notes: Optional[str] = None,
@@ -133,6 +134,9 @@ def compile_context(
         scores:         Impact scores for all scored symbols.
         graph:          Full call graph (id -> [dep ids]). Enables relationship
                         annotations and confidence calculation.
+        reverse:        Pre-built reverse graph (callee -> callers), e.g.
+                        RepositoryIndex.reverse_graph. Derived from `graph`
+                        when absent.
         dropped_ids:    Symbols that were scored but cut by token budget.
         skipped_files:  Files that raised SyntaxError (graph has holes here).
         notes:          Optional user notes injected into meta header.
@@ -151,8 +155,9 @@ def compile_context(
 
     changed_set = set(changed_ids)
 
-    # Build reverse graph for caller annotation
-    reverse = build_reverse_graph(graph)
+    # Reverse graph for caller annotation (build only if not supplied)
+    if reverse is None:
+        reverse = build_reverse_graph(graph)
 
     # Graph confidence: fraction of edges that point to a known symbol
     graph_confidence = _compute_confidence(graph, symbols)

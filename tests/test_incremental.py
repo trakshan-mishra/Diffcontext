@@ -28,6 +28,15 @@ def _graph_as_comparable(graph):
     return {k: set(v) for k, v in graph.items()}
 
 
+def _reverse_of(graph):
+    """From-scratch reverse graph, for comparing against the cached one."""
+    rev = {}
+    for caller, callees in graph.items():
+        for callee in callees:
+            rev.setdefault(callee, set()).add(caller)
+    return rev
+
+
 def _fresh_index(repo):
     """Full rebuild with no cache influence."""
     db = os.path.join(repo, ".diffcontext_cache.db")
@@ -172,3 +181,33 @@ class TestIncrementalUpdate:
         from diffcontext.models import RepositoryIndex
         with pytest.raises(ValueError):
             RepositoryIndex().update(["x.py"])
+
+
+class TestReverseGraphCache:
+    """reverse_graph is computed once per index state, not per access."""
+
+    def test_cached_between_accesses(self, repo):
+        idx = _fresh_index(repo)
+        rev = idx.reverse_graph
+        assert idx.reverse_graph is rev          # same object, not a rebuild
+        assert rev == _reverse_of(idx.graph)
+
+    def test_invalidated_by_update(self, repo):
+        idx = _fresh_index(repo)
+        stale = idx.reverse_graph
+
+        target = None
+        for root, _dirs, files in os.walk(repo):
+            for f in sorted(files):
+                if f.endswith(".py") and "__init__" not in f:
+                    target = os.path.join(root, f)
+                    break
+            if target:
+                break
+        with open(target, "a") as f:
+            f.write("\n\ndef rev_cache_probe():\n    return 1\n")
+        idx.update([target])
+
+        rebuilt = idx.reverse_graph
+        assert rebuilt is not stale              # cache dropped on update
+        assert rebuilt == _reverse_of(idx.graph)
