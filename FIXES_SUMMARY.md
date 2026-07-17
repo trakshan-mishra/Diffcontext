@@ -75,7 +75,19 @@ explicitly-labeled `tfidf-cosine-approx` encoder — a lexical-vector
 approximation, **not** true dense retrieval. The results below are therefore
 a second, stronger lexical baseline; a true dense run is still an open item
 and the harness records the encoder per-run so the two can never be
-conflated. {EMBEDDING_RESULTS}
+conflated.
+
+**Results (full six-method re-run on pinned SHAs, `EVAL_V2_REPORT.md` §8):**
+the new baseline beats BM25 on recall in **5/5 repos** (cross-repo mean
+0.664 vs 0.624), making it the strongest single baseline tested. The
+shipped hybrid still leads in 4/5 repos (mean recall 0.693, R@20 0.629 vs
+0.585) — but **loses to the embedding baseline outright on pydantic**
+(0.524 vs 0.561 recall), where metaclass-generated code blinds the call
+graph. That unflattering result is stated as such in the report, and it is
+the measured case for the adaptive-blend roadmap item. In the django
+failure buckets the baseline also recovered 3/20 cross-subsystem pairs
+where graph, BM25, and hybrid all score 0/20 (weak evidence at n=20, noted
+as such).
 
 ## 4. (Medium) Language-scope claim corrected
 
