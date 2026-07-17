@@ -12,7 +12,10 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 - Benchmarked on **423 real commits across django, flask, click, httpx,
   pydantic** — plus independent validation runs on black and requests
 - **~2× the recall of grep at every token budget** on real co-change ground
-  truth ([details below](#does-it-actually-work-measured-not-claimed))
+  truth — at **~5-10% precision**: most of what's retrieved is supporting
+  context around the change, not the exact co-change set, so you get a wide
+  net with the right things in it, not a curated shortlist
+  ([details below](#does-it-actually-work-measured-not-claimed))
 - Retrieval quality is **CI-gated**: every push re-runs the benchmark and
   fails the build if quality drops
 
@@ -228,6 +231,16 @@ budget sweep, hand-audited failure taxonomy — in
 
 Independent validation on repos never used for tuning: **black** hybrid
 hit 0.901 / recall 0.720, **requests** hit 0.969 / recall 0.774.
+
+The flip side of that recall, stated as plainly as the recall itself:
+cross-repo mean **precision is 0.075 hybrid / 0.060 graph-only** — roughly
+92-94% of retrieved symbols are not in the ground-truth co-change set.
+They're mostly structurally adjacent supporting context (callers, callees,
+same-file siblings), which is often what you want an LLM to see, but if
+you're paying per token, precision — not recall — is this product's real
+problem, and the benchmark report says so in exactly those words. The full
+precision/recall tradeoff, including the per-method sweep, is in
+[benchmarks/EVAL_V2_REPORT.md](benchmarks/EVAL_V2_REPORT.md).
 
 ### Head-to-head vs grep, at identical token budgets
 
