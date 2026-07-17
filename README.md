@@ -420,8 +420,13 @@ Ordered by measured impact (see the failure taxonomy above):
 5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
    (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
    component weights fit on accumulated case results
-6. **TypeScript support** — the architecture is language-agnostic; only
-   `parser.py`/`graph_builder.py` are Python-specific
+6. **TypeScript support** — Python only, today. The surrounding pipeline
+   (scoring, selection, compilation, caching) is language-agnostic by
+   design, but the parser and graph builder — which do all symbol
+   extraction and graph construction, i.e. the part that makes the tool
+   work — are built on Python's `ast` and a second language requires
+   implementing both from scratch against that language's AST. For any
+   JS/TS/Go/Rust/Java repo, this tool currently retrieves nothing.
 
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 
