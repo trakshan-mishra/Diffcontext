@@ -25,12 +25,14 @@ covered by any stability expectation.
   and the compiler enforces the budget against the final full output with
   a post-render trim pass that drops the lowest-scored non-changed
   symbols (disclosed in the DROPPED manifest) until the output fits.
-  Same black sweep now: 1000→932, 2000→1,682, 4000→3,600, 8000→7,269.
+  Same black sweep now (black @ `51abf530`, and including the structural-
+  ceiling disclosure line added in the same release, which costs ~60 meta
+  tokens at every budget): 1000→992, 2000→1,743, 4000→3,660, 8000→7,329.
 - Remaining bounded exception, on purpose: the meta-header and the changed
   symbols themselves are never dropped (disclosure and the diff are the
   point of the output), so when that floor alone exceeds the requested
   budget the floor is emitted — e.g. the black case at `--max-tokens 500`
-  emits 713 tokens (355 meta + 358 changed-symbol block). The overshoot is
+  emits 774 tokens (416 meta + 358 changed-symbol block). The overshoot is
   visible in the meta's own token lines, never silent.
   Regression-tested by `tests/test_token_budget.py`, which fails against
   the previous behavior.
