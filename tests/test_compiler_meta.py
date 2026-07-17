@@ -163,3 +163,46 @@ class TestStructuralCeilingCaveat:
         lines = ctx.text.split("\n")
         conf_idx = next(i for i, l in enumerate(lines) if l.startswith("Graph confidence"))
         assert self.CAVEAT in lines[conf_idx + 1]
+
+
+class TestDocstringCache:
+    """
+    _get_module_docstring is called once per repo file on EVERY compile
+    (architecture snapshot). Without the mtime+size memo each compile
+    re-parses the whole repo — measured at 67% of `verify --from-history`
+    runtime. The memo must also invalidate when a harness edits a file
+    between compiles in the same process.
+    """
+
+    def test_cache_hit_skips_reparse(self, tmp_path, monkeypatch):
+        import diffcontext.context.compiler as compiler_mod
+        f = tmp_path / "m.py"
+        f.write_text('"""First line doc."""\n')
+        compiler_mod._DOCSTRING_CACHE.clear()
+
+        assert compiler_mod._get_module_docstring(str(f)) == "First line doc."
+
+        calls = {"n": 0}
+        real_parse = compiler_mod.ast.parse
+
+        def counting_parse(*a, **kw):
+            calls["n"] += 1
+            return real_parse(*a, **kw)
+
+        monkeypatch.setattr(compiler_mod.ast, "parse", counting_parse)
+        assert compiler_mod._get_module_docstring(str(f)) == "First line doc."
+        assert calls["n"] == 0  # served from cache, no re-parse
+
+    def test_cache_invalidates_on_file_change(self, tmp_path):
+        import os
+        import diffcontext.context.compiler as compiler_mod
+        f = tmp_path / "m.py"
+        f.write_text('"""Old doc."""\n')
+        compiler_mod._DOCSTRING_CACHE.clear()
+        assert compiler_mod._get_module_docstring(str(f)) == "Old doc."
+
+        f.write_text('"""New doc, edited mid-session."""\n')
+        # force a distinct mtime even on coarse-granularity filesystems
+        st = os.stat(f)
+        os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+        assert compiler_mod._get_module_docstring(str(f)) == "New doc, edited mid-session."

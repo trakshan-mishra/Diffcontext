@@ -75,6 +75,25 @@ class TestScanner:
         files = find_python_files(str(tmp_path))
         assert not any("__pycache__" in f for f in files)
 
+    def test_gitignored_vendored_dir_not_indexed(self, tmp_path):
+        # A vendored checkout (cloned benchmark repo, third-party snapshot)
+        # is exactly what a hardcoded exclusion list can't anticipate — the
+        # scanner must honor .gitignore instead of indexing it.
+        import subprocess
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        (tmp_path / "mine.py").write_text("def f():\n    return 1\n")
+        (tmp_path / ".gitignore").write_text("vendored/\n")
+        vend = tmp_path / "vendored"
+        vend.mkdir()
+        (vend / "huge_dep.py").write_text("def g():\n    return 2\n")
+        subprocess.run(["git", "add", "mine.py", ".gitignore"], cwd=tmp_path, check=True)
+        # untracked-but-not-ignored files must still be found
+        (tmp_path / "new_untracked.py").write_text("def h():\n    return 3\n")
+
+        files = find_python_files(str(tmp_path))
+        names = {f.rsplit("/", 1)[-1] for f in files}
+        assert names == {"mine.py", "new_untracked.py"}
+
 
 # ---- Parser tests ----
 
