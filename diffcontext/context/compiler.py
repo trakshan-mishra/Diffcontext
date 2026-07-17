@@ -42,6 +42,68 @@ def _get_module_docstring(abs_file_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Per-symbol rendering — shared by compiler (emission) and selector (budgeting)
+# ---------------------------------------------------------------------------
+
+def relationship_cap(max_tokens: Optional[int]) -> int:
+    """
+    How many caller/callee entries a relationship block may list per symbol.
+    Hub symbols carry long annotations; under a tight budget cap them harder
+    so annotations can't crowd out actual code. Single source of truth so the
+    selector budgets with the same cap the compiler renders with.
+    """
+    return 3 if (max_tokens and max_tokens < 2000) else 6
+
+
+def render_symbol_block(
+    sym_id: str,
+    symbols: Dict[str, Symbol],
+    score: float,
+    graph: Optional[Dict[str, List[str]]],
+    reverse: Dict[str, Set[str]],
+    selected_set: Set[str],
+    rel_cap: int = 6,
+) -> str:
+    """
+    Render one symbol exactly as it appears in the compiled code section:
+
+        FILE: {file}
+        FUNCTION: {name} (score: {score})
+        {CALLERS/CALLEES relationship block}
+        {code}
+
+    The selector calls this too (with a pessimistic empty selected_set, so
+    every relationship entry carries the longer " [NOT IN CONTEXT]" tag) to
+    budget against what will actually be emitted — budgeting on bare
+    symbol.code alone undercounted headers + annotations and produced a
+    systematic 25-41% budget overshoot (see CHANGELOG).
+    """
+    sym = symbols[sym_id]
+    file_name, func_name = sym_id.split(":", 1)
+    rel_block = _build_relationship_block(
+        sym_id, graph, reverse, selected_set, symbols, cap=rel_cap
+    )
+    return (
+        f"FILE: {file_name}\n"
+        f"FUNCTION: {func_name} (score: {score:.0f})\n"
+        + rel_block +
+        f"\n{sym.code}"
+    )
+
+
+def build_reverse_graph(
+    graph: Optional[Dict[str, List[str]]],
+) -> Dict[str, Set[str]]:
+    """callee -> set(callers). Shared by compiler and selector."""
+    reverse: Dict[str, Set[str]] = {}
+    if graph:
+        for caller, callees in graph.items():
+            for callee in callees:
+                reverse.setdefault(callee, set()).add(caller)
+    return reverse
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -87,15 +149,10 @@ def compile_context(
     skipped_files = skipped_files or []
     count = token_counter or (lambda text: max(1, len(text) // 4))
 
-    changed_set  = set(changed_ids)
-    selected_set = set(selected_ids)
+    changed_set = set(changed_ids)
 
     # Build reverse graph for caller annotation
-    reverse: Dict[str, Set[str]] = {}
-    if graph:
-        for caller, callees in graph.items():
-            for callee in callees:
-                reverse.setdefault(callee, set()).add(caller)
+    reverse = build_reverse_graph(graph)
 
     # Graph confidence: fraction of edges that point to a known symbol
     graph_confidence = _compute_confidence(graph, symbols)
@@ -104,115 +161,156 @@ def compile_context(
     total_repo_code   = "\n\n".join(s.code for s in symbols.values())
     total_repo_tokens = count(total_repo_code)
 
-    # --- Structured items: the base representation ---
-    items: List[ContextItem] = []
-    for sym_id in selected_ids:
-        if sym_id not in symbols:
-            continue
-        sym   = symbols[sym_id]
-        score = scores.get(sym_id, 0)
-        if sym_id in changed_set:
-            role = "changed"
-        elif score >= 70:
-            role = "impacted"
-        else:
-            role = "dependency"
-        items.append(ContextItem(
-            symbol_id      = sym_id,
-            code           = sym.code,
-            score          = score,
-            role           = role,
-            callers        = sorted(reverse.get(sym_id, set())),
-            callees        = list(graph.get(sym_id, [])) if graph else [],
-            token_estimate = count(sym.code),
-        ))
+    rel_cap = relationship_cap(max_tokens)
 
-    # --- Render text sections from the items ---
-    sections: Dict[str, List[str]] = {"CHANGED": [], "IMPACTED": [], "DEPENDENCIES": []}
-    section_of_role = {"changed": "CHANGED", "impacted": "IMPACTED", "dependency": "DEPENDENCIES"}
+    def _assemble(sel_ids: List[str], drop_ids: List[str]):
+        """Build items + full text (with the {FULL_OUTPUT_TOKENS} placeholder
+        unsubstituted) for one candidate selection."""
+        sel_set = set(sel_ids)
 
-    # Hub symbols carry long caller/callee annotations; under a tight budget
-    # cap them harder so annotations can't crowd out actual code.
-    rel_cap = 3 if (max_tokens and max_tokens < 2000) else 6
+        items: List[ContextItem] = []
+        for sym_id in sel_ids:
+            if sym_id not in symbols:
+                continue
+            sym   = symbols[sym_id]
+            score = scores.get(sym_id, 0)
+            if sym_id in changed_set:
+                role = "changed"
+            elif score >= 70:
+                role = "impacted"
+            else:
+                role = "dependency"
+            items.append(ContextItem(
+                symbol_id      = sym_id,
+                code           = sym.code,
+                score          = score,
+                role           = role,
+                callers        = sorted(reverse.get(sym_id, set())),
+                callees        = list(graph.get(sym_id, [])) if graph else [],
+                token_estimate = count(sym.code),
+            ))
 
-    for item in items:
-        file_name, func_name = item.symbol_id.split(":", 1)
-        rel_block = _build_relationship_block(
-            item.symbol_id, graph, reverse, selected_set, symbols, cap=rel_cap
+        sections: Dict[str, List[str]] = {"CHANGED": [], "IMPACTED": [], "DEPENDENCIES": []}
+        section_of_role = {"changed": "CHANGED", "impacted": "IMPACTED", "dependency": "DEPENDENCIES"}
+
+        for item in items:
+            entry = render_symbol_block(
+                item.symbol_id, symbols, item.score, graph, reverse,
+                sel_set, rel_cap=rel_cap,
+            )
+            sections[section_of_role[item.role]].append(entry)
+
+        parts = []
+        for label, entries in sections.items():
+            if entries:
+                parts.append(f"=== {label} SYMBOLS ===\n")
+                parts.append("\n\n---\n\n".join(entries))
+
+        code_text = "\n\n".join(parts)
+        context_tokens = count(code_text)
+
+        meta = _build_meta_header(
+            symbols        = symbols,
+            selected_ids   = sel_ids,
+            dropped_ids    = drop_ids,
+            skipped_files  = skipped_files,
+            changed_ids    = changed_ids,
+            graph          = graph,
+            reverse        = reverse,
+            graph_confidence = graph_confidence,
+            token_budget   = total_repo_tokens,   # not the budget cap; just total repo
+            context_tokens = context_tokens,
+            scores         = scores,
+            notes          = notes,
+            scoring_config = scoring_config,
+            max_tokens     = max_tokens,
+            count          = count,
         )
-        entry = (
-            f"FILE: {file_name}\n"
-            f"FUNCTION: {func_name} (score: {item.score:.0f})\n"
-            + rel_block +
-            f"\n{item.code}"
+
+        suggestions = _build_suggestions(
+            changed_ids      = changed_ids,
+            dropped_ids      = drop_ids,
+            skipped_files    = skipped_files,
+            graph            = graph,
+            reverse          = reverse,
+            graph_confidence = graph_confidence,
+            scores           = scores,
         )
-        sections[section_of_role[item.role]].append(entry)
 
-    parts = []
-    for label, entries in sections.items():
-        if entries:
-            parts.append(f"=== {label} SYMBOLS ===\n")
-            parts.append("\n\n---\n\n".join(entries))
+        full_text = meta + "\n\n" + code_text
+        if suggestions:
+            full_text += "\n\n" + suggestions
+        return items, full_text
 
-    code_text = "\n\n".join(parts)
-    context_tokens = count(code_text)
+    def _finalize_tokens(full_text: str) -> Tuple[str, int]:
+        # token_estimate is the FULL output (meta + annotated code +
+        # suggestions) — the number an agent harness actually pays, not just
+        # the code portion. Substituting the number changes the text length,
+        # so iterate to a fixed point (stabilizes after one or two rounds).
+        full_tokens = count(full_text.replace("{FULL_OUTPUT_TOKENS}", "0", 1))
+        candidate = full_text
+        for _ in range(3):
+            candidate = full_text.replace(
+                "{FULL_OUTPUT_TOKENS}", f"{full_tokens:,}", 1
+            )
+            recount = count(candidate)
+            if recount == full_tokens:
+                break
+            full_tokens = recount
+        return candidate, full_tokens
 
-    # --- Build meta-header (prepended so LLM reads it first) ---
-    meta = _build_meta_header(
-        symbols        = symbols,
-        selected_ids   = selected_ids,
-        dropped_ids    = dropped_ids,
-        skipped_files  = skipped_files,
-        changed_ids    = changed_ids,
-        graph          = graph,
-        reverse        = reverse,
-        graph_confidence = graph_confidence,
-        token_budget   = total_repo_tokens,   # not the budget cap; just total repo
-        context_tokens = context_tokens,
-        scores         = scores,
-        notes          = notes,
-        scoring_config = scoring_config,
-        max_tokens     = max_tokens,
-        count          = count,
-    )
+    # --- Budget enforcement: trim AFTER rendering, against real output ---
+    # The selector budgets per-symbol rendered blocks, but the meta header,
+    # section separators, and suggestions are only knowable post-render.
+    # Enforce max_tokens against the final full output by dropping the
+    # lowest-scored non-changed symbols until it fits. Changed symbols and
+    # the meta header are never dropped: the diff is the reason we're here,
+    # and the meta is the disclosure layer — so when meta + changed symbols
+    # alone exceed the budget, that floor is emitted as-is (and the meta's
+    # own token lines report the real number, so the overshoot is visible,
+    # never silent).
+    selected_work = [s for s in selected_ids if s in symbols]
+    dropped_work  = list(dropped_ids)
 
-    # --- Build suggestions block (appended at bottom) ---
-    suggestions = _build_suggestions(
-        changed_ids      = changed_ids,
-        dropped_ids      = dropped_ids,
-        skipped_files    = skipped_files,
-        graph            = graph,
-        reverse          = reverse,
-        graph_confidence = graph_confidence,
-        scores           = scores,
-    )
+    while True:
+        items, full_text = _assemble(selected_work, dropped_work)
+        full_text, full_tokens = _finalize_tokens(full_text)
 
-    full_text = meta + "\n\n" + code_text
-    if suggestions:
-        full_text += "\n\n" + suggestions
-
-    # token_estimate is the FULL output (meta + annotated code + suggestions)
-    # — the number an agent harness actually pays, not just the code portion.
-    # Substituting the number changes the text length, so iterate to a fixed
-    # point (the digit count stabilizes after one or two rounds).
-    full_tokens = count(full_text.replace("{FULL_OUTPUT_TOKENS}", "0", 1))
-    for _ in range(3):
-        candidate = full_text.replace(
-            "{FULL_OUTPUT_TOKENS}", f"{full_tokens:,}", 1
-        )
-        recount = count(candidate)
-        if recount == full_tokens:
+        if max_tokens is None or full_tokens <= max_tokens:
             break
-        full_tokens = recount
-    full_text = candidate
+
+        droppable = [s for s in selected_work if s not in changed_set]
+        if not droppable:
+            break  # non-compressible floor: meta + changed symbols only
+
+        # Drop enough of the lowest-scored symbols to cover the overshoot in
+        # one pass (re-checked next iteration), so the loop converges fast.
+        overshoot = full_tokens - max_tokens
+        droppable.sort(key=lambda s: scores.get(s, 0))
+        removed, freed = [], 0
+        for s in droppable:
+            removed.append(s)
+            freed += count(render_symbol_block(
+                s, symbols, scores.get(s, 0), graph, reverse,
+                set(selected_work), rel_cap=rel_cap,
+            ))
+            if freed >= overshoot:
+                break
+        removed_set = set(removed)
+        selected_work = [s for s in selected_work if s not in removed_set]
+        # Keep the dropped manifest ranked: trimmed symbols scored higher
+        # than selection-time drops, so they go first.
+        dropped_work = (
+            sorted(removed, key=lambda s: -scores.get(s, 0)) + dropped_work
+        )
 
     return ContextPackage(
         text               = full_text,
-        symbol_count       = len(selected_ids),
+        symbol_count       = len(selected_work),
         token_estimate     = full_tokens,
         total_repo_tokens  = total_repo_tokens,
         items              = items,
-        dropped_symbols    = dropped_ids,
+        dropped_symbols    = dropped_work,
         skipped_files      = skipped_files,
         graph_confidence   = graph_confidence,
     )

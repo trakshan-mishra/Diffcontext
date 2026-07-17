@@ -480,6 +480,7 @@ def compile(
         max_tokens=max_tokens,
         token_counter=token_counter,
         top_k=top_k,
+        graph=index.graph,
     )
 
     return compile_context(
