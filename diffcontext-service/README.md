@@ -120,3 +120,51 @@ Interactive docs: http://localhost:8000/docs
   "total_symbols_in_repo": 47
 }
 ```
+
+---
+
+## Security notes for self-hosters
+
+The `/clone` endpoint accepts arbitrary git URLs, which makes it a real
+attack surface anywhere the service can reach things you care about. The
+backend enforces a floor of protections; know what they do and do not cover
+before deploying outside a sandboxed environment.
+
+**What the code enforces:**
+
+- **Private-address rejection.** The hostname in a clone URL is resolved
+  before any git process runs; if any resolved address is loopback,
+  link-local, RFC1918-private, reserved, multicast, or unspecified, the
+  request is rejected with 400. This blocks the obvious SSRF-adjacent
+  cases (internal git servers, `localhost`, cloud metadata IPs like
+  `169.254.169.254`).
+- **Post-clone size cap.** After a successful `--depth=1` clone, the
+  on-disk size is measured and clones over the limit are deleted and
+  rejected with 413. Default 500MB; configure with
+  `DIFFCONTEXT_MAX_CLONE_MB`. (`--depth=1` bounds history, not blob size —
+  a single-commit repo with huge files still transfers fully, which is why
+  the check runs post-clone rather than pretending to predict size.)
+- **Per-IP rate limiting on `/clone`.** Default 5 clones per 10 minutes
+  per client IP; configure with `DIFFCONTEXT_CLONE_RATE_LIMIT` and
+  `DIFFCONTEXT_CLONE_RATE_WINDOW_S`. The limiter is in-memory and
+  per-process: correct for a single-instance deployment, useless across
+  replicas. A multi-instance deployment needs a shared store (e.g. Redis)
+  behind the same seam (`_RateLimiter` in `backend/main.py`).
+
+**What is NOT covered — add these yourself if you deploy publicly:**
+
+- **No authentication.** Every endpoint is open. Anyone who can reach the
+  service can clone repos onto your disk and burn CPU indexing them. Put
+  the service behind an auth proxy or add a token check before exposing it
+  beyond localhost / a sandboxed Space.
+- **DNS rebinding.** The private-address check resolves the hostname once,
+  before cloning; a resolver that returns a public address to the check and
+  a private one to git afterwards defeats it. Closing this requires pinning
+  the resolved IP for git's actual connection, which git doesn't expose.
+- **Rate limiting trusts the socket peer address.** Behind a reverse proxy,
+  every request appears to come from the proxy's IP; the limiter then
+  throttles all users collectively rather than per-user. Terminate this at
+  the proxy layer (or extend the limiter to read a trusted
+  `X-Forwarded-For`).
+- **Disk cleanup relies on the size check and container recycling.**
+  Accepted clones accumulate in the temp dir for the life of the instance.

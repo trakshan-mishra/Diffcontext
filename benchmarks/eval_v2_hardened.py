@@ -8,8 +8,13 @@ Addresses the known weaknesses of the original benchmark:
       repo); reports BOTH per-commit aggregates (a commit counts once) and
       the per-symbol breakdown (original format). Stratifies by ground-truth
       set size (1-2 / 3-5 / 6+).
-  W2  No baselines           -> BM25, same-file co-location, and Random-k
-      where k is matched per-query to DiffContext's retrieval count.
+  W2  No baselines           -> BM25, same-file co-location, Random-k
+      where k is matched per-query to DiffContext's retrieval count, and
+      an embedding (dense-retrieval) baseline: sentence-transformers/
+      all-MiniLM-L6-v2 when installed, else a TF-IDF-cosine fallback that
+      is explicitly labeled as a lexical approximation (the encoder used
+      is recorded in every summary's config.embedding_encoder — numbers
+      from the fallback must not be presented as a dense comparison).
   W3  Single retrieval budget -> precision/recall sweep at top-10/20/30/50/70
       for every method.
   W4  Anecdotal failure modes -> see failure_buckets() (Django): criteria-
@@ -58,7 +63,10 @@ from diffcontext.graph_builder import build_repository_graph
 from diffcontext.impact.blast_radius import build_reverse_graph
 
 from benchmarks.ground_truth import _get_changed_line_ranges, _find_functions_at_lines
-from benchmarks.baselines import BM25Baseline, FileCoLocationBaseline, RandomBaseline, _tokenize
+from benchmarks.baselines import (
+    BM25Baseline, EmbeddingBaseline, FileCoLocationBaseline, RandomBaseline,
+    _tokenize,
+)
 from benchmarks.eval_v1 import (
     _graph_ranked, _graph_scores, _normalize,
     truncate_by_token_budget, bootstrap_ci,
@@ -71,7 +79,7 @@ from benchmarks.eval_v1 import (
 TARGET_COMMITS   = 100          # distinct commits per repo (may find fewer)
 SCAN_LIMIT       = 6000         # how many commits of history to scan
 BUDGETS          = [10, 20, 30, 50, 70]
-METHODS          = ["diffcontext", "hybrid", "bm25", "samefile", "random_k"]
+METHODS          = ["diffcontext", "hybrid", "bm25", "embedding", "samefile", "random_k"]
 NOISY_SYMBOLS    = 20           # >= this many changed symbols -> flag commit
 NOISY_FILES      = 10           # >= this many changed .py files -> flag commit
 RESULTS_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "eval_v2")
@@ -200,6 +208,17 @@ def mean_metrics(rows: List[Dict[str, float]]) -> Dict[str, float]:
 # Per-repo evaluation
 # ---------------------------------------------------------------------------
 
+def _repo_head_sha(repo_path: str) -> str:
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo_path,
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout.strip() if r.returncode == 0 else "unknown"
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return "unknown"
+
+
 def _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25) -> List[str]:
     """graph+bm25+file blend (0.5/0.35/0.15), same recipe as eval_v1's winner."""
     g_scores = _normalize(_graph_scores(q, graph, reverse_graph))
@@ -243,6 +262,10 @@ def evaluate_repo(repo_path: str) -> Optional[Dict]:
     bm25 = BM25Baseline(symbols)
     file_bl = FileCoLocationBaseline(symbols)
     rand_bl = RandomBaseline(symbols)
+    t_emb = time.perf_counter()
+    emb_bl = EmbeddingBaseline(symbols)
+    print(f"  Embedding baseline encoder: {emb_bl.encoder} "
+          f"(indexed in {time.perf_counter()-t_emb:.0f}s)")
 
     # keep only commits with >=2 changed symbols still present at HEAD
     valid_commits = []
@@ -266,6 +289,7 @@ def evaluate_repo(repo_path: str) -> Optional[Dict]:
                 "diffcontext": g_ranked,
                 "hybrid": _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25),
                 "bm25": truncate_by_token_budget(symbols, bm25.retrieve(q, top_k=CANDIDATE_LIMIT)),
+                "embedding": truncate_by_token_budget(symbols, emb_bl.retrieve(q, top_k=CANDIDATE_LIMIT)),
                 "samefile": truncate_by_token_budget(symbols, file_bl.retrieve(q, top_k=CANDIDATE_LIMIT)),
                 "random_k": rand_bl.retrieve(q, top_k=k_match),
             }
@@ -296,6 +320,12 @@ def evaluate_repo(repo_path: str) -> Optional[Dict]:
             "budgets": BUDGETS, "target_commits": TARGET_COMMITS,
             "scan_limit": SCAN_LIMIT, "seed": 42,
             "noisy_flag": f">={NOISY_SYMBOLS} symbols or >={NOISY_FILES} files",
+            # Replication pinning: the exact repo state this run measured,
+            # and which encoder produced the "embedding" rows. A rerun on a
+            # different HEAD mines different commits — numbers are only
+            # comparable at the same SHA.
+            "repo_head_sha": _repo_head_sha(repo_path),
+            "embedding_encoder": emb_bl.encoder,
         },
         "methods": {},
         "flagged_commits": [
@@ -406,6 +436,8 @@ def failure_buckets(repo_path: str, per_bucket: int = 20) -> Dict:
     sset = set(symbols.keys())
     symbol_ids = list(symbols.keys())
     bm25 = BM25Baseline(symbols)
+    emb_bl = EmbeddingBaseline(symbols)
+    print(f"  Embedding baseline encoder: {emb_bl.encoder}")
 
     def has_edge(a, b):
         return b in graph.get(a, []) or a in graph.get(b, [])
@@ -462,18 +494,22 @@ def failure_buckets(repo_path: str, per_bucket: int = 20) -> Dict:
             break
 
     # ── Evaluate: does each method retrieve `target` given `query`? ────────
-    results: Dict = {"repo": repo_name, "per_bucket": {}}
+    results: Dict = {"repo": repo_name, "per_bucket": {},
+                     "embedding_encoder": emb_bl.encoder,
+                     "repo_head_sha": _repo_head_sha(repo_path)}
     for bname, pairs in buckets.items():
-        hits = {"diffcontext": 0, "bm25": 0, "hybrid": 0}
+        hits = {"diffcontext": 0, "bm25": 0, "embedding": 0, "hybrid": 0}
         detailed = []
         for p in pairs:
             q, g = p["query"], p["target"]
             g_ranked = truncate_by_token_budget(symbols, _graph_ranked(q, graph, reverse_graph))
             b_ranked = truncate_by_token_budget(symbols, bm25.retrieve(q, top_k=CANDIDATE_LIMIT))
+            e_ranked = truncate_by_token_budget(symbols, emb_bl.retrieve(q, top_k=CANDIDATE_LIMIT))
             h_ranked = _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25)
             row_hits = {
                 "diffcontext": int(g in set(g_ranked)),
                 "bm25": int(g in set(b_ranked)),
+                "embedding": int(g in set(e_ranked)),
                 "hybrid": int(g in set(h_ranked)),
             }
             for m in hits:

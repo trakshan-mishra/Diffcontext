@@ -1,0 +1,640 @@
+{
+  "repo": "django",
+  "per_bucket": {
+    "thematic_no_edge": {
+      "n_pairs": 20,
+      "hit_rate": {
+        "diffcontext": 0.0,
+        "bm25": 0.5,
+        "embedding": 0.5,
+        "hybrid": 0.15
+      },
+      "pairs": [
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/checks.py:BaseModelAdminChecks.check",
+          "target": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/checks.py:BaseModelAdminChecks._check_delete_confirmation_max_display",
+          "target": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/checks.py:ModelAdminChecks.check",
+          "target": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "target": "./django/contrib/admin/checks.py:BaseModelAdminChecks.check",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "target": "./django/contrib/admin/checks.py:BaseModelAdminChecks._check_delete_confirmation_max_display",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "57c8c8b107",
+          "msg": "Fixed #36984 -- Made inline formset error messages respect delete_confirmation_max_display.",
+          "query": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
+          "target": "./django/contrib/admin/checks.py:ModelAdminChecks.check",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/query.py:QuerySet._combinator_query",
+          "target": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/query.py:QuerySet._combinator_query",
+          "target": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/query.py:QuerySet._clear_ordering_in_combined_queries",
+          "target": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/query.py:QuerySet._clear_ordering_in_combined_queries",
+          "target": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "target": "./django/db/models/query.py:QuerySet._combinator_query",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "target": "./django/db/models/query.py:QuerySet._clear_ordering_in_combined_queries",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "target": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "target": "./django/db/models/query.py:QuerySet._combinator_query",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "target": "./django/db/models/query.py:QuerySet._clear_ordering_in_combined_queries",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "fbe902d4a4",
+          "msg": "Refs #37097 -- Removed compilation-time order clearing on combined queries on Oracle.",
+          "query": "./django/db/models/sql/query.py:Query.clear_ordering",
+          "target": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "122f0b62a1",
+          "msg": "Refs #36593 -- Deprecated setting ModelAdmin.list_select_related to True.",
+          "query": "./django/contrib/admin/checks.py:ModelAdminChecks._check_list_select_related",
+          "target": "./django/contrib/admin/options.py:ModelAdmin.__init_subclass__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "122f0b62a1",
+          "msg": "Refs #36593 -- Deprecated setting ModelAdmin.list_select_related to True.",
+          "query": "./django/contrib/admin/checks.py:ModelAdminChecks._check_list_select_related",
+          "target": "./django/contrib/admin/options.py:ModelAdmin.get_changelist_instance",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "122f0b62a1",
+          "msg": "Refs #36593 -- Deprecated setting ModelAdmin.list_select_related to True.",
+          "query": "./django/contrib/admin/options.py:ModelAdmin.__init_subclass__",
+          "target": "./django/contrib/admin/checks.py:ModelAdminChecks._check_list_select_related",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "122f0b62a1",
+          "msg": "Refs #36593 -- Deprecated setting ModelAdmin.list_select_related to True.",
+          "query": "./django/contrib/admin/options.py:ModelAdmin.get_changelist_instance",
+          "target": "./django/contrib/admin/checks.py:ModelAdminChecks._check_list_select_related",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        }
+      ]
+    },
+    "backend_dispatch": {
+      "n_pairs": 20,
+      "hit_rate": {
+        "diffcontext": 0.0,
+        "bm25": 0.3,
+        "embedding": 0.3,
+        "hybrid": 0.25
+      },
+      "pairs": [
+        {
+          "commit": "65a9f14196",
+          "msg": "Fixed #36864 -- Supported modules and submodules in import_string().",
+          "query": "./django/contrib/auth/password_validation.py:get_password_validators",
+          "target": "./django/db/backends/base/creation.py:BaseDatabaseCreation._mark_test",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "65a9f14196",
+          "msg": "Fixed #36864 -- Supported modules and submodules in import_string().",
+          "query": "./django/db/backends/base/creation.py:BaseDatabaseCreation._mark_test",
+          "target": "./django/contrib/auth/password_validation.py:get_password_validators",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "65a9f14196",
+          "msg": "Fixed #36864 -- Supported modules and submodules in import_string().",
+          "query": "./django/db/backends/base/creation.py:BaseDatabaseCreation._mark_test",
+          "target": "./django/utils/module_loading.py:cached_import",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "65a9f14196",
+          "msg": "Fixed #36864 -- Supported modules and submodules in import_string().",
+          "query": "./django/utils/module_loading.py:cached_import",
+          "target": "./django/db/backends/base/creation.py:BaseDatabaseCreation._mark_test",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "4bbc27c868",
+          "msg": "Fixed #36492 -- Restored exact boolean lookup against literals on SQLite.",
+          "query": "./django/db/backends/base/operations.py:BaseDatabaseOperations.conditional_expression_supported_in_where_clause",
+          "target": "./django/db/models/lookups.py:Lookup.as_oracle",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "4bbc27c868",
+          "msg": "Fixed #36492 -- Restored exact boolean lookup against literals on SQLite.",
+          "query": "./django/db/models/lookups.py:Lookup.as_oracle",
+          "target": "./django/db/backends/base/operations.py:BaseDatabaseOperations.conditional_expression_supported_in_where_clause",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "21c51c2623",
+          "msg": "Fixed #37060 -- Propagated AlterField through attname-based to_field references.",
+          "query": "./django/db/backends/base/schema.py:_is_relevant_relation",
+          "target": "./django/db/backends/sqlite3/schema.py:DatabaseSchemaEditor._alter_field",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "21c51c2623",
+          "msg": "Fixed #37060 -- Propagated AlterField through attname-based to_field references.",
+          "query": "./django/db/backends/sqlite3/schema.py:DatabaseSchemaEditor._alter_field",
+          "target": "./django/db/backends/base/schema.py:_is_relevant_relation",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "a586f03f36",
+          "msg": "Refs #10919 -- Refactored walk_items as module-level _walk_items and added truncated_unordered_list ",
+          "query": "./django/contrib/admin/templatetags/admin_filters.py:list_formatter",
+          "target": "./django/template/defaultfilters.py:list_formatter",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "a586f03f36",
+          "msg": "Refs #10919 -- Refactored walk_items as module-level _walk_items and added truncated_unordered_list ",
+          "query": "./django/template/defaultfilters.py:list_formatter",
+          "target": "./django/contrib/admin/templatetags/admin_filters.py:list_formatter",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "63c56cda13",
+          "msg": "Fixed #35870 -- Made blank choice label in forms more accessible.",
+          "query": "./django/db/models/fields/__init__.py:Field.get_choices",
+          "target": "./django/db/models/fields/reverse_related.py:ForeignObjectRel.get_choices",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "63c56cda13",
+          "msg": "Fixed #35870 -- Made blank choice label in forms more accessible.",
+          "query": "./django/db/models/fields/reverse_related.py:ForeignObjectRel.get_choices",
+          "target": "./django/db/models/fields/__init__.py:Field.get_choices",
+          "hit_diffcontext": 0,
+          "hit_bm25": 1,
+          "hit_embedding": 1,
+          "hit_hybrid": 1
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitAnd.__init__",
+          "target": "./django/db/backends/oracle/features.py:DatabaseFeatures.supports_bit_aggregations",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitAnd.__init__",
+          "target": "./django/db/backends/sqlite3/_functions.py:register",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitAnd.__init__",
+          "target": "./django/db/backends/sqlite3/_functions.py:BitAggregate.finalize",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitOr.__init__",
+          "target": "./django/db/backends/oracle/features.py:DatabaseFeatures.supports_bit_aggregations",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitOr.__init__",
+          "target": "./django/db/backends/sqlite3/_functions.py:register",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitOr.__init__",
+          "target": "./django/db/backends/sqlite3/_functions.py:BitAggregate.finalize",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitXor.__init__",
+          "target": "./django/db/backends/oracle/features.py:DatabaseFeatures.supports_bit_aggregations",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "ed79c5959a",
+          "msg": "Fixed #37028 -- Added BitAnd(), BitOr(), and BitXor() aggregates.",
+          "query": "./django/contrib/postgres/aggregates/general.py:BitXor.__init__",
+          "target": "./django/db/backends/sqlite3/_functions.py:register",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        }
+      ]
+    },
+    "cross_subsystem": {
+      "n_pairs": 20,
+      "hit_rate": {
+        "diffcontext": 0.0,
+        "bm25": 0.0,
+        "embedding": 0.15,
+        "hybrid": 0.0
+      },
+      "pairs": [
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/conf/__init__.py:Settings.__init__",
+          "target": "./django/core/management/__init__.py:ManagementUtility.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/conf/__init__.py:Settings.__init__",
+          "target": "./django/core/management/__init__.py:ManagementUtility.main_help_text",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/conf/__init__.py:Settings.__init__",
+          "target": "./django/core/management/__init__.py:ManagementUtility.fetch_command",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/conf/__init__.py:Settings.__init__",
+          "target": "./django/core/management/__init__.py:ManagementUtility.execute",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/core/management/__init__.py:ManagementUtility.__init__",
+          "target": "./django/conf/__init__.py:Settings.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/core/management/__init__.py:ManagementUtility.main_help_text",
+          "target": "./django/conf/__init__.py:Settings.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/core/management/__init__.py:ManagementUtility.fetch_command",
+          "target": "./django/conf/__init__.py:Settings.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "537c6df3e6",
+          "msg": "Fixed #32915 -- Suppressed fewer ImportErrors in management commands.",
+          "query": "./django/core/management/__init__.py:ManagementUtility.execute",
+          "target": "./django/conf/__init__.py:Settings.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/conf/__init__.py:LazySettings.__setattr__",
+          "target": "./django/core/signing.py:_unsign_cookie",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/conf/__init__.py:Settings.__init__",
+          "target": "./django/core/signing.py:_unsign_cookie",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/conf/__init__.py:UserSettingsHolder.__setattr__",
+          "target": "./django/core/signing.py:_unsign_cookie",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/core/signing.py:_unsign_cookie",
+          "target": "./django/conf/__init__.py:LazySettings.__setattr__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/core/signing.py:_unsign_cookie",
+          "target": "./django/conf/__init__.py:Settings.__init__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "3328078a01",
+          "msg": "Refs CVE-2026-6873 -- Defaulted SIGNED_COOKIE_LEGACY_SALT_FALLBACK transitional setting to False.",
+          "query": "./django/core/signing.py:_unsign_cookie",
+          "target": "./django/conf/__init__.py:UserSettingsHolder.__setattr__",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 1,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:replace_metacharacters",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:_get_group_start_end",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:_find_groups",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:replace_named_groups",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:replace_unnamed_groups",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        },
+        {
+          "commit": "804660d685",
+          "msg": "Refs #28800 -- Lifted some url functions from admindocs into urls.utils.",
+          "query": "./django/contrib/admindocs/views.py:get_readable_field_data_type",
+          "target": "./django/urls/utils.py:remove_non_capturing_groups",
+          "hit_diffcontext": 0,
+          "hit_bm25": 0,
+          "hit_embedding": 0,
+          "hit_hybrid": 0
+        }
+      ]
+    }
+  },
+  "embedding_encoder": "tfidf-cosine-approx",
+  "repo_head_sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb"
+}
