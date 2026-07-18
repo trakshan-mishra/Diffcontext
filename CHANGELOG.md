@@ -8,6 +8,43 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Added (experimental TypeScript/JavaScript support — `[typescript]` extra)
+- New `diffcontext/languages/` adapter layer: the pipeline (scoring,
+  selection, compilation, caching, diff mapping, verify) was already
+  language-agnostic; an adapter supplies the two Python-bound pieces —
+  per-file symbols and a dependency graph. Adapters are optional extras
+  probed at import: without `pip install diffcontext[typescript]`, the
+  tool is bit-for-bit the Python-only tool (asserted by the test suite,
+  which skips the adapter tests when the extra is absent).
+- The TypeScript/JavaScript adapter (tree-sitter) resolves functions,
+  class methods, arrow consts, namespaces, ES imports with barrel
+  `index.ts` re-export following (`export {X} from`, `export * from`,
+  depth-capped), `this.method()`, `super()` → parent constructor,
+  `new Class()` → constructor, `extends` override edges (child→parent,
+  same mega-hub rationale as Python's), and function references passed
+  as call arguments with parameter-shadowing guarded. Deliberately
+  unresolved in v1 (disclosed in README): type inference, tsconfig
+  path aliases, CommonJS `require()`.
+- Integration is symmetric with Python: `.ts` files participate in the
+  content-addressed state hash (a one-file edit invalidates the cached
+  graph exactly like a `.py` edit), symbols go through the same SQLite
+  symbol cache, `index.update()` handles changed/deleted TS files
+  (adapter part rebuilt whole — cross-file barrel effects — and verified
+  equal to a from-scratch rebuild by the test suite), and
+  `verify --from-history` mines TS co-change cases through the adapter.
+- Vendor-pollution guard, measured hazard: without an adapter-level
+  exclusion policy (`static/`, `vendor/`, `*.min.*`, colocated
+  `*.test.ts`/`*.spec.ts`), indexing django pulled in its tracked admin
+  static JS — jquery included — 47 vendor symbols in a Python repo's
+  index. Policy is adapter-scoped so a Python package named `static/`
+  keeps being indexed.
+- Measured on a real TS repo (honojs/hono, 1,153 symbols, 285 files):
+  cold index 0.44s, warm 0.018s; `verify --from-history 25 --calibrate`
+  → 18/25 cases passed, mean recall 67.8% — same band as the Python
+  repos' mined-case baseline. Disclosed limits: one repo, not the
+  five-repo benchmark; and the sufficiency score is uncalibrated for TS
+  (reported 100 on every case while recall ranged 50–100%).
+
 ### Performance (cold index 3.5× — profile-driven, behavior-identical)
 - Cold indexing of django (909 files, 9,161 symbols) dropped from ~23s to
   ~6.6s through four fixes, each verified behavior-identical on the full

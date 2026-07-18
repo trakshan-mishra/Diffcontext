@@ -40,10 +40,13 @@ def get_changed_files(
         if result.returncode != 0:
             return []
 
+        from ..languages import indexable_extensions
+        exts = indexable_extensions()
+
         files = []
         for line in result.stdout.strip().split("\n"):
             line = line.strip()
-            if line.endswith(".py"):
+            if line.endswith(exts):
                 files.append("./" + line)
         return files
 

@@ -9,6 +9,9 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 ```
 
 - Zero runtime dependencies, Python 3.8+, `pip install -e .`
+- Indexes **Python** (full resolver, benchmarked below) and — with the
+  optional `[typescript]` extra — **TypeScript/JavaScript** (experimental;
+  measured separately, see [Language support](#language-support))
 - Benchmarked on **423 real commits across django, flask, click, httpx,
   pydantic** — plus independent validation runs on black and requests
 - **~2× the recall of grep at every token budget** on real co-change ground
@@ -375,6 +378,41 @@ reported honestly (`token_estimate` and the meta's `Output tokens (full)`
 line cover the entire output) and auto-compacts under tight budgets so
 meta can never dwarf the code it annotates.
 
+## Language support
+
+| Language | Status | How | Retrieval quality |
+|---|---|---|---|
+| Python | **Full** | stdlib `ast`, deep resolver (see below) | Benchmarked: 423 commits, 5 repos + 2 validation repos (numbers above) |
+| TypeScript / JavaScript | **Experimental** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured once, not yet benchmarked: 18/25 mined co-change cases passed, **mean recall 67.8%** on honojs/hono via `verify --from-history 25` |
+| Go / Rust / Java / others | Not supported | — | Retrieves nothing |
+
+What the TypeScript adapter resolves: functions, class methods, arrow
+consts, namespaces, ES imports (named/default/namespace, aliases, barrel
+`index.ts` re-exports incl. `export * from`), `this.method()`, `super()`,
+`new Class()`, `extends` override edges, and function references passed
+as arguments. What it deliberately does not (v1, and it lowers graph
+confidence, which the meta header reports): **no type inference** —
+`obj.method()` on an arbitrary object is unresolved — no tsconfig path
+aliases, no CommonJS `require()`. The call graph is therefore sparser
+than Python's (~0.5 edges/symbol on hono vs ~5 on django), so the BM25
+and same-file legs carry more of the hybrid blend.
+
+Two honesty notes, measured not guessed: (1) the hono result above is
+one repo, mined by the same `verify` harness you can run on your own
+repo — treat it as a smoke signal, not a benchmark; the five-repo
+benchmark methodology has not been applied to TS yet. (2) the
+`verify` sufficiency score is **not calibrated for TS**: on hono it
+reported 100 for every case while measured recall ranged 50–100%, so
+calibration mode currently has no discriminating power there — run
+`--calibrate` and trust the recall numbers, not the score.
+
+Without the extra installed, DiffContext is exactly the Python-only
+tool: no behavior change, no warnings. Vendored/static JS inside Python
+repos (django's admin jquery, for example) is excluded by an
+adapter-level policy (`static/`, `vendor/`, `*.min.*`, colocated
+`*.test.ts`/`*.spec.ts`), so installing the extra does not pollute
+existing Python indexes.
+
 ## What the resolver handles
 
 Asserted by the test suite on real resolved edges, not "it ran":
@@ -468,13 +506,14 @@ Ordered by measured impact (see the failure taxonomy above):
 5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
    (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
    component weights fit on accumulated case results
-6. **TypeScript support** — Python only, today. The surrounding pipeline
-   (scoring, selection, compilation, caching) is language-agnostic by
-   design, but the parser and graph builder — which do all symbol
-   extraction and graph construction, i.e. the part that makes the tool
-   work — are built on Python's `ast` and a second language requires
-   implementing both from scratch against that language's AST. For any
-   JS/TS/Go/Rust/Java repo, this tool currently retrieves nothing.
+6. ~~**TypeScript support**~~ — shipped experimental as the
+   `[typescript]` extra (tree-sitter adapter; see
+   [Language support](#language-support)). Next steps, in order of
+   measured need: type-annotation-based receiver resolution (the graph's
+   sparseness is the dominant gap), tsconfig path aliases, applying the
+   full five-repo benchmark methodology to TS repos, and TS-aware
+   sufficiency calibration. The adapter interface
+   (`diffcontext/languages/`) is the template for Go/Rust/Java.
 
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 
