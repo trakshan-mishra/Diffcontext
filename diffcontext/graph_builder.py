@@ -501,8 +501,11 @@ def _collect_function_nodes(tree):
     Return list of (function_node, is_method, class_name) for EVERY function
     in the file, including nested functions and closures.
 
-    Mirrors what parser.py's _FunctionCollector does so that the graph covers
-    every symbol the parser emits (previously missed ~30-40% of nodes).
+    Mirrors what parser.py's _collect_functions does so that the graph covers
+    every symbol the parser emits (previously missed ~30-40% of nodes) —
+    with one known gap: this collector does not descend into if/try/with
+    blocks, so a `def` under `if TYPE_CHECKING:` or `try/except ImportError`
+    is parsed as a symbol but gets no graph edges.
     """
     result = []
     _collect_recursive(tree.body, class_stack=[], result=result)

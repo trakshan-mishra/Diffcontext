@@ -5,11 +5,34 @@ resolver.py — Resolve Python import statements to filesystem paths.
 import ast
 import logging
 import os
-from typing import Dict, Optional
+from collections import deque
+from typing import Dict, List, Optional, Tuple
 
 from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
 
 logger = logging.getLogger(__name__)
+
+
+# Import statements can only appear in statement blocks — never inside an
+# expression — so import scanning walks only these fields instead of every
+# AST node (expressions dominate node count ~10:1). Field order mirrors the
+# AST's own field order so import precedence matches a full BFS walk.
+_STMT_BLOCK_FIELDS = ("body", "handlers", "orelse", "finalbody", "cases")
+
+
+def _iter_import_nodes(tree: "ast.Module"):
+    """Yield every Import/ImportFrom in the tree, in BFS document order,
+    without descending into expression subtrees."""
+    queue = deque(tree.body)
+    while queue:
+        node = queue.popleft()
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            yield node
+            continue
+        for field in _STMT_BLOCK_FIELDS:
+            block = getattr(node, field, None)
+            if block:
+                queue.extend(block)
 
 
 def build_import_map(
@@ -52,7 +75,7 @@ def build_import_map(
     file_dir = os.path.dirname(os.path.abspath(filename))
     repo_abs = os.path.abspath(repo_path)
 
-    for node in ast.walk(tree):
+    for node in _iter_import_nodes(tree):
 
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
@@ -166,6 +189,52 @@ def _resolve_absolute_module(module: str, repo_abs: str):
     return fallback, None
 
 
+# Session cache of parsed __init__.py re-export specs, keyed by absolute
+# path and validated by (mtime_ns, size) so an edited file is re-read. A
+# flagship package's __init__.py (django.db.models, flask) is consulted by
+# hundreds of importing files per cold index; without this each consult
+# re-read and re-parsed it from disk.
+_init_export_cache: "Dict[str, Tuple[Tuple[int, int], Optional[Dict[str, List[Tuple[str, int, str]]]]]]" = {}
+
+
+def _init_export_specs(
+    init_path: str,
+) -> "Optional[Dict[str, List[Tuple[str, int, str]]]]":
+    """
+    exported_name -> [(module, level, original_name), ...] for every
+    `from X import Y` in the file, in document order. None when the file
+    is unreadable or unparsable.
+    """
+    try:
+        st = os.stat(init_path)
+        stat_key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+    cached = _init_export_cache.get(init_path)
+    if cached is not None and cached[0] == stat_key:
+        return cached[1]
+
+    specs: "Optional[Dict[str, List[Tuple[str, int, str]]]]"
+    try:
+        with open(init_path, "rb") as f:
+            raw = f.read()
+        tree = ast.parse(raw.decode("utf-8", errors="ignore"))
+    except (OSError, SyntaxError):
+        specs = None
+    else:
+        specs = {}
+        for node in _iter_import_nodes(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            for alias in node.names:
+                exported = alias.asname or alias.name
+                specs.setdefault(exported, []).append(
+                    (node.module or "", node.level, alias.name)
+                )
+    _init_export_cache[init_path] = (stat_key, specs)
+    return specs
+
+
 def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[str]:
     """
     Given a package __init__.py and a name imported from it, check whether
@@ -182,39 +251,27 @@ def _follow_init_reexport(init_path: str, name: str, repo_abs: str) -> Optional[
     stay fast. Returns None if the name is not re-exported or the
     submodule can't be found.
     """
-    try:
-        with open(init_path, "rb") as f:
-            raw = f.read()
-        source = raw.decode("utf-8", errors="ignore")
-        tree = ast.parse(source)
-    except (OSError, SyntaxError):
+    specs = _init_export_specs(init_path)
+    if not specs:
         return None
 
     init_dir = os.path.dirname(init_path)
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        for alias in node.names:
-            exported_name = alias.asname or alias.name
-            if exported_name != name:
-                continue
-            # Found the re-export — resolve the submodule
-            module = node.module or ""
-            if node.level > 0:
-                # Relative re-export: from .sub import X
-                base = init_dir
-                for _ in range(node.level - 1):
-                    base = os.path.dirname(base)
-                sub_path = os.path.join(base, module.replace(".", os.sep))
-            else:
-                # Absolute re-export: from black.parsing import X
-                sub_path, _resolved = _resolve_absolute_module(module, repo_abs)
-            # Check if alias.name itself is a submodule
-            submodule_path = os.path.join(sub_path, alias.name)
-            resolved = _resolve_module_path(submodule_path) or _resolve_module_path(sub_path)
-            if resolved and resolved != os.path.normpath(init_path):
-                return resolved
+    for module, level, original_name in specs.get(name, ()):
+        if level > 0:
+            # Relative re-export: from .sub import X
+            base = init_dir
+            for _ in range(level - 1):
+                base = os.path.dirname(base)
+            sub_path = os.path.join(base, module.replace(".", os.sep))
+        else:
+            # Absolute re-export: from black.parsing import X
+            sub_path, _resolved = _resolve_absolute_module(module, repo_abs)
+        # Check if the original name itself is a submodule
+        submodule_path = os.path.join(sub_path, original_name)
+        resolved = _resolve_module_path(submodule_path) or _resolve_module_path(sub_path)
+        if resolved and resolved != os.path.normpath(init_path):
+            return resolved
 
     return None
 

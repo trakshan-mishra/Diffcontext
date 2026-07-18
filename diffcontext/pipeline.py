@@ -157,7 +157,9 @@ def index_repository(repo_path: str) -> RepositoryIndex:
             for rel, filename in rel_to_abs.items():
                 def _parse(path):
                     return extract_symbols(path, repo_path)
-                symbols.update(cache.get_or_parse(filename, _parse))
+                symbols.update(cache.get_or_parse(
+                    filename, _parse, known_hash=file_hashes[rel]
+                ))
         else:
             # Cold path: parse each file exactly once; symbol extraction,
             # import maps, and the graph builder all share the same AST.
@@ -177,7 +179,9 @@ def index_repository(repo_path: str) -> RepositoryIndex:
             for rel, (filename, source, tree) in parsed.items():
                 def _parse(path, _src=source, _tree=tree):
                     return extract_symbols(path, repo_path, source=_src, tree=_tree)
-                symbols.update(cache.get_or_parse(filename, _parse))
+                symbols.update(cache.get_or_parse(
+                    filename, _parse, known_hash=file_hashes[rel]
+                ))
 
             file_trees = {rel: t for rel, (_f, _s, t) in parsed.items()}
             import_maps = {
