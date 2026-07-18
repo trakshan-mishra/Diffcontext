@@ -162,376 +162,458 @@ class TypeScriptAdapter:
             rel: _gather_facts(self._parse(rel, text))
             for rel, text in sources.items()
         }
+        resolver = _Resolver(repo_abs, facts, self._RESOLVE_EXTS)
+        for rel, f in facts.items():
+            resolver.import_maps[rel] = _file_import_map(resolver, rel, f)
 
-        def probe(target: str) -> Optional[str]:
-            """Abs path guess -> "./rel" of an indexed file, trying the
-            extension/index-file conventions."""
-            candidates = [target]
-            root, ext = os.path.splitext(target)
-            # ESM convention: `import ... from './x.js'` refers to x.ts on disk
-            if ext in (".js", ".mjs", ".cjs"):
-                candidates += [root + ".ts", root + ".tsx"]
-            if ext == "" or ext not in self._RESOLVE_EXTS:
-                candidates += [target + e for e in self._RESOLVE_EXTS]
-                candidates += [
-                    os.path.join(target, "index" + e) for e in self._RESOLVE_EXTS
-                ]
-            for cand in candidates:
-                rel_cand = "./" + os.path.relpath(cand, repo_abs)
-                if rel_cand in facts:
-                    return rel_cand
-            return None
+        graph: Dict[str, List[str]] = {}
+        for rel, f in facts.items():
+            _add_file_edges(resolver, graph, rel, f)
+        return graph
 
-        tsconfig_cache: Dict[str, Optional[Tuple[str, str, Dict[str, List[str]]]]] = {}
 
-        def nearest_tsconfig(dir_abs: str):
-            """(config_dir, baseUrl, paths) from the nearest tsconfig.json /
-            jsconfig.json at or above dir_abs (stopping at the repo root)."""
-            if dir_abs in tsconfig_cache:
-                return tsconfig_cache[dir_abs]
-            result = None
-            cur = dir_abs
-            while True:
-                for name in ("tsconfig.json", "jsconfig.json"):
-                    cfg_path = os.path.join(cur, name)
-                    if os.path.isfile(cfg_path):
-                        result = _load_tsconfig(cfg_path)
-                        break
-                if result is not None or cur == repo_abs or len(cur) <= len(repo_abs):
-                    break
-                cur = os.path.dirname(cur)
-            tsconfig_cache[dir_abs] = result
-            return result
+class _Resolver:
+    """
+    Cross-file resolution over one build's parsed facts: import
+    specifiers, barrel re-exports, callable names, types, and extends
+    chains. One instance per build_language_graph run, so the tsconfig
+    cache and import maps have build lifetime.
+    """
 
-        def resolve_specifier(importing_rel: str, spec: str) -> Optional[str]:
-            """'./x', '@/x' (tsconfig paths), or baseUrl-relative specifier
-            -> "./resolved/x.ts" rel; None for external packages."""
-            base_dir = os.path.dirname(os.path.join(repo_abs, importing_rel[2:]))
-            if spec.startswith("."):
-                return probe(os.path.normpath(os.path.join(base_dir, spec)))
-
-            cfg = nearest_tsconfig(base_dir)
-            if cfg is None:
-                return None
-            cfg_dir, base_url, paths = cfg
-            base_abs = os.path.normpath(os.path.join(cfg_dir, base_url))
-            for pattern, targets in paths.items():
-                if pattern.endswith("*"):
-                    prefix = pattern[:-1]
-                    if not spec.startswith(prefix):
-                        continue
-                    star = spec[len(prefix):]
-                elif spec == pattern:
-                    star = ""
-                else:
-                    continue
-                for target in targets:
-                    resolved = probe(os.path.normpath(os.path.join(
-                        base_abs, target.replace("*", star)
-                    )))
-                    if resolved:
-                        return resolved
-            # Bare specifier via baseUrl (`import x from 'utils/x'` with
-            # baseUrl=./src). Only ever hits files we indexed, so real npm
-            # packages can't be mis-resolved.
-            if base_url:
-                return probe(os.path.normpath(os.path.join(base_abs, spec)))
-            return None
-
-        def defined_names(file_rel: str) -> Set[str]:
-            f = facts.get(file_rel)
-            if f is None:
-                return set()
-            return {n for n, _node in f.symbols} | set(f.class_nodes)
-
-        def follow_barrel(file_rel: str, name: str, _depth: int = 0) -> Tuple[str, str]:
-            """If file re-exports `name` from elsewhere, return the real
-            (file, name); else (file_rel, name). Depth-capped like the
-            Python __init__.py transparency."""
-            if _depth > 2 or file_rel not in facts:
-                return file_rel, name
-            named, stars = facts[file_rel].reexports
-            if name in named:
-                spec, orig = named[name]
-                target = resolve_specifier(file_rel, spec)
-                if target:
-                    return follow_barrel(target, orig, _depth + 1)
-            if name in defined_names(file_rel):
-                return file_rel, name
-            for spec in stars:
-                target = resolve_specifier(file_rel, spec)
-                if target:
-                    t_file, t_name = follow_barrel(target, name, _depth + 1)
-                    if t_name in defined_names(t_file):
-                        return t_file, t_name
-            return file_rel, name
-
+    def __init__(
+        self, repo_abs: str, facts: "Dict[str, _FileFacts]", resolve_exts
+    ):
+        self.repo_abs = repo_abs
+        self.facts = facts
+        self.resolve_exts = resolve_exts
+        self.tsconfig_cache: Dict[str, Optional[Tuple[str, str, Dict[str, List[str]]]]] = {}
         # Per file: local import name -> (target_rel, exported_name).
         # exported_name is "*" for namespace imports, None for default
         # imports (whose exported name we can't know without evaluating
         # the target's `export default`).
-        import_maps: Dict[str, Dict[str, Tuple[str, Optional[str]]]] = {}
-        for rel, f in facts.items():
-            imap: Dict[str, Tuple[str, Optional[str]]] = {}
-            for node in f.tree.root_node.named_children:
-                if node.type != "import_statement":
-                    continue
-                spec = _import_source(node)
-                if spec is None:
-                    continue
-                target = resolve_specifier(rel, spec)
-                if target is None:
-                    continue
-                clause = next(
-                    (c for c in node.named_children if c.type == "import_clause"),
-                    None,
-                )
-                if clause is None:
-                    continue
-                for item in clause.named_children:
-                    if item.type == "identifier":  # default import
-                        imap[_text(item)] = (target, None)
-                    elif item.type == "namespace_import":
-                        ns_name = next(
-                            (_text(c) for c in item.named_children
-                             if c.type == "identifier"), None,
-                        )
-                        if ns_name:
-                            imap[ns_name] = (target, "*")
-                    elif item.type == "named_imports":
-                        for imp_spec in item.named_children:
-                            if imp_spec.type != "import_specifier":
-                                continue
-                            orig = imp_spec.child_by_field_name("name")
-                            alias = imp_spec.child_by_field_name("alias")
-                            if orig is None:
-                                continue
-                            local = _text(alias) if alias is not None else _text(orig)
-                            imap[local] = follow_barrel(target, _text(orig))
-            import_maps[rel] = imap
+        self.import_maps: Dict[str, Dict[str, Tuple[str, Optional[str]]]] = {}
 
-        # ── Symbol lookup helpers ────────────────────────────────────────
+    def probe(self, target: str) -> Optional[str]:
+        """Abs path guess -> "./rel" of an indexed file, trying the
+        extension/index-file conventions."""
+        candidates = [target]
+        root, ext = os.path.splitext(target)
+        # ESM convention: `import ... from './x.js'` refers to x.ts on disk
+        if ext in (".js", ".mjs", ".cjs"):
+            candidates += [root + ".ts", root + ".tsx"]
+        if ext == "" or ext not in self.resolve_exts:
+            candidates += [target + e for e in self.resolve_exts]
+            candidates += [
+                os.path.join(target, "index" + e) for e in self.resolve_exts
+            ]
+        for cand in candidates:
+            rel_cand = "./" + os.path.relpath(cand, self.repo_abs)
+            if rel_cand in self.facts:
+                return rel_cand
+        return None
 
-        def lookup_callable(target_file: str, name: Optional[str]) -> Optional[str]:
-            """Symbol id for calling `name` defined in target_file:
-            function/const binding, or Class -> Class.constructor."""
-            if name is None or target_file not in facts:
-                return None
-            f = facts[target_file]
-            for sym_name, node in f.symbols:
-                if sym_name == name:
-                    if node.type in _TYPE_DECLS:
-                        return None  # types take no call edges
-                    return f"{target_file}:{name}"
-            if name in f.class_nodes and "constructor" in f.class_methods.get(name, ()):
-                return f"{target_file}:{name}.constructor"
+    def nearest_tsconfig(self, dir_abs: str):
+        """(config_dir, baseUrl, paths) from the nearest tsconfig.json /
+        jsconfig.json at or above dir_abs (stopping at the repo root)."""
+        if dir_abs in self.tsconfig_cache:
+            return self.tsconfig_cache[dir_abs]
+        result = None
+        cur = dir_abs
+        while True:
+            for name in ("tsconfig.json", "jsconfig.json"):
+                cfg_path = os.path.join(cur, name)
+                if os.path.isfile(cfg_path):
+                    result = _load_tsconfig(cfg_path)
+                    break
+            if result is not None or cur == self.repo_abs or len(cur) <= len(self.repo_abs):
+                break
+            cur = os.path.dirname(cur)
+        self.tsconfig_cache[dir_abs] = result
+        return result
+
+    def resolve_specifier(self, importing_rel: str, spec: str) -> Optional[str]:
+        """'./x', '@/x' (tsconfig paths), or baseUrl-relative specifier
+        -> "./resolved/x.ts" rel; None for external packages."""
+        base_dir = os.path.dirname(os.path.join(self.repo_abs, importing_rel[2:]))
+        if spec.startswith("."):
+            return self.probe(os.path.normpath(os.path.join(base_dir, spec)))
+
+        cfg = self.nearest_tsconfig(base_dir)
+        if cfg is None:
             return None
+        cfg_dir, base_url, paths = cfg
+        base_abs = os.path.normpath(os.path.join(cfg_dir, base_url))
+        for pattern, targets in paths.items():
+            if pattern.endswith("*"):
+                prefix = pattern[:-1]
+                if not spec.startswith(prefix):
+                    continue
+                star = spec[len(prefix):]
+            elif spec == pattern:
+                star = ""
+            else:
+                continue
+            for target in targets:
+                resolved = self.probe(os.path.normpath(os.path.join(
+                    base_abs, target.replace("*", star)
+                )))
+                if resolved:
+                    return resolved
+        # Bare specifier via baseUrl (`import x from 'utils/x'` with
+        # baseUrl=./src). Only ever hits files we indexed, so real npm
+        # packages can't be mis-resolved.
+        if base_url:
+            return self.probe(os.path.normpath(os.path.join(base_abs, spec)))
+        return None
 
-        def resolve_name(rel: str, name: str) -> Optional[str]:
-            """A bare identifier used in `rel`: local def, else import."""
-            local = lookup_callable(rel, name)
-            if local:
-                return local
-            imported = import_maps[rel].get(name)
-            if not imported:
-                return None
-            t_file, t_name = imported
-            if t_name == "*":
-                return None  # the namespace object itself, not a callable
-            # Default imports (t_name None): best effort — try the local
-            # binding name against the target file's definitions.
-            return lookup_callable(t_file, t_name or name)
+    def defined_names(self, file_rel: str) -> Set[str]:
+        f = self.facts.get(file_rel)
+        if f is None:
+            return set()
+        return {n for n, _node in f.symbols} | set(f.class_nodes)
 
-        def resolve_extends(rel: str, class_name: str) -> Optional[Tuple[str, str]]:
-            """(file, ParentClass) for `class X extends Parent` when Parent
-            is a class we indexed (locally or via import)."""
-            node = facts[rel].class_nodes.get(class_name)
-            parent = _extends_name(node)
-            if parent is None:
-                return None
-            if parent in facts[rel].class_nodes:
-                return rel, parent
-            imported = import_maps[rel].get(parent)
-            if imported and imported[1] != "*":
-                t_file, t_name = imported
-                t_name = t_name or parent
-                if t_file in facts and t_name in facts[t_file].class_nodes:
+    def follow_barrel(self, file_rel: str, name: str, _depth: int = 0) -> Tuple[str, str]:
+        """If file re-exports `name` from elsewhere, return the real
+        (file, name); else (file_rel, name). Depth-capped like the
+        Python __init__.py transparency."""
+        if _depth > 2 or file_rel not in self.facts:
+            return file_rel, name
+        named, stars = self.facts[file_rel].reexports
+        if name in named:
+            spec, orig = named[name]
+            target = self.resolve_specifier(file_rel, spec)
+            if target:
+                return self.follow_barrel(target, orig, _depth + 1)
+        if name in self.defined_names(file_rel):
+            return file_rel, name
+        for spec in stars:
+            target = self.resolve_specifier(file_rel, spec)
+            if target:
+                t_file, t_name = self.follow_barrel(target, name, _depth + 1)
+                if t_name in self.defined_names(t_file):
                     return t_file, t_name
+        return file_rel, name
+
+    def lookup_callable(self, target_file: str, name: Optional[str]) -> Optional[str]:
+        """Symbol id for calling `name` defined in target_file:
+        function/const binding, or Class -> Class.constructor."""
+        if name is None or target_file not in self.facts:
             return None
-
-        def resolve_type(rel: str, type_name: str):
-            """Where a type name used in `rel` is defined: ("class", file,
-            name) for classes, ("type", file, symbol_id) for interfaces /
-            type aliases / enums, None if not indexed."""
-            def check(t_file: str, t_name: str):
-                if t_file not in facts:
-                    return None
-                if t_name in facts[t_file].class_nodes:
-                    return ("class", t_file, t_name)
-                for sym_name, node in facts[t_file].symbols:
-                    if sym_name == t_name and node.type in _TYPE_DECLS:
-                        return ("type", t_file, f"{t_file}:{t_name}")
-                return None
-            found = check(rel, type_name)
-            if found:
-                return found
-            imported = import_maps[rel].get(type_name)
-            if imported and imported[1] != "*":
-                t_file, t_name = imported
-                return check(t_file, t_name or type_name)
-            return None
-
-        def method_edge_for_type(rel: str, type_name: str, method: str) -> Optional[str]:
-            """Edge target for `receiver.method()` when receiver's declared
-            type is `type_name`: the class method if it exists (following
-            extends one level), else the interface/type symbol itself —
-            the contract being invoked co-changes with its callers."""
-            resolved = resolve_type(rel, type_name)
-            if resolved is None:
-                return None
-            kind, t_file, t_name = resolved
-            if kind == "type":
-                return t_name          # symbol id of the interface/alias
-            if method in facts[t_file].class_methods.get(t_name, ()):
-                return f"{t_file}:{t_name}.{method}"
-            parent = resolve_extends(t_file, t_name)
-            if parent and method in facts[parent[0]].class_methods.get(parent[1], ()):
-                return f"{parent[0]}:{parent[1]}.{method}"
-            return None
-
-        # ── Edges ────────────────────────────────────────────────────────
-        graph: Dict[str, List[str]] = {}
-
-        for rel, f in facts.items():
-            def_node_ids = {id(node) for _n, node in f.symbols}
-
-            for name, node in f.symbols:
-                sym_id = f"{rel}:{name}"
-                graph.setdefault(sym_id, [])
+        f = self.facts[target_file]
+        for sym_name, node in f.symbols:
+            if sym_name == name:
                 if node.type in _TYPE_DECLS:
+                    return None  # types take no call edges
+                return f"{target_file}:{name}"
+        if name in f.class_nodes and "constructor" in f.class_methods.get(name, ()):
+            return f"{target_file}:{name}.constructor"
+        return None
+
+    def resolve_name(self, rel: str, name: str) -> Optional[str]:
+        """A bare identifier used in `rel`: local def, else import."""
+        local = self.lookup_callable(rel, name)
+        if local:
+            return local
+        imported = self.import_maps[rel].get(name)
+        if not imported:
+            return None
+        t_file, t_name = imported
+        if t_name == "*":
+            return None  # the namespace object itself, not a callable
+        # Default imports (t_name None): best effort — try the local
+        # binding name against the target file's definitions.
+        return self.lookup_callable(t_file, t_name or name)
+
+    def resolve_extends(self, rel: str, class_name: str) -> Optional[Tuple[str, str]]:
+        """(file, ParentClass) for `class X extends Parent` when Parent
+        is a class we indexed (locally or via import)."""
+        node = self.facts[rel].class_nodes.get(class_name)
+        parent = _extends_name(node)
+        if parent is None:
+            return None
+        if parent in self.facts[rel].class_nodes:
+            return rel, parent
+        imported = self.import_maps[rel].get(parent)
+        if imported and imported[1] != "*":
+            t_file, t_name = imported
+            t_name = t_name or parent
+            if t_file in self.facts and t_name in self.facts[t_file].class_nodes:
+                return t_file, t_name
+        return None
+
+    def resolve_type(self, rel: str, type_name: str):
+        """Where a type name used in `rel` is defined: ("class", file,
+        name) for classes, ("type", file, symbol_id) for interfaces /
+        type aliases / enums, None if not indexed."""
+        def check(t_file: str, t_name: str):
+            if t_file not in self.facts:
+                return None
+            if t_name in self.facts[t_file].class_nodes:
+                return ("class", t_file, t_name)
+            for sym_name, node in self.facts[t_file].symbols:
+                if sym_name == t_name and node.type in _TYPE_DECLS:
+                    return ("type", t_file, f"{t_file}:{t_name}")
+            return None
+        found = check(rel, type_name)
+        if found:
+            return found
+        imported = self.import_maps[rel].get(type_name)
+        if imported and imported[1] != "*":
+            t_file, t_name = imported
+            return check(t_file, t_name or type_name)
+        return None
+
+    def method_edge_for_type(self, rel: str, type_name: str, method: str) -> Optional[str]:
+        """Edge target for `receiver.method()` when receiver's declared
+        type is `type_name`: the class method if it exists (following
+        extends one level), else the interface/type symbol itself —
+        the contract being invoked co-changes with its callers."""
+        resolved = self.resolve_type(rel, type_name)
+        if resolved is None:
+            return None
+        kind, t_file, t_name = resolved
+        if kind == "type":
+            return t_name          # symbol id of the interface/alias
+        if method in self.facts[t_file].class_methods.get(t_name, ()):
+            return f"{t_file}:{t_name}.{method}"
+        parent = self.resolve_extends(t_file, t_name)
+        if parent and method in self.facts[parent[0]].class_methods.get(parent[1], ()):
+            return f"{parent[0]}:{parent[1]}.{method}"
+        return None
+
+
+# ── Graph construction helpers (extracted from build_language_graph) ─────
+
+def _file_import_map(
+    resolver: _Resolver, rel: str, f: _FileFacts
+) -> Dict[str, Tuple[str, Optional[str]]]:
+    """Local import name -> (target_rel, exported_name) for one file,
+    skipping external packages and unresolvable specifiers."""
+    imap: Dict[str, Tuple[str, Optional[str]]] = {}
+    for node in f.tree.root_node.named_children:
+        if node.type != "import_statement":
+            continue
+        spec = _import_source(node)
+        if spec is None:
+            continue
+        target = resolver.resolve_specifier(rel, spec)
+        if target is None:
+            continue
+        clause = next(
+            (c for c in node.named_children if c.type == "import_clause"),
+            None,
+        )
+        if clause is None:
+            continue
+        _add_import_bindings(resolver, imap, target, clause)
+    return imap
+
+
+def _add_import_bindings(resolver, imap, target, clause):
+    """Record the local bindings one import clause introduces."""
+    for item in clause.named_children:
+        if item.type == "identifier":  # default import
+            imap[_text(item)] = (target, None)
+        elif item.type == "namespace_import":
+            ns_name = next(
+                (_text(c) for c in item.named_children
+                 if c.type == "identifier"), None,
+            )
+            if ns_name:
+                imap[ns_name] = (target, "*")
+        elif item.type == "named_imports":
+            for imp_spec in item.named_children:
+                if imp_spec.type != "import_specifier":
                     continue
-
-                class_name = name.rsplit(".", 1)[0] if "." in name else None
-                param_info = _param_info(node)
-                param_names = set(param_info)
-                local_types = _collect_local_types(_body_of(node), def_node_ids)
-                edges = graph[sym_id]
-
-                def type_of_receiver(receiver: str, _l=local_types, _p=param_info):
-                    """Declared type of a local identifier: local vars
-                    (annotation or `new X()`) shadow parameters."""
-                    return _l.get(receiver) or _p.get(receiver)
-
-                def add_edge(dep: Optional[str], _sym=sym_id, _edges=edges):
-                    if dep and dep != _sym and dep not in _edges:
-                        _edges.append(dep)
-
-                for call in _iter_calls(_body_of(node), def_node_ids):
-                    if call.type == "new_expression":
-                        ctor = call.child_by_field_name("constructor")
-                        if ctor is not None and ctor.type == "identifier":
-                            cname = _text(ctor)
-                            if cname not in param_names:
-                                add_edge(resolve_name(rel, cname))
-                        continue
-
-                    fn = call.child_by_field_name("function")
-                    if fn is None:
-                        continue
-                    if fn.type == "identifier":
-                        callee = _text(fn)
-                        if callee not in param_names:
-                            add_edge(resolve_name(rel, callee))
-                    elif fn.type == "super" and class_name:
-                        parent = resolve_extends(rel, class_name)
-                        if parent:
-                            add_edge(lookup_callable(parent[0], parent[1]))
-                    elif fn.type == "member_expression":
-                        obj = fn.child_by_field_name("object")
-                        prop = fn.child_by_field_name("property")
-                        if obj is None or prop is None:
-                            continue
-                        method = _text(prop)
-                        if obj.type == "this" and class_name:
-                            if method in f.class_methods.get(class_name, ()):
-                                add_edge(f"{rel}:{class_name}.{method}")
-                        elif obj.type == "identifier":
-                            imported = import_maps[rel].get(_text(obj))
-                            if imported and imported[1] == "*":
-                                add_edge(lookup_callable(imported[0], method))
-                            else:
-                                # Typed receiver: `u.login()` where u is a
-                                # param/local declared `: User` or `new User()`
-                                rtype = type_of_receiver(_text(obj))
-                                if rtype:
-                                    add_edge(method_edge_for_type(rel, rtype, method))
-                        elif (
-                            obj.type == "member_expression" and class_name
-                        ):
-                            # `this.field.method()` through a typed field or
-                            # constructor parameter property
-                            inner_obj = obj.child_by_field_name("object")
-                            inner_prop = obj.child_by_field_name("property")
-                            if (
-                                inner_obj is not None
-                                and inner_obj.type == "this"
-                                and inner_prop is not None
-                            ):
-                                ftype = f.class_fields.get(class_name, {}).get(
-                                    _text(inner_prop)
-                                )
-                                if ftype:
-                                    add_edge(method_edge_for_type(rel, ftype, method))
-
-                    # Function references passed as arguments (`arr.map(fn)`,
-                    # `on('x', handler)`) are dependencies even though never
-                    # called at this site — same rationale as the Python
-                    # fn-ref edges.
-                    args = call.child_by_field_name("arguments")
-                    if args is not None:
-                        for arg in args.named_children:
-                            if arg.type != "identifier":
-                                continue
-                            ref = _text(arg)
-                            if ref in param_names:
-                                continue
-                            target = resolve_name(rel, ref)
-                            if target and not target.endswith(".constructor"):
-                                add_edge(target)
-
-                # Annotation-reference edges: consumer → interface/alias it
-                # mentions in its signature (Python's annotated-return-edge
-                # analog). Only TYPE declarations — classes get edges from
-                # real calls. Direction is consumer → type, so a changed
-                # interface pulls all its consumers into the blast radius
-                # via the reverse graph, which is exactly what a types/*.ts
-                # edit's co-change history shows.
-                ann_types = _symbol_annotation_types(node)
-                ann_types.update(v for v in param_info.values() if v)
-                ann_types.update(local_types.values())
-                for tname in ann_types:
-                    resolved_t = resolve_type(rel, tname)
-                    if resolved_t is not None and resolved_t[0] == "type":
-                        add_edge(resolved_t[2])
-
-            # Child → parent override edges via extends (mirrors the Python
-            # graph's Phase 1A; same direction rationale — never parent →
-            # all children, which would create mega-hubs).
-            for cls, methods in f.class_methods.items():
-                parent = resolve_extends(rel, cls)
-                if not parent:
+                orig = imp_spec.child_by_field_name("name")
+                alias = imp_spec.child_by_field_name("alias")
+                if orig is None:
                     continue
-                p_file, p_cls = parent
-                parent_methods = facts[p_file].class_methods.get(p_cls, set())
-                for m in methods:
-                    if m in parent_methods:
-                        child_id = f"{rel}:{cls}.{m}"
-                        parent_id = f"{p_file}:{p_cls}.{m}"
-                        graph.setdefault(child_id, [])
-                        if parent_id not in graph[child_id]:
-                            graph[child_id].append(parent_id)
+                local = _text(alias) if alias is not None else _text(orig)
+                imap[local] = resolver.follow_barrel(target, _text(orig))
 
-        return graph
+
+def _add_file_edges(resolver, graph, rel, f):
+    """All edges out of one file's symbols."""
+    def_node_ids = {id(node) for _n, node in f.symbols}
+
+    for name, node in f.symbols:
+        sym_id = f"{rel}:{name}"
+        graph.setdefault(sym_id, [])
+        if node.type in _TYPE_DECLS:
+            continue
+        _add_symbol_edges(resolver, graph, rel, f, name, node, def_node_ids)
+
+    _add_extends_override_edges(resolver, graph, rel, f)
+
+
+def _add_symbol_edges(resolver, graph, rel, f, name, node, def_node_ids):
+    """Call edges, fn-ref-argument edges, and annotation-reference edges
+    out of one (non-type) symbol."""
+    sym_id = f"{rel}:{name}"
+    class_name = name.rsplit(".", 1)[0] if "." in name else None
+    param_info = _param_info(node)
+    param_names = set(param_info)
+    local_types = _collect_local_types(_body_of(node), def_node_ids)
+    edges = graph[sym_id]
+
+    def add_edge(dep: Optional[str]):
+        if dep and dep != sym_id and dep not in edges:
+            edges.append(dep)
+
+    for call in _iter_calls(_body_of(node), def_node_ids):
+        if call.type == "new_expression":
+            add_edge(_new_expression_target(resolver, rel, call, param_names))
+            continue
+
+        fn = call.child_by_field_name("function")
+        if fn is None:
+            continue
+        add_edge(_call_target(
+            resolver, rel, f, fn, class_name, param_names,
+            param_info, local_types,
+        ))
+        _add_arg_reference_edges(resolver, rel, call, param_names, add_edge)
+
+    _add_annotation_edges(resolver, rel, node, param_info, local_types, add_edge)
+
+
+def _new_expression_target(resolver, rel, call, param_names):
+    """`new Class()` -> the class's constructor (param-shadow guarded)."""
+    ctor = call.child_by_field_name("constructor")
+    if ctor is not None and ctor.type == "identifier":
+        cname = _text(ctor)
+        if cname not in param_names:
+            return resolver.resolve_name(rel, cname)
+    return None
+
+
+def _call_target(
+    resolver, rel, f, fn, class_name, param_names, param_info, local_types
+):
+    """Edge target for one call's callee expression, or None."""
+    if fn.type == "identifier":
+        callee = _text(fn)
+        if callee not in param_names:
+            return resolver.resolve_name(rel, callee)
+        return None
+    if fn.type == "super" and class_name:
+        parent = resolver.resolve_extends(rel, class_name)
+        if parent:
+            return resolver.lookup_callable(parent[0], parent[1])
+        return None
+    if fn.type == "member_expression":
+        return _member_call_target(
+            resolver, rel, f, fn, class_name, param_info, local_types
+        )
+    return None
+
+
+def _member_call_target(
+    resolver, rel, f, fn, class_name, param_info, local_types
+):
+    """Edge target for `receiver.method()`: this-methods, namespace-member
+    calls, typed receivers, and `this.field.method()`."""
+    obj = fn.child_by_field_name("object")
+    prop = fn.child_by_field_name("property")
+    if obj is None or prop is None:
+        return None
+    method = _text(prop)
+    if obj.type == "this" and class_name:
+        if method in f.class_methods.get(class_name, ()):
+            return f"{rel}:{class_name}.{method}"
+        return None
+    if obj.type == "identifier":
+        return _identifier_receiver_target(
+            resolver, rel, _text(obj), method, param_info, local_types
+        )
+    if obj.type == "member_expression" and class_name:
+        return _this_field_call_target(resolver, rel, f, obj, method, class_name)
+    return None
+
+
+def _identifier_receiver_target(
+    resolver, rel, obj_name, method, param_info, local_types
+):
+    """`ns.fn()` through a namespace import, or `u.login()` where u is a
+    param/local declared `: User` or `new User()`. Locals (annotation or
+    `new X()`) shadow parameters."""
+    imported = resolver.import_maps[rel].get(obj_name)
+    if imported and imported[1] == "*":
+        return resolver.lookup_callable(imported[0], method)
+    rtype = local_types.get(obj_name) or param_info.get(obj_name)
+    if rtype:
+        return resolver.method_edge_for_type(rel, rtype, method)
+    return None
+
+
+def _this_field_call_target(resolver, rel, f, obj, method, class_name):
+    """`this.field.method()` through a typed field or constructor
+    parameter property."""
+    inner_obj = obj.child_by_field_name("object")
+    inner_prop = obj.child_by_field_name("property")
+    if (
+        inner_obj is not None
+        and inner_obj.type == "this"
+        and inner_prop is not None
+    ):
+        ftype = f.class_fields.get(class_name, {}).get(_text(inner_prop))
+        if ftype:
+            return resolver.method_edge_for_type(rel, ftype, method)
+    return None
+
+
+def _add_arg_reference_edges(resolver, rel, call, param_names, add_edge):
+    """Function references passed as arguments (`arr.map(fn)`,
+    `on('x', handler)`) are dependencies even though never called at this
+    site — same rationale as the Python fn-ref edges."""
+    args = call.child_by_field_name("arguments")
+    if args is None:
+        return
+    for arg in args.named_children:
+        if arg.type != "identifier":
+            continue
+        ref = _text(arg)
+        if ref in param_names:
+            continue
+        target = resolver.resolve_name(rel, ref)
+        if target and not target.endswith(".constructor"):
+            add_edge(target)
+
+
+def _add_annotation_edges(resolver, rel, node, param_info, local_types, add_edge):
+    """Annotation-reference edges: consumer → interface/alias it mentions
+    in its signature (Python's annotated-return-edge analog). Only TYPE
+    declarations — classes get edges from real calls. Direction is
+    consumer → type, so a changed interface pulls all its consumers into
+    the blast radius via the reverse graph, which is exactly what a
+    types/*.ts edit's co-change history shows."""
+    ann_types = _symbol_annotation_types(node)
+    ann_types.update(v for v in param_info.values() if v)
+    ann_types.update(local_types.values())
+    for tname in ann_types:
+        resolved_t = resolver.resolve_type(rel, tname)
+        if resolved_t is not None and resolved_t[0] == "type":
+            add_edge(resolved_t[2])
+
+
+def _add_extends_override_edges(resolver, graph, rel, f):
+    """Child → parent override edges via extends (mirrors the Python
+    graph's Phase 1A; same direction rationale — never parent → all
+    children, which would create mega-hubs)."""
+    for cls, methods in f.class_methods.items():
+        parent = resolver.resolve_extends(rel, cls)
+        if not parent:
+            continue
+        p_file, p_cls = parent
+        parent_methods = resolver.facts[p_file].class_methods.get(p_cls, set())
+        for m in methods:
+            if m in parent_methods:
+                child_id = f"{rel}:{cls}.{m}"
+                parent_id = f"{p_file}:{p_cls}.{m}"
+                graph.setdefault(child_id, [])
+                if parent_id not in graph[child_id]:
+                    graph[child_id].append(parent_id)
 
 
 # TSConfig is JSONC: comments and trailing commas are legal. This regex
