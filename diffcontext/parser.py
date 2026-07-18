@@ -15,33 +15,83 @@ from ._warn_once import warn_syntax_error_once, check_and_warn_encoding
 logger = logging.getLogger(__name__)
 
 
-class _FunctionCollector(ast.NodeVisitor):
-    """AST visitor that collects all function/method definitions."""
+# `def`/`class` are statements, so collection only needs to descend
+# through statement blocks — expression subtrees (the majority of AST
+# nodes) can never contain a definition. Field order mirrors the AST's
+# own field order so collection order matches a full NodeVisitor walk.
+_STMT_BLOCK_FIELDS = ("body", "handlers", "orelse", "finalbody", "cases")
 
-    def __init__(self):
-        self.class_stack: list = []
-        self.collected: list = []
 
-    def visit_ClassDef(self, node):
-        self.class_stack.append(node.name)
-        for child in node.body:
-            self.visit(child)
-        self.class_stack.pop()
+def _collect_functions(tree: "ast.Module") -> "List[tuple]":
+    """
+    Collect (qualified_name, node) for every function/method definition,
+    including nested functions, methods of classes defined inside
+    functions, and definitions under conditional blocks (`if
+    TYPE_CHECKING:`, `try/except ImportError`, `match`).
+    """
+    collected: "List[tuple]" = []
+    class_stack: "List[str]" = []
 
-    def visit_FunctionDef(self, node):
-        self._collect(node)
-        self.generic_visit(node)
+    def _walk(stmts):
+        for node in stmts:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if class_stack:
+                    name = ".".join(class_stack) + "." + node.name
+                else:
+                    name = node.name
+                collected.append((name, node))
+                _walk(node.body)
+            elif isinstance(node, ast.ClassDef):
+                class_stack.append(node.name)
+                _walk(node.body)
+                class_stack.pop()
+            else:
+                for field in _STMT_BLOCK_FIELDS:
+                    block = getattr(node, field, None)
+                    if block:
+                        _walk(block)
 
-    def visit_AsyncFunctionDef(self, node):
-        self._collect(node)
-        self.generic_visit(node)
+    _walk(tree.body)
+    return collected
 
-    def _collect(self, node):
-        if self.class_stack:
-            name = ".".join(self.class_stack) + "." + node.name
-        else:
-            name = node.name
-        self.collected.append((name, node))
+
+def _segment_lines(source: str) -> "Optional[List[str]]":
+    """
+    Pre-split source for fast per-symbol segment slicing.
+
+    `ast.get_source_segment` re-splits the ENTIRE file for every symbol —
+    on a large repo that is the single biggest cold-index cost. Splitting
+    once per file and slicing per symbol is equivalent, but only when the
+    file has no `\\r` or `\\f` characters (the parser's line accounting
+    treats those specially); return None then, and the caller falls back
+    to `ast.get_source_segment` for that file.
+    """
+    if "\r" in source or "\f" in source:
+        return None
+    return source.split("\n")
+
+
+def _fast_segment(lines: "List[str]", node) -> "Optional[str]":
+    """Slice a node's source from pre-split lines. AST column offsets are
+    UTF-8 byte offsets, so non-ASCII boundary lines go through bytes."""
+    end_lineno = getattr(node, "end_lineno", None)
+    end_col = getattr(node, "end_col_offset", None)
+    if end_lineno is None or end_col is None:
+        return None
+    lineno = node.lineno - 1
+    end_lineno -= 1
+    col = node.col_offset
+
+    def _cols(line: str, start: "Optional[int]", end: "Optional[int]") -> str:
+        if line.isascii():
+            return line[start:end]
+        return line.encode("utf-8")[start:end].decode("utf-8")
+
+    if end_lineno == lineno:
+        return _cols(lines[lineno], col, end_col)
+    first = _cols(lines[lineno], col, None)
+    last = _cols(lines[end_lineno], None, end_col)
+    return "\n".join([first, *lines[lineno + 1 : end_lineno], last])
 
 
 def extract_symbols(
@@ -80,13 +130,18 @@ def extract_symbols(
                 broken_files.append(relative_file)
             return {}
 
-    collector = _FunctionCollector()
-    collector.visit(tree)
+    seg_lines = _segment_lines(source)
 
     symbols = {}
-    for name, node in collector.collected:
+    for name, node in _collect_functions(tree):
         symbol_id = f"{relative_file}:{name}"
-        code = ast.get_source_segment(source, node)
+        if seg_lines is not None:
+            try:
+                code = _fast_segment(seg_lines, node)
+            except (IndexError, UnicodeError):
+                code = ast.get_source_segment(source, node)
+        else:
+            code = ast.get_source_segment(source, node)
         if code is None:
             continue
         symbols[symbol_id] = Symbol(
