@@ -17,7 +17,7 @@ Performance:
 import ast
 import logging
 import os
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .scanner import find_python_files
 from .parser import extract_all_symbols

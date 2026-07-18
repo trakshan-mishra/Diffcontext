@@ -7,21 +7,21 @@ Three evaluation modes:
 2. GRAPH: Internal consistency check (circular, for debugging only)
 3. BASELINES: Compare DiffContext vs BM25 vs file-colocation vs random
 
-Usage:
+Usage (from the repo root):
     # Clone real repos with full history first:
-    python benchmark_runner.py --clone
+    python benchmarks/benchmark_runner.py --clone
 
     # Run co-change benchmark (honest, non-circular):
-    python benchmark_runner.py --cochange
+    python benchmarks/benchmark_runner.py --cochange
 
     # Compare against baselines:
-    python benchmark_runner.py --compare
+    python benchmarks/benchmark_runner.py --compare
 
     # Run everything:
-    python benchmark_runner.py --full
+    python benchmarks/benchmark_runner.py --full
 
     # Single repo:
-    python benchmark_runner.py --repo /path/to/repo --cochange
+    python benchmarks/benchmark_runner.py --repo /path/to/repo --cochange
 """
 
 import argparse
@@ -34,7 +34,7 @@ import random
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Set, Tuple
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from diffcontext.parser import extract_all_symbols
 from diffcontext.graph_builder import build_repository_graph
@@ -553,8 +553,9 @@ Step-by-step guide:
 
     args = parser.parse_args()
 
-    # Default bench dir
-    base = os.path.dirname(os.path.abspath(__file__))
+    # Default bench dir: <repo root>/benchmark_repos, same as the other
+    # benchmark scripts
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bench_dir = args.bench_dir or os.path.join(base, "benchmark_repos")
 
     if args.clone:

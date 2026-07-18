@@ -30,7 +30,7 @@ HONESTY CONTRACT (read this before trusting the score):
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import List, Set
 
 from ..models import RepositoryIndex, ImpactResult, ContextPackage
 

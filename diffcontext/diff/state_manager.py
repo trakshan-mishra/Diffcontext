@@ -4,7 +4,7 @@ state_manager.py — Snapshot-based change detection (no git required).
 
 import json
 import os
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, Optional
 
 from ..models import DiffResult
 

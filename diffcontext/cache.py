@@ -6,8 +6,6 @@ repository call graph.
 import hashlib
 import json
 import sqlite3
-import os
-from contextlib import contextmanager
 from typing import Dict, Callable, List, Optional, Tuple
 
 from .models import Symbol
