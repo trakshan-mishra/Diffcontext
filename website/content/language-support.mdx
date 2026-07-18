@@ -1,0 +1,59 @@
+---
+title: Language Support
+description: Language adapter status, TypeScript/JavaScript measured results, and known limitations for DiffContext.
+---
+
+import { Callout } from 'nextra/components'
+
+# Language Support
+
+| Language | Status | Retrieval Quality |
+|----------|--------|-------------------|
+| **Python** | **Full** | Benchmarked: 423 commits, 5 repos + 2 validation repos |
+| TypeScript / JS (ESM) | **Working prototype** (`pip install -e ".[typescript]"`) | Mean recall **0–68% depending on code style** — not one number |
+| JavaScript (CommonJS) | **Effectively unsupported** | Measured **0.0%** on express — do not use on CJS repos |
+| Go / Rust / Java / others | Not supported | Retrieves nothing |
+
+Without the `[typescript]` extra installed, DiffContext is exactly the Python-only tool — no behavior change, no warnings.
+
+## TypeScript/JavaScript: Measured Results
+
+Mined co-change cases (`verify --from-history 25`, the same harness you can run on your own repo):
+
+| Repo | Shape | Cases passed | Mean recall | Why |
+|------|-------|-------------|-------------|-----|
+| honojs/hono | ESM TS framework | 19/25 | **67.9%** | Clean relative-import graph |
+| colinhacks/zod | TS monorepo, type-heavy | 16/25 | **58.3%** | Chained-generic style limits receiver typing |
+| sindresorhus/ky | Small ESM TS lib | 6/25 | **34.5%** | History dominated by one mega-commit; cross-file type↔impl spread |
+| expressjs/express | CommonJS JS | 0/19 | **0.0%** | CJS: `exports.x = function` yields almost no symbols |
+
+**Retrieval quality tracks code style, not language.** ESM TypeScript with a clear import graph lands in the same band as Python; CommonJS is a named, measured failure mode.
+
+## What the TS Adapter Resolves
+
+- Functions, class methods, arrow consts, namespaces
+- ES imports (named/default/namespace, aliases, barrel `index.ts` re-exports incl. `export * from`)
+- tsconfig/jsconfig `baseUrl` + `paths` aliases (`@services/*`)
+- `this.method()`, `super()`, `new Class()`, `extends` override edges
+- Function references passed as arguments
+- **Declared-type resolution**: parameter/field/local annotations and `new X()` inference make `u.login()`, `this.db.query()` resolve to the right class method
+
+**Still unresolved, disclosed:** untyped receivers, tsconfig `extends` chains, CommonJS.
+
+## Known-Broken: The `verify` Score on TypeScript
+
+<Callout type="error" emoji="⚠️">
+  **The `verify` sufficiency score has ZERO discriminating power on TypeScript today.** On hono it reported 100 for every case while measured recall ranged 50–100% — that is not "uncalibrated," it is a confidence signal that currently measures nothing for TS. Its structural inputs (direct-neighbor closure, parse health) were designed against Python graph density. On TS repos: run `--calibrate`, trust the recall numbers, ignore the score. TS-aware sufficiency inputs are roadmap work, and until they exist this warning stays here.
+</Callout>
+
+## Exclusion Policy
+
+Vendored/static JS inside Python repos (e.g. django's admin jquery) is excluded by an adapter-level policy (`static/`, `vendor/`, `*.min.*`, colocated `*.test.ts`/`*.spec.ts`), so installing the extra does not pollute existing Python indexes.
+
+## Adapter Roadmap
+
+1. **TS-aware sufficiency inputs** — the score currently has zero discriminating power on TS
+2. **CommonJS support** — `require()`, `exports.x =`; the measured 0% failure mode
+3. **Per-language hybrid blend weights** — current weights were tuned on Python graph density
+4. **Apply the five-repo benchmark methodology to TS**
+5. **Further adapters** (Go/Rust) via the `diffcontext/languages/` template

@@ -1,0 +1,80 @@
+---
+title: Introduction
+description: DiffContext — find the code that matters for a change, and fit it into an LLM's context window automatically.
+---
+
+import { Cards } from 'nextra/components'
+import Hero from '../components/Hero'
+import Metrics from '../components/Metrics'
+import Pipeline from '../components/Pipeline'
+import BenchmarkChart from '../components/BenchmarkChart'
+
+<Hero />
+
+<Metrics />
+
+<Pipeline />
+
+- Zero runtime dependencies, Python 3.8+, `pip install -e .`
+- Output is **honest by construction**: a meta header discloses exactly which symbols were dropped, so the model knows what it cannot see.
+
+## Why
+
+Ask an AI assistant to change one function in a 50,000-line project and you have three bad options:
+
+- **Paste the whole repo** — doesn't fit, and models get worse in huge contexts
+- **Paste just the function** — the model breaks three callers it never saw
+- **Grep for the name** — grep can't find the subclass that overrides it or the handler that receives it through `functools.partial` — grep's recall _plateaus_ no matter the budget
+
+DiffContext is **option 4**: understand the repository's structure once, then, for any change, select the few functions that actually matter and compile them into the smallest useful package for the model.
+
+<BenchmarkChart />
+
+## Who is this for?
+
+**Built for:**
+- AI coding agents
+- IDE assistants
+- Code review bots
+- Automated refactoring tools
+- Repository-scale code generation
+
+## Use as a Library
+
+```python
+from diffcontext.pipeline import index_repository, analyze_impact, compile
+
+idx = index_repository("/path/to/repo")
+impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])   # hybrid by default
+ctx = compile(idx, impact, max_tokens=8000, top_k=20)
+
+print(ctx.text)                      # paste-ready context with meta-header
+```
+
+### Example API Output
+
+The output provides an exact breakdown of what was included and what had to be dropped to respect the token budget:
+
+```python
+=== DIFFCONTEXT CONTEXT COMPILATION ===
+Budget limit: 8000 tokens
+Included top-level files/symbols: 42
+---
+The following relevant symbols were excluded due to budget limits:
+ - ./src/utils.py:format_date
+ - ./src/db/models.py:User (partial representation)
+========================================
+
+# File: src/auth.py
+def validate_jwt(token: str) -> dict:
+    ...
+```
+
+## Explore the Docs
+
+<Cards>
+  <Cards.Card title="Quick Start →" href="/docs/quick-start" />
+  <Cards.Card title="Usage Guide →" href="/docs/usage" />
+  <Cards.Card title="Architecture →" href="/docs/architecture" />
+  <Cards.Card title="Benchmarks →" href="/docs/benchmarks" />
+</Cards>

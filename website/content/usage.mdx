@@ -1,0 +1,113 @@
+---
+title: Usage Guide
+description: Day-to-day DiffContext workflows — symbol IDs, tuning context size, checking for sufficient coverage, and known limitations.
+---
+
+import { Callout } from 'nextra/components'
+
+# Usage Guide
+
+This captures the actual workflow that works, based on real use against a 1000+ symbol production repo (not just toy examples).
+
+## Setup (once per shell session)
+
+```bash
+alias dcb='diffcontext blast --changed'
+alias dcc='diffcontext compile --changed'
+alias dci='diffcontext index'
+```
+
+To make these permanent, append the three lines above to `~/.bashrc` (or `~/.zshrc` if you use zsh), then `source ~/.bashrc`.
+
+## The Core Workflow
+
+### 1. While Actively Editing — Don't Rely on git diff Detection
+
+Git-diff-based commands (`diffcontext diff`, `diffcontext blast` with no `--changed`) only see **tracked** changes that are committed or staged. An edit to an **untracked** (brand new) file is invisible to them — not a bug, that's just what `git diff` means.
+
+For active editing, skip git entirely and name the symbol directly:
+
+```bash
+dcb ./path/to/file.py:function_name
+```
+
+This works immediately, no commit, no `git add`, no staging.
+
+### 2. Symbol IDs — Exact Format
+
+```
+./relative/path.py:function_name
+./relative/path.py:ClassName.method_name
+```
+
+Rules:
+- Path is relative to the repo root you indexed, always starts with `./`
+- **No parentheses, no arguments, no type hints** — `update_run`, never `update_run(run_id: int, **kwargs)`. Bash will choke on unquoted `()` with a `syntax error near unexpected token` — that's bash, not diffcontext, complaining.
+- Find real names fast:
+  ```bash
+  grep -n "^def \|^    def " path/to/file.py
+  ```
+
+### 3. Before Trusting "No Callers Found" — Spot-Check with grep
+
+This caught 3 real bugs during testing. Make it a habit, not a one-off:
+
+```bash
+grep -rn "function_name(" --include="*.py" .
+```
+
+If grep finds callers diffcontext's blast radius missed, that's a real gap worth knowing about (and worth reporting) — don't assume the blast radius is complete just because it ran without error.
+
+### 4. Getting LLM-Ready Context
+
+```bash
+dcc ./path/to/file.py:function_name --max-tokens 4000
+```
+
+Paste the output into Claude/ChatGPT **with a specific question**, not just the raw context:
+
+- ❌ Bad: `"review this"`
+- ✅ Good: `"I'm about to add a new field to update_run — given these 5 callers, what do I need to check?"`
+- ✅ Good: `"Is the dynamic SQL construction in update_run safe given how kwargs is validated against _UPDATABLE_RUN_COLUMNS?"`
+
+### 5. Tuning Context Size
+
+- `--depth N` (default 2-3): how many hops of callers/callees to pull in.
+  - Use `--depth 1` for a tight, single-function check.
+  - Use `--depth 4+` for "how does this fit into the bigger picture."
+- `--max-tokens N`: hard cap. Lower it to force tighter selection (only the highest-scored symbols survive); raise it if you have a large-context model and want more surrounding code.
+
+### 6. Checking What Changed (Only Works for Committed/Staged Files)
+
+```bash
+diffcontext diff                    # working tree vs HEAD~1, tracked files only
+diffcontext diff --committed-only   # two commits only, ignores uncommitted edits
+```
+
+<Callout type="warning">
+  If a file shows as broken (`Skipping X due to SyntaxError`), diffcontext will still report a best-effort diff using the prior committed version — look for the `⚠ N file(s) failed to parse` block in the output.
+</Callout>
+
+### 7. Checking the Context Is Actually Sufficient
+
+```bash
+diffcontext verify --ref HEAD~1              # structural sufficiency report
+diffcontext verify --cases cases.json        # your own known-true expectations
+diffcontext verify --from-history 30 --calibrate   # is the score trustworthy here?
+```
+
+The report tells you which direct callers/callees of your change were cut by the token budget (with remediation), and the calibration mode measures whether the score tracks real recall mined from your repo's own commit history.
+
+## Known Limitations
+
+<Callout type="error" emoji="⚠️">
+  Don't trust blast radius blindly in these scenarios.
+</Callout>
+
+| Limitation | Description |
+|---|---|
+| Dynamic dispatch / `getattr()`-based routing | Common in CLI argument dispatch and plugin systems — invisible to static analysis |
+| Cross-file thematic changes | "Remove a dependency" touching 3 unrelated-by-call-graph files for one conceptual reason — blast radius won't connect these |
+| User-defined higher-order functions | Only the common stdlib cases (`map`, `filter`, `sorted`/`max`/`min` with `key=`) are recognized. A custom `def apply_twice(fn, value)` is not tracked |
+
+**When in doubt: grep first, trust second.**
