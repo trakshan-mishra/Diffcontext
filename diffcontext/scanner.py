@@ -1,10 +1,14 @@
 """
-scanner.py — Discover Python files in a repository.
+scanner.py — Discover source files in a repository.
+
+Python always; other languages via the optional adapters in languages/
+(each adapter contributes its extensions to discovery only when its
+runtime deps are installed).
 """
 
 import os
 import subprocess
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 EXCLUDED_DIRS: Set[str] = {
     "__pycache__",
@@ -35,9 +39,11 @@ def _excluded(rel_path: str) -> bool:
     return any(p in EXCLUDED_DIRS or p.endswith(".egg-info") for p in parts)
 
 
-def _git_python_files(root_dir: str) -> Optional[List[str]]:
+def _git_source_files(
+    root_dir: str, extensions: "Tuple[str, ...]"
+) -> Optional[List[str]]:
     """
-    Enumerate .py files via git: tracked + untracked-but-not-ignored.
+    Enumerate matching files via git: tracked + untracked-but-not-ignored.
 
     This makes indexing respect .gitignore, so vendored checkouts (e.g. a
     cloned benchmark repo) never pollute the index — a hardcoded dir list
@@ -54,29 +60,31 @@ def _git_python_files(root_dir: str) -> Optional[List[str]]:
     if out.returncode != 0:
         return None
 
-    python_files = []
+    matched = []
     for rel in out.stdout.decode("utf-8", "replace").split("\0"):
-        if not rel.endswith(".py") or _excluded(rel):
+        if not rel.endswith(extensions) or _excluded(rel):
             continue
         full = os.path.join(root_dir, rel)
         # --cached lists tracked files even after deletion from disk
         if os.path.isfile(full):
-            python_files.append(full)
-    return python_files
+            matched.append(full)
+    return matched
 
 
-def find_python_files(root_dir: str) -> List[str]:
+def find_source_files(
+    root_dir: str, extensions: "Tuple[str, ...]"
+) -> List[str]:
     """
-    Return list of .py file paths: .gitignore-aware via git when root_dir
-    is inside a git work tree, else a tree walk. Both paths skip
-    EXCLUDED_DIRS (deliberate exclusions like tests/ and docs/ that are
-    tracked in git but not useful retrieval candidates).
+    Return paths of files matching `extensions`: .gitignore-aware via git
+    when root_dir is inside a git work tree, else a tree walk. Both paths
+    skip EXCLUDED_DIRS (deliberate exclusions like tests/ and docs/ that
+    are tracked in git but not useful retrieval candidates).
     """
-    git_files = _git_python_files(root_dir)
+    git_files = _git_source_files(root_dir, extensions)
     if git_files is not None:
         return git_files
 
-    python_files = []
+    matched = []
     for root, dirs, files in os.walk(root_dir):
         dirs[:] = [
             d for d in dirs
@@ -85,7 +93,12 @@ def find_python_files(root_dir: str) -> List[str]:
         ]
 
         for f in files:
-            if f.endswith(".py"):
-                python_files.append(os.path.join(root, f))
+            if f.endswith(extensions):
+                matched.append(os.path.join(root, f))
 
-    return python_files
+    return matched
+
+
+def find_python_files(root_dir: str) -> List[str]:
+    """Return list of .py file paths (see find_source_files)."""
+    return find_source_files(root_dir, (".py",))

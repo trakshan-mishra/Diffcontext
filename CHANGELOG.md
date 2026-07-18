@@ -8,6 +8,65 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Added (experimental TypeScript/JavaScript support — `[typescript]` extra)
+- New `diffcontext/languages/` adapter layer: the pipeline (scoring,
+  selection, compilation, caching, diff mapping, verify) was already
+  language-agnostic; an adapter supplies the two Python-bound pieces —
+  per-file symbols and a dependency graph. Adapters are optional extras
+  probed at import: without `pip install diffcontext[typescript]`, the
+  tool is bit-for-bit the Python-only tool (asserted by the test suite,
+  which skips the adapter tests when the extra is absent).
+- The TypeScript/JavaScript adapter (tree-sitter) resolves functions,
+  class methods, arrow consts, namespaces, ES imports with barrel
+  `index.ts` re-export following (`export {X} from`, `export * from`,
+  depth-capped), `this.method()`, `super()` → parent constructor,
+  `new Class()` → constructor, `extends` override edges (child→parent,
+  same mega-hub rationale as Python's), and function references passed
+  as call arguments with parameter-shadowing guarded. Deliberately
+  unresolved in v1 (disclosed in README): type inference, tsconfig
+  path aliases, CommonJS `require()`.
+- Integration is symmetric with Python: `.ts` files participate in the
+  content-addressed state hash (a one-file edit invalidates the cached
+  graph exactly like a `.py` edit), symbols go through the same SQLite
+  symbol cache, `index.update()` handles changed/deleted TS files
+  (adapter part rebuilt whole — cross-file barrel effects — and verified
+  equal to a from-scratch rebuild by the test suite), and
+  `verify --from-history` mines TS co-change cases through the adapter.
+- Vendor-pollution guard, measured hazard: without an adapter-level
+  exclusion policy (`static/`, `vendor/`, `*.min.*`, colocated
+  `*.test.ts`/`*.spec.ts`), indexing django pulled in its tracked admin
+  static JS — jquery included — 47 vendor symbols in a Python repo's
+  index. Policy is adapter-scoped so a Python package named `static/`
+  keeps being indexed.
+- Declared-type resolution (second pass, after review): parameter /
+  field / local annotations (`u: User`, `private db: Database`,
+  constructor parameter properties) and `new X()` inference resolve
+  `u.login()`, `this.db.query()`, `this.cache.close()` to the defining
+  class method (following `extends` one level); tsconfig/jsconfig
+  `baseUrl` + `paths` aliases resolve `@services/*`-style imports
+  (JSONC-tolerant parser; `extends` chains not followed); and every
+  interface/type-alias a signature mentions gets a consumer→type edge —
+  the TS-specific co-change pattern (implementations change with the
+  types they annotate with) that call scanning can never see. Graph
+  density roughly doubled on all measured repos (hono 648→1,119 edges,
+  zod 687→1,275, ky 144→181).
+- Measured on FOUR real repos of different shapes, same
+  `verify --from-history 25` harness (django's Python mined-case
+  baseline: 58.6%): hono (ESM TS framework) 19/25, 67.9%; zod (TS
+  monorepo, type-heavy) 16/25, 58.3%; ky (small ESM lib, mega-commit
+  history) 6/25, 34.5%; express (CommonJS) 0/19, **0.0%**. The finding:
+  retrieval quality tracks code STYLE, not language — ESM TS with a
+  clear import graph lands in the Python band; CommonJS is a named,
+  measured failure mode (`exports.x = function` yields almost no
+  symbols). These are mined-case smoke signals, not the five-repo
+  benchmark methodology.
+- Known, prominently disclosed: the `verify` sufficiency score has ZERO
+  discriminating power on TypeScript today (reported 100 on every hono
+  case while measured recall ranged 50–100%) — its structural inputs
+  were designed against Python graph density. The README carries a
+  warning box; TS-aware sufficiency inputs are the top adapter roadmap
+  item together with CommonJS support.
+
 ### Performance (cold index 3.5× — profile-driven, behavior-identical)
 - Cold indexing of django (909 files, 9,161 symbols) dropped from ~23s to
   ~6.6s through four fixes, each verified behavior-identical on the full

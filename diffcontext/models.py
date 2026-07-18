@@ -35,6 +35,11 @@ class RepositoryIndex:
     # Lazily built reverse call graph; invalidated by update_index()
     # whenever the forward graph is rebuilt.
     _reverse_graph: Optional[Dict[str, Set[str]]] = field(default=None, repr=False, compare=False)
+    # Per-language-adapter edge sets (adapter name -> {id: [dep ids]}),
+    # kept separately so update_index() can rebuild the Python part
+    # without re-running unchanged language adapters. None on a
+    # graph-cache warm start (recomputed on first update that needs it).
+    _lang_graphs: Optional[Dict[str, Dict[str, List[str]]]] = field(default=None, repr=False, compare=False)
 
     def update(self, changed_files: List[str]) -> "RepositoryIndex":
         """

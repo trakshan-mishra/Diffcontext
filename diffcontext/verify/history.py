@@ -165,6 +165,23 @@ def _find_functions_at_lines(
     if source is None:
         return []
 
+    # Adapter languages: extract symbols from the historical source text
+    # via the language adapter, map lines through Symbol.lineno + length.
+    if not filepath.endswith(".py"):
+        from ..languages import adapter_for_path
+        adapter = adapter_for_path(filepath)
+        if adapter is None:
+            return []
+        symbols = adapter.extract_file_symbols(
+            os.path.join(repo_path, filepath), repo_path, source
+        )
+        results = []
+        for sym in symbols.values():
+            end = sym.lineno + max(len(sym.code.splitlines()) - 1, 0)
+            if set(range(sym.lineno, end + 1)) & changed_lines:
+                results.append(sym.id)
+        return results
+
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -250,12 +267,16 @@ def extract_cochange_cases(
         except subprocess.TimeoutExpired:
             continue
 
+        from ..languages import indexable_extensions
+        _exts = indexable_extensions()
         py_files = [
             f for f in files_result.stdout.strip().split("\n")
-            if f.endswith(".py")
+            if f.endswith(_exts)
             and "/test" not in f.lower()
             and "/tests/" not in f.lower()
             and "test_" not in os.path.basename(f)
+            and ".test." not in os.path.basename(f)   # foo.test.ts convention
+            and ".spec." not in os.path.basename(f)   # foo.spec.ts convention
             and f.strip()
         ]
 
