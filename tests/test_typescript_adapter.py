@@ -226,6 +226,118 @@ class TestPipeline:
         assert fresh.symbols.keys() == idx.symbols.keys()
 
 
+@pytest.fixture()
+def typed_repo(tmp_path):
+    """Fixture for type-inference and tsconfig-alias resolution."""
+    root = str(tmp_path / "tirepo")
+    _write(root, "tsconfig.json", (
+        '{\n'
+        '  // JSONC: comments and trailing commas are legal\n'
+        '  "compilerOptions": {\n'
+        '    "baseUrl": "./src",\n'
+        '    "paths": { "@services/*": ["services/*"], },\n'
+        '  },\n'
+        '}\n'
+    ))
+    _write(root, "src/services/db.ts", (
+        "export class Database {\n"
+        "  query(sql: string): void {}\n"
+        "  close(): void {}\n"
+        "}\n"
+        "export interface Logger { log(msg: string): void; }\n"
+        "export type QueryResult = { rows: number };\n"
+    ))
+    _write(root, "src/services/user.ts", (
+        "import { Database, Logger, QueryResult } from '@services/db';\n"
+        "\n"
+        "export class UserService {\n"
+        "  private cache: Database;\n"
+        "  constructor(private db: Database) {}\n"
+        "  find(id: string, log: Logger): void {\n"
+        "    this.db.query(id);\n"
+        "    this.cache.close();\n"
+        "    log.log(id);\n"
+        "  }\n"
+        "}\n"
+        "\n"
+        "export function run(svc: UserService): QueryResult {\n"
+        "  const d = new Database();\n"
+        "  d.query('x');\n"
+        "  const d2: Database = getDb();\n"
+        "  d2.close();\n"
+        "  svc.find('1', null as any);\n"
+        "  return { rows: 1 };\n"
+        "}\n"
+        "function getDb(): Database { return new Database(); }\n"
+    ))
+    return root
+
+
+class TestTypeInference:
+    def test_tsconfig_path_alias_resolves_import(self, typed_repo):
+        idx = _index(typed_repo)
+        # If the @services/* alias resolved, typed edges cross files
+        assert "./src/services/db.ts:Database.query" in idx.graph[
+            "./src/services/user.ts:UserService.find"
+        ]
+
+    def test_constructor_parameter_property_receiver(self, typed_repo):
+        # constructor(private db: Database) ... this.db.query()
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:Database.query" in idx.graph[
+            "./src/services/user.ts:UserService.find"
+        ]
+
+    def test_typed_field_receiver(self, typed_repo):
+        # private cache: Database ... this.cache.close()
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:Database.close" in idx.graph[
+            "./src/services/user.ts:UserService.find"
+        ]
+
+    def test_annotated_param_receiver(self, typed_repo):
+        # run(svc: UserService) ... svc.find(...)
+        idx = _index(typed_repo)
+        assert "./src/services/user.ts:UserService.find" in idx.graph[
+            "./src/services/user.ts:run"
+        ]
+
+    def test_new_expression_local_inference(self, typed_repo):
+        # const d = new Database(); d.query('x')
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:Database.query" in idx.graph[
+            "./src/services/user.ts:run"
+        ]
+
+    def test_annotated_local_receiver(self, typed_repo):
+        # const d2: Database = getDb(); d2.close()
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:Database.close" in idx.graph[
+            "./src/services/user.ts:run"
+        ]
+
+    def test_interface_contract_edge_from_member_call(self, typed_repo):
+        # log: Logger ... log.log(id) -> edge to the Logger interface symbol
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:Logger" in idx.graph[
+            "./src/services/user.ts:UserService.find"
+        ]
+
+    def test_annotation_reference_edge_to_type_alias(self, typed_repo):
+        # run(...): QueryResult -> edge to the type alias it mentions
+        idx = _index(typed_repo)
+        assert "./src/services/db.ts:QueryResult" in idx.graph[
+            "./src/services/user.ts:run"
+        ]
+
+    def test_changed_interface_blasts_to_consumers(self, typed_repo):
+        # The direction rationale: editing the interface must pull its
+        # consumers into the blast radius via the reverse graph.
+        idx = _index(typed_repo)
+        impact = analyze_impact(idx, ["./src/services/db.ts:Logger"], hybrid=False)
+        assert "./src/services/user.ts:UserService.find" in impact.blast_radius
+
+
 class TestIndexingPolicy:
     def test_vendored_minified_and_test_files_excluded(self, ts_repo):
         _write(ts_repo, "static/vendor/jquery.js",
