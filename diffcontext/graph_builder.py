@@ -493,12 +493,13 @@ def _build_file_groups(function_ids, functions):
     """
     rel_file -> [fids], sorted by line number within each file: window
     edges genuinely follow definition order, and representative picks
-    (syms[0]) are deterministic. Building this from set iteration order
-    made those edges vary with hash seed / insertion order —
-    nondeterministic graphs are a reproducibility hazard for the benchmark.
+    (syms[0]) are deterministic. Iteration is over sorted(function_ids)
+    so the dict *key* order — the order Phases 1C-1E walk files when
+    emitting edges — is hash-seed independent too; sorting only the
+    within-file lists still left edge order varying between runs.
     """
     file_groups: Dict[str, List[str]] = {}
-    for fid in function_ids:
+    for fid in sorted(function_ids):
         ffile = fid.split(":")[0]
         file_groups.setdefault(ffile, []).append(fid)
     for ffile in file_groups:
