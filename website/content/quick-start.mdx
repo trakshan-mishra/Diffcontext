@@ -1,0 +1,107 @@
+---
+title: Quick Start
+description: Install DiffContext and run your first analysis in under a minute.
+---
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+# Quick Start
+
+Get DiffContext running on your repo in under a minute.
+
+## Installation
+
+<Tabs items={['pip', 'pip editable', 'with TypeScript support']}>
+  <Tabs.Tab>
+  ```bash
+  pip install diffcontext
+  ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+  ```bash
+  git clone https://github.com/trakshan-mishra/Diffcontext.git
+  cd Diffcontext
+  pip install -e .
+  ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+  ```bash
+  pip install -e ".[typescript]"
+  ```
+  Adds tree-sitter for TypeScript/JavaScript (ESM) support.
+  </Tabs.Tab>
+</Tabs>
+
+**Requirements:** Python 3.8+, zero runtime dependencies in the core package.
+
+## Your First Analysis
+
+<Steps>
+### Index a Python repo
+
+```bash
+diffcontext index /path/to/project
+```
+
+First run: a few seconds. Subsequent warm runs: ~0.02s (content-addressed SQLite cache).
+
+### Find blast radius of a change
+
+```bash
+# "Who is affected if I change this function?"
+diffcontext blast --changed ./src/auth.py:validate_jwt
+```
+
+### Compile LLM-ready context
+
+```bash
+diffcontext compile --changed ./src/auth.py:validate_jwt --max-tokens 8000
+```
+
+### Or start from an actual git diff
+
+```bash
+diffcontext compile --ref HEAD~1
+```
+
+### Get machine-readable output for scripts and agents
+
+```bash
+diffcontext compile --changed ./src/auth.py:validate_jwt --json
+```
+
+### Check if the context is actually sufficient
+
+```bash
+diffcontext verify --ref HEAD~1
+diffcontext verify --from-history 30 --calibrate
+```
+</Steps>
+
+<Callout type="info">
+  Symbol IDs are always `./relative/path.py:ClassName.method` — no parentheses, no arguments.
+</Callout>
+
+## What You'll See
+
+```
+=== DIFFCONTEXT META ===
+Repo symbols total    : 648
+Symbols IN context    : 18
+Symbols DROPPED       : 630  ← you cannot see these
+Graph confidence      : 100%  ✓
+Context tokens (code) : 5,644
+Output tokens (full)  : 7,012
+...
+DROPPED SYMBOLS (630) — scored but cut by token budget:
+  - ./src/black/linegen.py:transform_line  (score: 71)
+  ...
+```
+
+Every function in the body is annotated with its callers and callees. Anything referenced but _not included_ is tagged `[NOT IN CONTEXT]` — so the model knows the difference between "this function doesn't exist" and "this function exists but wasn't shown to me."
+
+## Next Steps
+
+- [Usage Guide](/docs/usage) — day-to-day workflows, symbol IDs, depth tuning
+- [Architecture](/docs/architecture) — how the pipeline works under the hood
+- [Benchmarks](/docs/benchmarks) — measured recall vs grep on real commit history

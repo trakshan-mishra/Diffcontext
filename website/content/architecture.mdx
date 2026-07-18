@@ -1,0 +1,159 @@
+---
+title: Architecture
+description: Deep-dive into how DiffContext's pipeline works — scanning, parsing, resolving, graph-building, scoring, and compiling LLM-ready context.
+---
+
+import { Callout } from 'nextra/components'
+
+# Architecture
+
+This is the full design walkthrough. For the 30-second version, see the [Introduction](/docs); for retrieval methodology and numbers, see [Benchmarks](/docs/benchmarks).
+
+## Pipeline Overview
+
+```
+                 ┌─────────────────────────────────────────────────┐
+                 │              RepositoryIndex (cached)            │
+   *.py files ──►│  scanner ─► parser ─► resolver ─► graph_builder  │
+                 │     content-addressed SQLite cache (cache.py):   │
+                 │     unchanged repo ~0.02s · 1-file edit ~0.5s    │
+                 └───────────────────────┬─────────────────────────┘
+                                         │
+  git diff ─► diff/git_diff ─► changed symbols
+                                         │
+                 ┌───────────────────────▼─────────────────────────┐
+                 │                 analyze_impact                   │
+                 │  impact/blast_radius: callers/callees traversal  │
+                 │  impact/scoring:  graph decay scores      (0.50) │
+                 │  lexical.py:      BM25 over symbol source (0.35) │
+                 │  same-file co-location                    (0.15) │
+                 └───────────────────────┬─────────────────────────┘
+                                         │  ranked candidates
+                 ┌───────────────────────▼─────────────────────────┐
+                 │              select + compile                    │
+                 │  context/selector: token budget + top-k          │
+                 │  context/compiler: honest meta (what was         │
+                 │    DROPPED) + annotated code                     │
+                 └──────────────────────────────────────────────────┘
+```
+
+## The Six Steps, in Plain Words
+
+**1. Scan & parse.** Find every `.py` file, parse each one _once_ into an AST, and extract every function/method as a `Symbol`.
+
+**2. Resolve imports.** Turn `from auth.tokens import verify` — and `import black` under a `src/` layout, and re-exports through `__init__.py` — into actual file paths, so calls can be attributed to real definitions.
+
+**3. Build the graph.** Who calls whom, who inherits from whom, who decorates whom — plus function references passed as _arguments_ (`partial(fn, ...)`, `sorted(xs, key=fn)`), which are dependencies even though they're never "called" at that site.
+
+**4. Cache everything.** The graph is persisted content-addressed (keyed by the hash of every file), so re-indexing an unchanged repo costs ~0.02s and editing one file re-parses only that file — verified equal to a from-scratch rebuild by the test suite.
+
+**5. Score candidates.** Walk the graph outward from the changed function (scores decay with distance), blend with BM25 similarity and same-file bonus.
+
+**6. Select & compile.** Pack the top-scoring functions into your token budget (default top-20 per changed symbol — the benchmarked sweet spot), and render with the honest meta header.
+
+## Why Three Signals, Blended
+
+When a developer changes a function, the _other_ code they end up touching in the same commit tends to be related in one of three measurable ways:
+
+| Signal | Weight | What it finds | Blind spot |
+|--------|--------|---------------|------------|
+| **Call graph** | 0.50 | Callers and callees of the changed function | Related code that never calls yours |
+| **BM25 lexical** | 0.35 | Functions with similar rare tokens | Noise that merely _sounds_ similar |
+| **Same-file** | 0.15 | Code in the same file | Weak, but catches what the others miss |
+
+The hybrid — **graph 0.5 / BM25 0.35 / same-file 0.15** — beat all three in isolation in recall on 4 of 5 benchmark repos. Use `--graph-only` to turn the blend off when you want structural certainty only.
+
+## Module Map
+
+```
+diffcontext/
+├── pipeline.py          # Orchestrator: index → impact → compile; hybrid blend
+├── models.py            # Symbol, RepositoryIndex, ImpactResult, ContextPackage
+├── scanner.py           # File discovery
+├── parser.py            # AST symbol extraction
+├── resolver.py          # Import → filesystem path resolution (src-layouts, re-exports)
+├── symbols.py           # Attribute / local-var type tracking
+├── graph_builder.py     # Dependency graph (calls, inheritance, decorators, fn-refs…)
+├── lexical.py           # BM25 signal — pure stdlib, inverted index
+├── cache.py             # Content-addressed SQLite persistence
+├── diff/                # git diff / snapshot → changed symbols
+├── impact/              # blast radius, scoring, traversal, terminal trees
+├── context/             # token-budget selection, honest context compilation
+├── languages/           # optional adapters (TypeScript/JS via tree-sitter)
+└── cli/                 # index · impact · diff · compile · blast · verify
+```
+
+The public, semver-covered API is the `__all__` list in `diffcontext/__init__.py`. Everything else is importable but carries no stability guarantee across releases.
+
+## What `compile` Outputs (and Why It's Shaped That Way)
+
+`compile` doesn't just dump code. The output leads with a **meta header that tells the model what it CANNOT see**:
+
+```
+=== DIFFCONTEXT META ===
+Repo symbols total    : 648
+Symbols IN context    : 18
+Symbols DROPPED       : 630  ← you cannot see these
+Graph confidence      : 100%  ✓
+Context tokens (code) : 5,644
+Output tokens (full)  : 7,012
+...
+DROPPED SYMBOLS (630) — scored but cut by token budget:
+  - ./src/black/linegen.py:transform_line  (score: 71)
+  ...
+```
+
+Every function in the body is annotated with its callers and callees, and anything referenced but _not included_ is tagged `[NOT IN CONTEXT]` — so the model knows the difference between "this function doesn't exist" and "this function exists but wasn't shown to me."
+
+<Callout type="info">
+  **Token accounting:** `--max-tokens` budgets the symbol _code_; the meta header and caller/callee annotations add overhead on top, which is reported honestly (`token_estimate` and the meta's `Output tokens (full)` line cover the entire output) and auto-compacts under tight budgets so meta can never dwarf the code it annotates.
+</Callout>
+
+## What the Resolver Handles
+
+Asserted by the test suite on real resolved edges, not "it ran":
+
+- Multi-hop attribute chains (`self.a.b.method()`)
+- Multiple inheritance and cross-file MRO
+- Circular imports
+- Local-variable instantiation in free functions
+- Annotated-parameter receivers
+- Import aliasing
+- Sibling-directory bare imports
+- Decorator wrapper attribution
+- `src/`-layout packages (`import black` resolving to `src/black/`)
+- Module-attribute calls through package re-exports (`black.parse_ast()` → `black/parsing.py`)
+- Dotted module calls (`import a.b; a.b.fn()`)
+- Function references passed as arguments (`functools.partial(fn, ...)`, `sorted(xs, key=fn)`) with parameter-shadowing guarded against
+
+## Using it from an Agent Harness (Incremental API)
+
+Built to be called on every agent-loop iteration — repeat calls are cheap and output is structured, not just a string:
+
+```python
+from diffcontext.pipeline import index_repository, analyze_impact, compile
+from diffcontext import ScoringConfig
+
+idx = index_repository("/path/to/repo")     # cold: full parse + graph build
+
+# ... agent edits src/auth.py ...
+idx.update(["src/auth.py"])                 # re-parses ONLY the changed file
+
+impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"],
+                        scoring_config=ScoringConfig())    # weights tunable
+ctx = compile(idx, impact, max_tokens=8000,
+              token_counter=my_real_tokenizer)             # e.g. tiktoken
+
+for item in ctx.items:       # structured: re-budget/filter/reorder yourself
+    print(item.symbol_id, item.role, item.score, item.token_estimate)
+```
+
+**Measured on pydantic** (405 files, ~1,830 symbols):
+
+| Operation | Time |
+|-----------|------|
+| Cold index | ~2.6–4.2s |
+| Re-index unchanged repo | ~0.02s |
+| `index.update()` after one-file edit | ~0.4–0.6s vs ~1.6s full re-index |
+
+Stress-tested on a synthetic 1,500-file / 6,000-symbol repo: cold 3.7s, warm 0.14s, per-query impact+compile 0.15s.

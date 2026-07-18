@@ -1,0 +1,26 @@
+diff --git a/node_modules/nextra-theme-docs/dist/layout.js b/node_modules/nextra-theme-docs/dist/layout.js
+index 57a511f..4b18d85 100644
+--- a/node_modules/nextra-theme-docs/dist/layout.js
++++ b/node_modules/nextra-theme-docs/dist/layout.js
+@@ -27,7 +27,7 @@ const Layout = (t0) => {
+     const {
+       data: t12,
+       error
+-    } = LayoutPropsSchema.safeParse(themeConfig);
++    } = LayoutPropsSchema.safeParse({ children, ...themeConfig });
+     data = t12;
+     if (error) {
+       throw z.prettifyError(error);
+diff --git a/node_modules/nextra-theme-docs/dist/schemas.js b/node_modules/nextra-theme-docs/dist/schemas.js
+index 060d0b9..f17054e 100644
+--- a/node_modules/nextra-theme-docs/dist/schemas.js
++++ b/node_modules/nextra-theme-docs/dist/schemas.js
+@@ -65,7 +65,7 @@ const LayoutPropsSchema = z.strictObject({
+   banner: reactNode.optional().meta({
+     description: "Rendered [`<Banner>` component](/docs/built-ins/banner). E.g. `<Banner {...bannerProps} />`"
+   }),
+-  children: reactNode,
++  children: reactNode.optional(),
+   copyPageButton: z.boolean().default(true).meta({
+     description: "Hide/show copy page content button."
+   }),

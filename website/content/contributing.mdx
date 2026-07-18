@@ -1,0 +1,80 @@
+---
+title: Contributing
+description: How to set up, design constraints to keep, CI gates to pass, and how to add a language adapter to DiffContext.
+---
+
+import { Callout } from 'nextra/components'
+
+# Contributing to DiffContext
+
+## Setup
+
+```bash
+git clone https://github.com/trakshan-mishra/Diffcontext.git
+cd Diffcontext
+pip install -e .[dev]
+python3 -m pytest tests/ -q      # 157 tests, self-contained, <3s
+```
+
+Optional extras:
+- `pip install -e ".[typescript]"` — for the TS/JS adapter (tree-sitter)
+- `pip install rank-bm25` — for the benchmark scripts
+
+## Design Constraints (Please Keep These)
+
+<Callout type="important">
+  These are not guidelines — they're what the project is built on. Changes that break these constraints will not be merged.
+</Callout>
+
+**1. The core package has zero runtime dependencies.**  
+Everything under `diffcontext/` (except `languages/`) is stdlib-only, Python 3.8+. New dependencies belong in an optional extra or a separate tool, not in the core.
+
+**2. Optional language adapters stay optional.**  
+`diffcontext/languages/` must import lazily; without the extra installed, behavior is identical to the Python-only tool.
+
+**3. The public API is the `__all__` list in `diffcontext/__init__.py`.**  
+Everything else is internal and may change; don't grow the public surface casually.
+
+**4. Claims are measured, not asserted.**  
+This project's convention is to state limitations as plainly as strengths. If you add a capability, add a test that asserts the resolved edge/behavior — not just "it ran." If you find a limitation, document it rather than imply it away.
+
+## Where Things Live
+
+| Directory | Contents |
+|-----------|---------|
+| `diffcontext/` | The package; module map in [Architecture](/docs/architecture) |
+| `tests/` | Fast, self-contained; run on every push across Python 3.8–3.13 |
+| `benchmarks/` | Retrieval-quality evaluation; heavy runs are manual, but `check_regression.py` runs in CI |
+| `docs/` | Architecture, benchmarks, verify methodology, language adapters, planning notes |
+| `diffcontext-service/` | Optional FastAPI service + web UI; excluded from the wheel |
+
+## CI Gates Your PR Must Pass
+
+**1. Tests** on Python 3.8, 3.10, 3.12, 3.13:
+```bash
+pytest tests/
+```
+
+**2. Retrieval quality gate:**  
+`benchmarks/check_regression.py` re-runs the co-change benchmark on flask and fails if hit/recall drop below frozen floors. If your change trades quality away on purpose, say so in the PR and adjust the floors in the same commit with the new measured numbers.
+
+**3. Wheel hygiene:**  
+The built wheel must contain only the package (no tests/benchmarks/service files) and must include `py.typed`.
+
+## Adding a Language Adapter
+
+`diffcontext/languages/` is the template — the TypeScript adapter (tree-sitter based) is the reference implementation.
+
+An adapter provides:
+- **Symbol extraction** — find all functions/methods/classes in a file
+- **Edge resolution** — resolve calls, imports, and references to actual definitions
+
+The pipeline, scoring, and compiler are language-agnostic.
+
+<Callout type="warning">
+  Before claiming support, measure it: mine co-change cases with `diffcontext verify --from-history 25` on at least a few real repos and report per-style results, including failure modes. See [Language Support](/docs/language-support) for the expected reporting format.
+</Callout>
+
+## License
+
+DiffContext is licensed under the [MIT License](https://github.com/trakshan-mishra/Diffcontext/blob/main/LICENSE).
