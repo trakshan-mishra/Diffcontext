@@ -75,6 +75,11 @@ def main():
         "--graph-only", action="store_true",
         help="Disable the hybrid (graph+BM25+same-file) blend and rank by call graph alone",
     )
+    p_compile.add_argument(
+        "--with-history", action="store_true",
+        help="Blend git co-change history as a fourth signal (mines git log once; "
+             "reaches related files with no call or lexical connection)",
+    )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -255,8 +260,14 @@ def _cmd_compile(args):
         print("No changes detected.")
         return
 
+    history = None
+    if getattr(args, "with_history", False):
+        from ..history import CoChangeIndex
+        history = CoChangeIndex(args.repo)
+
     impact = analyze_impact(
         idx, changed, max_depth=args.depth, hybrid=not args.graph_only,
+        history=history,
     )
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None

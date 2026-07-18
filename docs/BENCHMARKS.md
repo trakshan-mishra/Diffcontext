@@ -63,6 +63,36 @@ Honesty audit at the tight 2k budget (128 ground-truth symbols): 34% made
 it into context, 66% were explicitly disclosed as dropped, **0% silently
 invisible**.
 
+## Newer blend variants (ablation rows, 2026-07)
+
+eval_v2 now measures three additional product configurations alongside
+the frozen `hybrid`:
+
+- `hybrid_adaptive` — graph weight scaled by graph confidence (number of
+  blast-radius candidates); freed weight moves to BM25. Identical to
+  `hybrid` on well-connected changes by construction.
+- `hybrid_cochange` — the frozen blend plus git co-change association as
+  a fourth signal. **Leakage control:** the co-change index is mined
+  with every evaluated commit excluded, so the signal never contains
+  the commit it is scored on.
+- `hybrid_full` — adaptive weights + co-change signal (the current
+  product default when `--with-history` is passed).
+
+The Django failure buckets also report `hybrid_full`, so the
+cross-subsystem bucket (historically 0/20 for every static method)
+directly measures what the history signal buys.
+
+## Is the difference real? (paired significance testing)
+
+`benchmarks/significance.py` runs a two-sided Wilcoxon signed-rank test
+over per-commit metric pairs (a commit counts once, matching the primary
+aggregate) between `hybrid_full` and every baseline, with
+Holm-Bonferroni adjustment across comparisons. Pure stdlib. On flask
+(74 commits), `hybrid_full` beats graph-only, same-file, and random at
+adjusted p < 0.001, and beats `hybrid` on F1 (p_holm ≈ 0.015); it is
+*not* statistically separable from BM25 or the embedding baseline on
+flask-sized samples — reported as exactly that, not rounded up to a win.
+
 ## Quality can't silently regress
 
 [benchmarks/check_regression.py](../benchmarks/check_regression.py)
@@ -90,14 +120,18 @@ From the failure taxonomy — 60 hand-audited Django co-change pairs with no
 call-graph connection:
 
 - **Thematic siblings** (same feature, no call between them): the graph is
-  blind; the BM25 leg recovers these partially. *Fixable* — an adaptive
-  blend is the top roadmap item.
+  blind; the BM25 leg recovers these partially. The adaptive blend
+  (shipped 2026-07) up-weights BM25 exactly when the graph is sparse.
 - **Dispatch/override pairs** (same method name across a hierarchy):
-  *partially fixable* via synthetic override edges in the graph.
+  addressed by dispatch-sibling override edges (shipped 2026-07,
+  family-capped at 6) — large families (a base with dozens of
+  overriders) remain out of reach by design (hub protection).
 - **Cross-subsystem conceptual links** (e.g. a settings flag and the
-  security check that reads it): graph, BM25, and hybrid all score **0/20**.
-  A structural ceiling for every static-analysis retriever — reachable only
-  with signals like git co-change history (roadmap item 3).
+  security check that reads it): graph, BM25, and hybrid all score **0/20**
+  — a structural ceiling for every static-analysis retriever. The git
+  co-change signal (`hybrid_cochange`/`hybrid_full`, shipped 2026-07) is
+  the first method in this suite that can reach these pairs at all; see
+  the failure-bucket rows in the eval output for what it currently buys.
 - **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
   metaclass-generated code are statically unresolvable — this is why
   pydantic is the weakest benchmark repo for every method tested.
