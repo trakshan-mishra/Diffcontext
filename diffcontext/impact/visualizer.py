@@ -11,10 +11,7 @@ Renders the blast radius as a colored, indented tree showing:
 Designed for terminal output with ANSI colors.
 """
 
-import ast
-import os
-import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 
 # ANSI color codes

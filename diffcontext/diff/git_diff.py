@@ -191,12 +191,6 @@ def find_changed_symbols(
     if not changed_files:
         return []
 
-    # Which changed files actually have symbols in the current index?
-    files_with_current_symbols = {
-        "./" + os.path.relpath(sym.file, os.path.abspath(repo_path))
-        for sym in symbols.values()
-    }
-
     changed_symbols = []
 
     for sym_id, sym in symbols.items():

@@ -14,7 +14,6 @@ import ast
 import difflib
 import logging
 import os
-import time
 from typing import Callable, Dict, List, Optional
 
 from .impact.scoring import ScoringConfig
@@ -23,7 +22,7 @@ from .models import (
     RepositoryIndex, ImpactResult, ContextPackage, Symbol,
 )
 from .languages import available_adapters, discover_files
-from .parser import extract_all_symbols, extract_symbols
+from .parser import extract_symbols
 from .scanner import find_python_files
 from .cache import SymbolCache, get_file_hash, hash_source, repo_state_hash
 from .resolver import build_import_map
