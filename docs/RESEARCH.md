@@ -77,6 +77,18 @@ Mapped to the failure taxonomy that motivated each:
 | "A beats B" claims rested on eyeballed CI overlap | Paired two-sided Wilcoxon signed-rank over per-commit metrics, Holm-Bonferroni adjusted, pure stdlib | `benchmarks/significance.py` |
 | Benchmark clones were silently `--depth=100` while claiming full history — starving both ground-truth mining (24 vs 74 commits on flask) and the co-change signal | Full-history clones; unshallowed existing checkouts | `benchmark_runner.py` |
 
+**Measured outcome (2026-07 run, honest version):** the additions gain
+~1–1.4pt hit/recall on the weakest repo (pydantic, dynamic dispatch) and
+are within noise elsewhere; `hybrid_full` vs `hybrid` is not
+significantly different in aggregate on any repo. The Django
+cross-subsystem bucket — the motivating ceiling — **stays 0/20** with
+file-level co-change at a 3,000-commit window: a real negative result,
+written up in [BENCHMARKS.md](BENCHMARKS.md) with the follow-up
+hypotheses (symbol-level coupling, deeper windows, recency weighting).
+For a paper, this is Section 5 material, not a defeat: the taxonomy
+predicted where each mechanism would and would not help, and the
+measurements agree.
+
 ## 4. What a reviewer rejects this for today (the remaining gap)
 
 In priority order. Items 1–3 are necessary for any main-track
