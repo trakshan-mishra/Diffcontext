@@ -6,7 +6,7 @@ Given a class with `self.router = APIRouter()`, this module figures out that
 """
 
 import ast
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple
 
 
 def _iter_statements(body):
