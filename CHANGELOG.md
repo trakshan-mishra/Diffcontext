@@ -38,12 +38,34 @@ covered by any stability expectation.
   static JS — jquery included — 47 vendor symbols in a Python repo's
   index. Policy is adapter-scoped so a Python package named `static/`
   keeps being indexed.
-- Measured on a real TS repo (honojs/hono, 1,153 symbols, 285 files):
-  cold index 0.44s, warm 0.018s; `verify --from-history 25 --calibrate`
-  → 18/25 cases passed, mean recall 67.8% — same band as the Python
-  repos' mined-case baseline. Disclosed limits: one repo, not the
-  five-repo benchmark; and the sufficiency score is uncalibrated for TS
-  (reported 100 on every case while recall ranged 50–100%).
+- Declared-type resolution (second pass, after review): parameter /
+  field / local annotations (`u: User`, `private db: Database`,
+  constructor parameter properties) and `new X()` inference resolve
+  `u.login()`, `this.db.query()`, `this.cache.close()` to the defining
+  class method (following `extends` one level); tsconfig/jsconfig
+  `baseUrl` + `paths` aliases resolve `@services/*`-style imports
+  (JSONC-tolerant parser; `extends` chains not followed); and every
+  interface/type-alias a signature mentions gets a consumer→type edge —
+  the TS-specific co-change pattern (implementations change with the
+  types they annotate with) that call scanning can never see. Graph
+  density roughly doubled on all measured repos (hono 648→1,119 edges,
+  zod 687→1,275, ky 144→181).
+- Measured on FOUR real repos of different shapes, same
+  `verify --from-history 25` harness (django's Python mined-case
+  baseline: 58.6%): hono (ESM TS framework) 19/25, 67.9%; zod (TS
+  monorepo, type-heavy) 16/25, 58.3%; ky (small ESM lib, mega-commit
+  history) 6/25, 34.5%; express (CommonJS) 0/19, **0.0%**. The finding:
+  retrieval quality tracks code STYLE, not language — ESM TS with a
+  clear import graph lands in the Python band; CommonJS is a named,
+  measured failure mode (`exports.x = function` yields almost no
+  symbols). These are mined-case smoke signals, not the five-repo
+  benchmark methodology.
+- Known, prominently disclosed: the `verify` sufficiency score has ZERO
+  discriminating power on TypeScript today (reported 100 on every hono
+  case while measured recall ranged 50–100%) — its structural inputs
+  were designed against Python graph density. The README carries a
+  warning box; TS-aware sufficiency inputs are the top adapter roadmap
+  item together with CommonJS support.
 
 ### Performance (cold index 3.5× — profile-driven, behavior-identical)
 - Cold indexing of django (909 files, 9,161 symbols) dropped from ~23s to

@@ -10,8 +10,9 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 
 - Zero runtime dependencies, Python 3.8+, `pip install -e .`
 - Indexes **Python** (full resolver, benchmarked below) and — with the
-  optional `[typescript]` extra — **TypeScript/JavaScript** (experimental;
-  measured separately, see [Language support](#language-support))
+  optional `[typescript]` extra — **TypeScript/JavaScript** (working
+  prototype, measured on 4 repos with honest per-style results including
+  a 0% failure mode; see [Language support](#language-support))
 - Benchmarked on **423 real commits across django, flask, click, httpx,
   pydantic** — plus independent validation runs on black and requests
 - **~2× the recall of grep at every token budget** on real co-change ground
@@ -383,28 +384,49 @@ meta can never dwarf the code it annotates.
 | Language | Status | How | Retrieval quality |
 |---|---|---|---|
 | Python | **Full** | stdlib `ast`, deep resolver (see below) | Benchmarked: 423 commits, 5 repos + 2 validation repos (numbers above) |
-| TypeScript / JavaScript | **Experimental** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured once, not yet benchmarked: 18/25 mined co-change cases passed, **mean recall 67.8%** on honojs/hono via `verify --from-history 25` |
+| TypeScript / JavaScript (ESM) | **Working prototype** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured on 4 repos (below): mean recall **0–68% depending on code style** — not one number |
+| JavaScript (CommonJS) | **Effectively unsupported** | `require()`/`exports.x =` not resolved | Measured 0.0% on express — do not use on CJS repos |
 | Go / Rust / Java / others | Not supported | — | Retrieves nothing |
 
-What the TypeScript adapter resolves: functions, class methods, arrow
-consts, namespaces, ES imports (named/default/namespace, aliases, barrel
-`index.ts` re-exports incl. `export * from`), `this.method()`, `super()`,
-`new Class()`, `extends` override edges, and function references passed
-as arguments. What it deliberately does not (v1, and it lowers graph
-confidence, which the meta header reports): **no type inference** —
-`obj.method()` on an arbitrary object is unresolved — no tsconfig path
-aliases, no CommonJS `require()`. The call graph is therefore sparser
-than Python's (~0.5 edges/symbol on hono vs ~5 on django), so the BM25
-and same-file legs carry more of the hybrid blend.
+Mined co-change cases (`verify --from-history 25`, same harness you can
+run on your own repo — Python's mined-case baseline on django is 58.6%
+for comparison):
 
-Two honesty notes, measured not guessed: (1) the hono result above is
-one repo, mined by the same `verify` harness you can run on your own
-repo — treat it as a smoke signal, not a benchmark; the five-repo
-benchmark methodology has not been applied to TS yet. (2) the
-`verify` sufficiency score is **not calibrated for TS**: on hono it
-reported 100 for every case while measured recall ranged 50–100%, so
-calibration mode currently has no discriminating power there — run
-`--calibrate` and trust the recall numbers, not the score.
+| Repo | Shape | Cases passed | Mean recall | Why |
+|---|---|---|---|---|
+| honojs/hono | ESM TS framework | 19/25 | **67.9%** | Clean relative-import graph |
+| colinhacks/zod | TS monorepo, type-heavy | 16/25 | **58.3%** | Chained-generic style limits receiver typing |
+| sindresorhus/ky | Small ESM TS lib | 6/25 | **34.5%** | History dominated by one mega-commit; cross-file type↔impl spread |
+| expressjs/express | CommonJS JS | 0/19 | **0.0%** | CJS: `exports.x = function` yields almost no symbols |
+
+Read that table as the finding it is: **retrieval quality tracks code
+style, not language**. ESM TypeScript with a clear import graph lands in
+the same band as Python; CommonJS is a named, measured failure mode.
+These are mined-case smoke signals, not the five-repo benchmark
+methodology — that has not been applied to TS yet.
+
+What the adapter resolves: functions, class methods, arrow consts,
+namespaces, ES imports (named/default/namespace, aliases, barrel
+`index.ts` re-exports incl. `export * from`), tsconfig/jsconfig
+`baseUrl` + `paths` aliases (`@services/*`), `this.method()`, `super()`,
+`new Class()`, `extends` override edges, function references passed as
+arguments — and **declared-type resolution**: parameter/field/local
+annotations and `new X()` inference make `u.login()`, `this.db.query()`
+resolve to the right class method, and every interface/type-alias a
+signature mentions gets a consumer→type edge (editing `types/options.ts`
+pulls its consumers into the blast radius, the TS-specific co-change
+pattern call graphs can't see). Still unresolved, disclosed: untyped
+receivers, tsconfig `extends` chains, CommonJS.
+
+> **⚠️ The `verify` sufficiency score has ZERO discriminating power on
+> TypeScript today.** On hono it reported 100 for every case while
+> measured recall ranged 50–100% — that is not "uncalibrated," it is a
+> confidence signal that currently measures nothing for TS. Its
+> structural inputs (direct-neighbor closure, parse health) were
+> designed against Python graph density. On TS repos: run
+> `--calibrate`, trust the recall numbers, ignore the score. TS-aware
+> sufficiency inputs are roadmap work, and until they exist this
+> warning stays here.
 
 Without the extra installed, DiffContext is exactly the Python-only
 tool: no behavior change, no warnings. Vendored/static JS inside Python
@@ -506,14 +528,17 @@ Ordered by measured impact (see the failure taxonomy above):
 5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
    (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
    component weights fit on accumulated case results
-6. ~~**TypeScript support**~~ — shipped experimental as the
-   `[typescript]` extra (tree-sitter adapter; see
-   [Language support](#language-support)). Next steps, in order of
-   measured need: type-annotation-based receiver resolution (the graph's
-   sparseness is the dominant gap), tsconfig path aliases, applying the
-   full five-repo benchmark methodology to TS repos, and TS-aware
-   sufficiency calibration. The adapter interface
-   (`diffcontext/languages/`) is the template for Go/Rust/Java.
+6. ~~**TypeScript support**~~ — working prototype as the `[typescript]`
+   extra (tree-sitter adapter with declared-type resolution and tsconfig
+   aliases; measured on 4 repos — see
+   [Language support](#language-support)). Remaining, in order of
+   measured need: **TS-aware sufficiency inputs** (the score currently
+   has zero discriminating power on TS — the warning box above),
+   **CommonJS support** (`require()`, `exports.x =` — the measured 0%
+   failure mode), per-language hybrid blend weights (current weights
+   were tuned on Python graph density), applying the five-repo benchmark
+   methodology to TS, then further adapters (Go/Rust via the
+   `diffcontext/languages/` template).
 
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 

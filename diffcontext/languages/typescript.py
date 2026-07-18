@@ -24,8 +24,10 @@ aliases (`@/utils`); no CommonJS `require()`. These lower graph
 confidence, which the meta header reports per-package as always.
 """
 
+import json
 import logging
 import os
+import re
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..models import Symbol
@@ -57,7 +59,10 @@ _DESCEND_STMTS = (
 class _FileFacts:
     """Everything the graph builder needs about one parsed file."""
 
-    __slots__ = ("symbols", "class_nodes", "class_methods", "reexports", "tree")
+    __slots__ = (
+        "symbols", "class_nodes", "class_methods", "class_fields",
+        "reexports", "tree",
+    )
 
     def __init__(self, tree):
         self.tree = tree
@@ -67,6 +72,11 @@ class _FileFacts:
         self.class_nodes: Dict[str, object] = {}
         # qualified class name -> set of method names
         self.class_methods: Dict[str, Set[str]] = {}
+        # qualified class name -> {field name -> declared type name}, from
+        # typed field declarations and constructor parameter properties
+        # (`constructor(private db: Database)`) — the receiver types that
+        # make `this.db.query()` resolvable.
+        self.class_fields: Dict[str, Dict[str, str]] = {}
         # ({exported: (specifier, original)}, [star specifiers])
         self.reexports: Tuple[Dict[str, Tuple[str, str]], List[str]] = ({}, [])
 
@@ -153,18 +163,15 @@ class TypeScriptAdapter:
             for rel, text in sources.items()
         }
 
-        def resolve_specifier(importing_rel: str, spec: str) -> Optional[str]:
-            """'./x' relative to importing file -> "./resolved/x.ts" rel."""
-            if not spec.startswith("."):
-                return None  # external package or unhandled alias — disclosed
-            base_dir = os.path.dirname(os.path.join(repo_abs, importing_rel[2:]))
-            target = os.path.normpath(os.path.join(base_dir, spec))
+        def probe(target: str) -> Optional[str]:
+            """Abs path guess -> "./rel" of an indexed file, trying the
+            extension/index-file conventions."""
             candidates = [target]
             root, ext = os.path.splitext(target)
             # ESM convention: `import ... from './x.js'` refers to x.ts on disk
             if ext in (".js", ".mjs", ".cjs"):
                 candidates += [root + ".ts", root + ".tsx"]
-            if ext == "":
+            if ext == "" or ext not in self._RESOLVE_EXTS:
                 candidates += [target + e for e in self._RESOLVE_EXTS]
                 candidates += [
                     os.path.join(target, "index" + e) for e in self._RESOLVE_EXTS
@@ -173,6 +180,62 @@ class TypeScriptAdapter:
                 rel_cand = "./" + os.path.relpath(cand, repo_abs)
                 if rel_cand in facts:
                     return rel_cand
+            return None
+
+        tsconfig_cache: Dict[str, Optional[Tuple[str, str, Dict[str, List[str]]]]] = {}
+
+        def nearest_tsconfig(dir_abs: str):
+            """(config_dir, baseUrl, paths) from the nearest tsconfig.json /
+            jsconfig.json at or above dir_abs (stopping at the repo root)."""
+            if dir_abs in tsconfig_cache:
+                return tsconfig_cache[dir_abs]
+            result = None
+            cur = dir_abs
+            while True:
+                for name in ("tsconfig.json", "jsconfig.json"):
+                    cfg_path = os.path.join(cur, name)
+                    if os.path.isfile(cfg_path):
+                        result = _load_tsconfig(cfg_path)
+                        break
+                if result is not None or cur == repo_abs or len(cur) <= len(repo_abs):
+                    break
+                cur = os.path.dirname(cur)
+            tsconfig_cache[dir_abs] = result
+            return result
+
+        def resolve_specifier(importing_rel: str, spec: str) -> Optional[str]:
+            """'./x', '@/x' (tsconfig paths), or baseUrl-relative specifier
+            -> "./resolved/x.ts" rel; None for external packages."""
+            base_dir = os.path.dirname(os.path.join(repo_abs, importing_rel[2:]))
+            if spec.startswith("."):
+                return probe(os.path.normpath(os.path.join(base_dir, spec)))
+
+            cfg = nearest_tsconfig(base_dir)
+            if cfg is None:
+                return None
+            cfg_dir, base_url, paths = cfg
+            base_abs = os.path.normpath(os.path.join(cfg_dir, base_url))
+            for pattern, targets in paths.items():
+                if pattern.endswith("*"):
+                    prefix = pattern[:-1]
+                    if not spec.startswith(prefix):
+                        continue
+                    star = spec[len(prefix):]
+                elif spec == pattern:
+                    star = ""
+                else:
+                    continue
+                for target in targets:
+                    resolved = probe(os.path.normpath(os.path.join(
+                        base_abs, target.replace("*", star)
+                    )))
+                    if resolved:
+                        return resolved
+            # Bare specifier via baseUrl (`import x from 'utils/x'` with
+            # baseUrl=./src). Only ever hits files we indexed, so real npm
+            # packages can't be mis-resolved.
+            if base_url:
+                return probe(os.path.normpath(os.path.join(base_abs, spec)))
             return None
 
         def defined_names(file_rel: str) -> Set[str]:
@@ -296,6 +359,46 @@ class TypeScriptAdapter:
                     return t_file, t_name
             return None
 
+        def resolve_type(rel: str, type_name: str):
+            """Where a type name used in `rel` is defined: ("class", file,
+            name) for classes, ("type", file, symbol_id) for interfaces /
+            type aliases / enums, None if not indexed."""
+            def check(t_file: str, t_name: str):
+                if t_file not in facts:
+                    return None
+                if t_name in facts[t_file].class_nodes:
+                    return ("class", t_file, t_name)
+                for sym_name, node in facts[t_file].symbols:
+                    if sym_name == t_name and node.type in _TYPE_DECLS:
+                        return ("type", t_file, f"{t_file}:{t_name}")
+                return None
+            found = check(rel, type_name)
+            if found:
+                return found
+            imported = import_maps[rel].get(type_name)
+            if imported and imported[1] != "*":
+                t_file, t_name = imported
+                return check(t_file, t_name or type_name)
+            return None
+
+        def method_edge_for_type(rel: str, type_name: str, method: str) -> Optional[str]:
+            """Edge target for `receiver.method()` when receiver's declared
+            type is `type_name`: the class method if it exists (following
+            extends one level), else the interface/type symbol itself —
+            the contract being invoked co-changes with its callers."""
+            resolved = resolve_type(rel, type_name)
+            if resolved is None:
+                return None
+            kind, t_file, t_name = resolved
+            if kind == "type":
+                return t_name          # symbol id of the interface/alias
+            if method in facts[t_file].class_methods.get(t_name, ()):
+                return f"{t_file}:{t_name}.{method}"
+            parent = resolve_extends(t_file, t_name)
+            if parent and method in facts[parent[0]].class_methods.get(parent[1], ()):
+                return f"{parent[0]}:{parent[1]}.{method}"
+            return None
+
         # ── Edges ────────────────────────────────────────────────────────
         graph: Dict[str, List[str]] = {}
 
@@ -309,8 +412,15 @@ class TypeScriptAdapter:
                     continue
 
                 class_name = name.rsplit(".", 1)[0] if "." in name else None
-                param_names = _param_names(node)
+                param_info = _param_info(node)
+                param_names = set(param_info)
+                local_types = _collect_local_types(_body_of(node), def_node_ids)
                 edges = graph[sym_id]
+
+                def type_of_receiver(receiver: str, _l=local_types, _p=param_info):
+                    """Declared type of a local identifier: local vars
+                    (annotation or `new X()`) shadow parameters."""
+                    return _l.get(receiver) or _p.get(receiver)
 
                 def add_edge(dep: Optional[str], _sym=sym_id, _edges=edges):
                     if dep and dep != _sym and dep not in _edges:
@@ -349,6 +459,29 @@ class TypeScriptAdapter:
                             imported = import_maps[rel].get(_text(obj))
                             if imported and imported[1] == "*":
                                 add_edge(lookup_callable(imported[0], method))
+                            else:
+                                # Typed receiver: `u.login()` where u is a
+                                # param/local declared `: User` or `new User()`
+                                rtype = type_of_receiver(_text(obj))
+                                if rtype:
+                                    add_edge(method_edge_for_type(rel, rtype, method))
+                        elif (
+                            obj.type == "member_expression" and class_name
+                        ):
+                            # `this.field.method()` through a typed field or
+                            # constructor parameter property
+                            inner_obj = obj.child_by_field_name("object")
+                            inner_prop = obj.child_by_field_name("property")
+                            if (
+                                inner_obj is not None
+                                and inner_obj.type == "this"
+                                and inner_prop is not None
+                            ):
+                                ftype = f.class_fields.get(class_name, {}).get(
+                                    _text(inner_prop)
+                                )
+                                if ftype:
+                                    add_edge(method_edge_for_type(rel, ftype, method))
 
                     # Function references passed as arguments (`arr.map(fn)`,
                     # `on('x', handler)`) are dependencies even though never
@@ -365,6 +498,21 @@ class TypeScriptAdapter:
                             target = resolve_name(rel, ref)
                             if target and not target.endswith(".constructor"):
                                 add_edge(target)
+
+                # Annotation-reference edges: consumer → interface/alias it
+                # mentions in its signature (Python's annotated-return-edge
+                # analog). Only TYPE declarations — classes get edges from
+                # real calls. Direction is consumer → type, so a changed
+                # interface pulls all its consumers into the blast radius
+                # via the reverse graph, which is exactly what a types/*.ts
+                # edit's co-change history shows.
+                ann_types = _symbol_annotation_types(node)
+                ann_types.update(v for v in param_info.values() if v)
+                ann_types.update(local_types.values())
+                for tname in ann_types:
+                    resolved_t = resolve_type(rel, tname)
+                    if resolved_t is not None and resolved_t[0] == "type":
+                        add_edge(resolved_t[2])
 
             # Child → parent override edges via extends (mirrors the Python
             # graph's Phase 1A; same direction rationale — never parent →
@@ -384,6 +532,36 @@ class TypeScriptAdapter:
                             graph[child_id].append(parent_id)
 
         return graph
+
+
+# TSConfig is JSONC: comments and trailing commas are legal. This regex
+# pass is approximate (a `//` inside a string would be eaten) but tsconfig
+# path values are file globs where that can't occur in practice.
+_JSONC_COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
+_JSONC_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+
+
+def _load_tsconfig(cfg_path: str):
+    """(config_dir, baseUrl, paths) from a tsconfig/jsconfig file, or None
+    when unreadable. `extends` chains are not followed (v1, disclosed)."""
+    try:
+        with open(cfg_path, "r", encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+        text = _JSONC_COMMENT.sub("", text)
+        text = _JSONC_TRAILING_COMMA.sub(r"\1", text)
+        data = json.loads(text)
+    except (OSError, ValueError):
+        return None
+    opts = data.get("compilerOptions", {}) if isinstance(data, dict) else {}
+    base_url = opts.get("baseUrl", "") or ""
+    raw_paths = opts.get("paths", {}) or {}
+    paths = {
+        k: v for k, v in raw_paths.items()
+        if isinstance(k, str) and isinstance(v, list)
+    }
+    if not base_url and not paths:
+        return None
+    return os.path.dirname(os.path.abspath(cfg_path)), base_url, paths
 
 
 # ── Tree walking (module-level; stateless) ───────────────────────────────
@@ -435,6 +613,7 @@ def _gather_facts(tree) -> _FileFacts:
                 cls_qualified = qualify(_text(name_node))
                 facts.class_nodes[cls_qualified] = node
                 methods = facts.class_methods.setdefault(cls_qualified, set())
+                fields = facts.class_fields.setdefault(cls_qualified, {})
                 stack.append(_text(name_node))
                 for member in body.named_children:
                     if member.type == "method_definition":
@@ -442,9 +621,20 @@ def _gather_facts(tree) -> _FileFacts:
                         if m_name is not None:
                             facts.symbols.append((qualify(_text(m_name)), member))
                             methods.add(_text(m_name))
+                            if _text(m_name) == "constructor":
+                                # Parameter properties: `constructor(private
+                                # db: Database)` declares field `db`.
+                                for pname, ptype in _parameter_properties(member):
+                                    if ptype:
+                                        fields[pname] = ptype
                             m_body = member.child_by_field_name("body")
                             if m_body is not None:
                                 walk(m_body)
+                    elif member.type == "public_field_definition":
+                        f_name = member.child_by_field_name("name")
+                        f_type = _annotation_type(member.child_by_field_name("type"))
+                        if f_name is not None and f_type:
+                            fields[_text(f_name)] = f_type
                 stack.pop()
         elif t in _TYPE_DECLS:
             name_node = node.child_by_field_name("name")
@@ -524,24 +714,133 @@ def _body_of(node):
     return node.child_by_field_name("body")
 
 
-def _param_names(node) -> Set[str]:
-    """Parameter names of a function-ish definition node (shadow guard)."""
+def _annotation_type(type_annotation) -> Optional[str]:
+    """Class-ish type name from a type_annotation node: `: User` -> "User",
+    `: Repo<User>` -> "Repo", `: ns.User` -> "User". Predefined types
+    (string, number...) and complex types return None."""
+    if type_annotation is None:
+        return None
+    for child in type_annotation.named_children:
+        if child.type == "type_identifier":
+            return _text(child)
+        if child.type == "generic_type":
+            name = child.child_by_field_name("name")
+            if name is not None and name.type == "type_identifier":
+                return _text(name)
+        if child.type == "nested_type_identifier":
+            return _text(child).rsplit(".", 1)[-1]
+    return None
+
+
+def _params_of(node):
+    """The formal_parameters node of a function-ish definition."""
     params = node.child_by_field_name("parameters")
     if params is None and node.type == "variable_declarator":
         value = node.child_by_field_name("value")
         if value is not None:
             params = value.child_by_field_name("parameters")
-    names: Set[str] = set()
+    return params
+
+
+def _param_info(node) -> "Dict[str, Optional[str]]":
+    """Parameter name -> declared type name (or None) of a definition
+    node. Names double as the shadow guard; types feed receiver
+    resolution (`u: User` ... `u.login()` -> User.login)."""
+    info: "Dict[str, Optional[str]]" = {}
+    params = _params_of(node)
     if params is None:
-        return names
+        return info
     for p in params.named_children:
         if p.type == "identifier":
-            names.add(_text(p))
-        else:
+            info[_text(p)] = None
+        elif p.type in ("required_parameter", "optional_parameter"):
             pattern = p.child_by_field_name("pattern")
             if pattern is not None and pattern.type == "identifier":
-                names.add(_text(pattern))
+                info[_text(pattern)] = _annotation_type(
+                    p.child_by_field_name("type")
+                )
+    return info
+
+
+def _type_names_under(node, out: Set[str]) -> None:
+    """Every type_identifier under `node`, generic arguments included
+    (`Partial<KyOptions>` yields both Partial and KyOptions)."""
+    if node.type == "type_identifier":
+        out.add(_text(node))
+    elif node.type == "nested_type_identifier":
+        out.add(_text(node).rsplit(".", 1)[-1])
+        return
+    for child in node.named_children:
+        _type_names_under(child, out)
+
+
+def _symbol_annotation_types(node) -> Set[str]:
+    """
+    Type names this definition MENTIONS in its signature — parameter and
+    return annotations. In TypeScript, implementations co-change with the
+    interfaces/aliases they annotate with (a `types/*.ts` edit lands in
+    the same commit as its consumers), a dependency class that call
+    scanning can never see because types are never called.
+    """
+    names: Set[str] = set()
+    params = _params_of(node)
+    if params is not None:
+        _type_names_under(params, names)
+    ret = node.child_by_field_name("return_type")
+    if ret is None and node.type == "variable_declarator":
+        value = node.child_by_field_name("value")
+        if value is not None:
+            ret = value.child_by_field_name("return_type")
+    if ret is not None:
+        _type_names_under(ret, names)
     return names
+
+
+def _parameter_properties(ctor_node):
+    """(name, type) for constructor params with an accessibility modifier
+    (`constructor(private db: Database)`) — TS declares them as fields."""
+    params = _params_of(ctor_node)
+    if params is None:
+        return
+    for p in params.named_children:
+        if p.type not in ("required_parameter", "optional_parameter"):
+            continue
+        if not any(c.type == "accessibility_modifier" for c in p.children):
+            continue
+        pattern = p.child_by_field_name("pattern")
+        if pattern is not None and pattern.type == "identifier":
+            yield _text(pattern), _annotation_type(p.child_by_field_name("type"))
+
+
+def _collect_local_types(body, def_node_ids: Set[int]) -> Dict[str, str]:
+    """
+    Local variable name -> type name within a symbol's body, from explicit
+    annotations (`const u: User = ...`) and constructor inference
+    (`const u = new User()`). Walk boundaries match _iter_calls, so the
+    env covers exactly the calls it will be used to resolve.
+    """
+    env: Dict[str, str] = {}
+    if body is None:
+        return env
+    stack = [body]
+    while stack:
+        node = stack.pop()
+        if id(node) in def_node_ids:
+            continue
+        if node.type == "variable_declarator":
+            name_node = node.child_by_field_name("name")
+            if name_node is not None and name_node.type == "identifier":
+                declared = _annotation_type(node.child_by_field_name("type"))
+                if declared is None:
+                    value = node.child_by_field_name("value")
+                    if value is not None and value.type == "new_expression":
+                        ctor = value.child_by_field_name("constructor")
+                        if ctor is not None and ctor.type == "identifier":
+                            declared = _text(ctor)
+                if declared:
+                    env[_text(name_node)] = declared
+        stack.extend(node.named_children)
+    return env
 
 
 def _extends_name(node) -> Optional[str]:
