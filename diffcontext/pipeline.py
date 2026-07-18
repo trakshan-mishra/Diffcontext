@@ -274,6 +274,144 @@ def _ensure_trees(index: RepositoryIndex) -> None:
     }
 
 
+def _normalize_changed_files(repo_path: str, changed_files: List[str]) -> list:
+    """Normalize user-supplied paths to (abs_path, "./rel") pairs."""
+    normalized = []
+    for path in changed_files:
+        abs_path = path if os.path.isabs(path) else os.path.join(repo_path, path.lstrip("./"))
+        abs_path = os.path.abspath(abs_path)
+        rel = "./" + os.path.relpath(abs_path, repo_path)
+        normalized.append((abs_path, rel))
+    return normalized
+
+
+def _needs_full_map_rebuild(py_normalized, trees, broken_files) -> bool:
+    """An added or deleted module can change how OTHER files' imports
+    resolve; an edited __init__.py can change re-export resolution.
+    In those cases every import map must be rebuilt; otherwise only the
+    changed files' maps."""
+    return any(
+        not os.path.exists(abs_path)                  # deleted
+        or rel not in trees and rel not in broken_files  # created
+        or os.path.basename(rel) == "__init__.py"
+        for abs_path, rel in py_normalized
+    )
+
+
+def _refresh_changed_python_files(index, cache, py_normalized, full_map_rebuild):
+    """Drop each changed file's previous symbols/trees/maps, then re-read,
+    re-parse, and re-extract it (deleted files are only dropped)."""
+    repo_path = index._repo_path
+    trees = index._file_trees
+    import_maps = index._import_maps
+    for abs_path, rel in py_normalized:
+        stale_ids = [sid for sid in index.symbols if sid.startswith(rel + ":")]
+        for sid in stale_ids:
+            del index.symbols[sid]
+        trees.pop(rel, None)
+        import_maps.pop(rel, None)
+        if rel in index.broken_files:
+            index.broken_files.remove(rel)
+
+        if not os.path.exists(abs_path):
+            continue   # deleted file: nothing to re-add
+
+        broken: List[str] = []
+        _rel, source, tree, _h = _read_and_parse(
+            abs_path, repo_path, broken, warn_state=index._warn_state
+        )
+        if tree is None:
+            index.broken_files.extend(broken)
+            continue
+
+        trees[rel] = tree
+        def _parse(path, _src=source, _tree=tree):
+            return extract_symbols(path, repo_path, source=_src, tree=_tree)
+        index.symbols.update(cache.get_or_parse(abs_path, _parse))
+        if not full_map_rebuild:
+            import_maps[rel] = build_import_map(abs_path, repo_path, tree=tree)
+
+
+def _rebuild_all_import_maps(index) -> None:
+    repo_path = index._repo_path
+    index._import_maps = {
+        rel: build_import_map(
+            os.path.join(repo_path, rel[2:]), repo_path, tree=t
+        )
+        for rel, t in index._file_trees.items()
+    }
+
+
+def _update_language_parts(index, cache, lang_changed_rels) -> Dict[str, str]:
+    """
+    Rebuild language-adapter graph parts. Import/barrel effects are
+    cross-file, so when one of an adapter's files changed its whole part
+    is rebuilt (a full tree-sitter pass is cheap); unchanged parts are
+    reused from the previous build. A warm-started index (graph-cache
+    hit) has no cached parts and rebuilds them once here.
+
+    Returns rel -> content hash for every adapter-language file, for the
+    repo state hash.
+    """
+    repo_path = index._repo_path
+    lang_graphs = index._lang_graphs if index._lang_graphs is not None else {}
+    adapter_file_hashes: Dict[str, str] = {}
+    for adapter in available_adapters():
+        exts = tuple(adapter.extensions)
+        raws: Dict[str, bytes] = {}
+        for fpath in discover_files(adapter, repo_path):
+            rel = "./" + os.path.relpath(fpath, repo_path)
+            with open(fpath, "rb") as fh:
+                raw = fh.read()
+            adapter_file_hashes[rel] = hash_source(raw)
+            raws[rel] = raw
+
+        rebuild = index._lang_graphs is None or any(
+            r.endswith(exts) for r in lang_changed_rels
+        )
+        had_symbols = any(
+            sid.split(":", 1)[0].endswith(exts) for sid in index.symbols
+        )
+        if not rebuild or not (raws or had_symbols):
+            continue
+
+        stale = [
+            sid for sid in index.symbols
+            if sid.split(":", 1)[0].endswith(exts)
+        ]
+        for sid in stale:
+            del index.symbols[sid]
+
+        sources: Dict[str, str] = {}
+        for rel, raw in raws.items():
+            text = raw.decode("utf-8", errors="ignore")
+            sources[rel] = text
+            def _parse_lang(path, _src=text, _ad=adapter):
+                return _ad.extract_file_symbols(path, repo_path, _src)
+            index.symbols.update(cache.get_or_parse(
+                os.path.join(repo_path, rel[2:]), _parse_lang,
+                known_hash=adapter_file_hashes[rel],
+            ))
+        lang_graphs[adapter.name] = adapter.build_language_graph(
+            repo_path, sources
+        )
+    index._lang_graphs = lang_graphs
+    for edges in lang_graphs.values():
+        index.graph.update(edges)
+    return adapter_file_hashes
+
+
+def _persist_graph_cache(cache, index, adapter_file_hashes) -> None:
+    """Persist the new state so future processes get a warm start too."""
+    repo_path = index._repo_path
+    file_hashes = {
+        "./" + os.path.relpath(f, repo_path): get_file_hash(f)
+        for f in find_python_files(repo_path)
+    }
+    file_hashes.update(adapter_file_hashes)
+    cache.put_graph(repo_state_hash(file_hashes), index.graph, list(index.broken_files))
+
+
 def update_index(index: RepositoryIndex, changed_files: List[str]) -> RepositoryIndex:
     """
     Incrementally update an index after `changed_files` were edited,
@@ -297,69 +435,21 @@ def update_index(index: RepositoryIndex, changed_files: List[str]) -> Repository
     db_path = os.path.join(repo_path, ".diffcontext_cache.db")
 
     _ensure_trees(index)
-    trees = index._file_trees
-    import_maps = index._import_maps
 
-    # Normalize inputs to (abs, "./rel") pairs
-    normalized = []
-    for path in changed_files:
-        abs_path = path if os.path.isabs(path) else os.path.join(repo_path, path.lstrip("./"))
-        abs_path = os.path.abspath(abs_path)
-        rel = "./" + os.path.relpath(abs_path, repo_path)
-        normalized.append((abs_path, rel))
-
-    # Adapter-language files (".ts" etc.) are handled by their adapter
-    # below — the per-file Python flow must not try to ast.parse them.
+    normalized = _normalize_changed_files(repo_path, changed_files)
+    # Adapter-language files (".ts" etc.) are handled by their adapter —
+    # the per-file Python flow must not try to ast.parse them.
     py_normalized = [(a, r) for a, r in normalized if r.endswith(".py")]
     lang_changed_rels = [r for _a, r in normalized if not r.endswith(".py")]
 
-    # An added or deleted module can change how OTHER files' imports
-    # resolve; an edited __init__.py can change re-export resolution.
-    # In those cases rebuild every import map; otherwise only the changed
-    # files' maps.
-    full_map_rebuild = any(
-        not os.path.exists(abs_path)                  # deleted
-        or rel not in trees and rel not in index.broken_files  # created
-        or os.path.basename(rel) == "__init__.py"
-        for abs_path, rel in py_normalized
+    full_map_rebuild = _needs_full_map_rebuild(
+        py_normalized, index._file_trees, index.broken_files
     )
 
     with SymbolCache(db_path) as cache:
-        for abs_path, rel in py_normalized:
-            # Drop this file's previous symbols/trees/maps
-            stale_ids = [sid for sid in index.symbols if sid.startswith(rel + ":")]
-            for sid in stale_ids:
-                del index.symbols[sid]
-            trees.pop(rel, None)
-            import_maps.pop(rel, None)
-            if rel in index.broken_files:
-                index.broken_files.remove(rel)
-
-            if not os.path.exists(abs_path):
-                continue   # deleted file: nothing to re-add
-
-            broken: List[str] = []
-            _rel, source, tree, _h = _read_and_parse(
-                abs_path, repo_path, broken, warn_state=index._warn_state
-            )
-            if tree is None:
-                index.broken_files.extend(broken)
-                continue
-
-            trees[rel] = tree
-            def _parse(path, _src=source, _tree=tree):
-                return extract_symbols(path, repo_path, source=_src, tree=_tree)
-            index.symbols.update(cache.get_or_parse(abs_path, _parse))
-            if not full_map_rebuild:
-                import_maps[rel] = build_import_map(abs_path, repo_path, tree=tree)
-
+        _refresh_changed_python_files(index, cache, py_normalized, full_map_rebuild)
         if full_map_rebuild:
-            index._import_maps = import_maps = {
-                rel: build_import_map(
-                    os.path.join(repo_path, rel[2:]), repo_path, tree=t
-                )
-                for rel, t in trees.items()
-            }
+            _rebuild_all_import_maps(index)
 
         # Symbols changed: the cached BM25 index no longer matches them.
         index._lexical = None
@@ -370,67 +460,12 @@ def update_index(index: RepositoryIndex, changed_files: List[str]) -> Repository
         index.graph = build_repository_graph(
             repo_path,
             functions=index.symbols,
-            file_trees=trees,
-            import_maps=import_maps,
+            file_trees=index._file_trees,
+            import_maps=index._import_maps,
         )
 
-        # Language-adapter parts. Import/barrel effects are cross-file, so
-        # when one of an adapter's files changed its whole part is rebuilt
-        # (a full tree-sitter pass is cheap); unchanged parts are reused
-        # from the previous build. A warm-started index (graph-cache hit)
-        # has no cached parts and rebuilds them once here.
-        lang_graphs = index._lang_graphs if index._lang_graphs is not None else {}
-        adapter_file_hashes: Dict[str, str] = {}
-        for adapter in available_adapters():
-            exts = tuple(adapter.extensions)
-            raws: Dict[str, bytes] = {}
-            for fpath in discover_files(adapter, repo_path):
-                rel = "./" + os.path.relpath(fpath, repo_path)
-                with open(fpath, "rb") as fh:
-                    raw = fh.read()
-                adapter_file_hashes[rel] = hash_source(raw)
-                raws[rel] = raw
-
-            rebuild = index._lang_graphs is None or any(
-                r.endswith(exts) for r in lang_changed_rels
-            )
-            had_symbols = any(
-                sid.split(":", 1)[0].endswith(exts) for sid in index.symbols
-            )
-            if not rebuild or not (raws or had_symbols):
-                continue
-
-            stale = [
-                sid for sid in index.symbols
-                if sid.split(":", 1)[0].endswith(exts)
-            ]
-            for sid in stale:
-                del index.symbols[sid]
-
-            sources: Dict[str, str] = {}
-            for rel, raw in raws.items():
-                text = raw.decode("utf-8", errors="ignore")
-                sources[rel] = text
-                def _parse_lang(path, _src=text, _ad=adapter):
-                    return _ad.extract_file_symbols(path, repo_path, _src)
-                index.symbols.update(cache.get_or_parse(
-                    os.path.join(repo_path, rel[2:]), _parse_lang,
-                    known_hash=adapter_file_hashes[rel],
-                ))
-            lang_graphs[adapter.name] = adapter.build_language_graph(
-                repo_path, sources
-            )
-        index._lang_graphs = lang_graphs
-        for edges in lang_graphs.values():
-            index.graph.update(edges)
-
-        # Persist the new state so future processes get a warm start too
-        file_hashes = {
-            "./" + os.path.relpath(f, repo_path): get_file_hash(f)
-            for f in find_python_files(repo_path)
-        }
-        file_hashes.update(adapter_file_hashes)
-        cache.put_graph(repo_state_hash(file_hashes), index.graph, list(index.broken_files))
+        adapter_file_hashes = _update_language_parts(index, cache, lang_changed_rels)
+        _persist_graph_cache(cache, index, adapter_file_hashes)
 
     return index
 

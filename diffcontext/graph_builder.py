@@ -66,108 +66,17 @@ def build_repository_graph(
         functions = extract_all_symbols(repo_path)
     function_ids = set(functions)
 
-    # Group symbol ids once. The per-file and per-class lookups below used
-    # to rescan every id with startswith — per file, per decorator, and per
-    # inheritance pair (measured: 48M startswith calls, ~11s of a 41s cold
-    # build on django).
-    ids_by_file:      Dict[str, Dict[str, str]]        = {}  # rel_file -> {name: fid}
-    methods_by_class: Dict[str, List[Tuple[str, str]]] = {}  # "file:Class" -> [(fid, meth)]
-    for fid in functions:
-        fid_file, fid_name = fid.split(":", 1)
-        ids_by_file.setdefault(fid_file, {})[fid_name] = fid
-        if "." in fid_name:
-            cls_part, meth_part = fid_name.split(".", 1)
-            methods_by_class.setdefault(f"{fid_file}:{cls_part}", []).append((fid, meth_part))
+    ids_by_file, methods_by_class = _group_symbol_ids(functions)
 
     # ── pre-pass: per-file ASTs, import maps, class registry ─────────────
-    class_registry:  Dict[str, List[str]]           = {}   # class_name -> [rel_file, ...]
-    classes_by_file: Dict[str, List[str]]           = {}   # rel_file -> [class_name, ...]
-    inheritance:     Dict[str, List[Tuple]]         = {}   # "rel_file:ClassName" -> bases
-    factory_returns: Dict[str, Tuple]               = {}   # "rel_file:func" -> (q, type)
-    # Module-level var types: rel_file -> {var_name: (qualifier, bare_name)}
-    # e.g. `app = Flask(__name__)` at module scope -> {"app": (None, "Flask")}
-    module_var_types: Dict[str, Dict[str, Tuple]]   = {}
-
     if file_trees is None:
-        file_trees = {}
-        for filename in find_python_files(repo_path):
-            with open(filename, "rb") as f:
-                raw = f.read()
-            check_and_warn_encoding(logger, filename, raw)
-            source = raw.decode("utf-8", errors="ignore")
-
-            try:
-                tree = ast.parse(source)
-            except SyntaxError as e:
-                warn_syntax_error_once(logger, filename, e)
-                continue
-
-            file_trees["./" + os.path.relpath(filename, repo_path)] = tree
-
+        file_trees = _parse_repo_files(repo_path)
     if import_maps is None:
         import_maps = {}
-    for relative_file, tree in file_trees.items():
-        if relative_file not in import_maps:
-            abs_file = os.path.join(repo_path, relative_file[2:])
-            import_maps[relative_file] = build_import_map(
-                abs_file, repo_path, tree=tree
-            )
+    _ensure_import_maps(file_trees, import_maps, repo_path)
 
-    for relative_file, tree in file_trees.items():
-        mvt: Dict[str, Tuple] = {}
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                class_registry.setdefault(node.name, []).append(relative_file)
-                classes_by_file.setdefault(relative_file, []).append(node.name)
-
-                bases = []
-                for b in node.bases:
-                    if isinstance(b, ast.Name):
-                        bases.append((None, b.id))
-                    elif isinstance(b, ast.Attribute) and isinstance(b.value, ast.Name):
-                        bases.append((b.value.id, b.attr))
-                    elif isinstance(b, ast.Attribute):
-                        bases.append((None, b.attr))
-                inheritance[f"{relative_file}:{node.name}"] = bases
-
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                ref = _find_return_type(node)
-                if ref:
-                    factory_returns[f"{relative_file}:{node.name}"] = ref
-                ann_ref = _find_annotated_return(node)
-                if ann_ref and not ref:
-                    factory_returns[f"{relative_file}:{node.name}"] = ann_ref
-
-            elif isinstance(node, ast.Assign):
-                # Track module-level: `app = Flask(__name__)`
-                if isinstance(node.value, ast.Call):
-                    func = node.value.func
-                    if isinstance(func, ast.Name):
-                        type_ref = (None, func.id)
-                    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-                        type_ref = (func.value.id, func.attr)
-                    else:
-                        type_ref = None
-                    if type_ref:
-                        for tgt in node.targets:
-                            if isinstance(tgt, ast.Name):
-                                mvt[tgt.id] = type_ref
-
-            elif isinstance(node, ast.AnnAssign):
-                # Track: `db: SQLAlchemy = SQLAlchemy(app)`
-                if node.value and isinstance(node.value, ast.Call):
-                    func = node.value.func
-                    if isinstance(func, ast.Name):
-                        type_ref = (None, func.id)
-                    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-                        type_ref = (func.value.id, func.attr)
-                    else:
-                        type_ref = None
-                    if type_ref and isinstance(node.target, ast.Name):
-                        mvt[node.target.id] = type_ref
-
-        if mvt:
-            module_var_types[relative_file] = mvt
+    (class_registry, classes_by_file, inheritance,
+     factory_returns, module_var_types) = _scan_module_level(file_trees)
 
     # ── Resolution cache ──────────────────────────────────────────────────
     # _resolve_owner_type is called O(symbols * calls_per_function) times.
@@ -188,11 +97,193 @@ def build_repository_graph(
         _resolve_cache[key] = result
         return result
 
-    # ── Attribute owners ──────────────────────────────────────────────────
+    attribute_owners = _build_attribute_owners(
+        file_trees, import_maps, module_var_types, repo_path,
+        class_registry, classes_by_file, factory_returns,
+        _cached_resolve_owner_type,
+    )
+
+    graph: Dict[str, List[str]] = {}
+    _build_call_edges(
+        graph, file_trees, import_maps, ids_by_file, functions, function_ids,
+        repo_path, attribute_owners, inheritance, class_registry,
+        factory_returns, classes_by_file, _cached_resolve_owner_type,
+    )
+
+    # Resolved once, used by both inheritance phases (1A and 1F below);
+    # resolution inputs don't change between them.
+    override_pairs = list(_iter_override_pairs(
+        inheritance, methods_by_class, function_ids, import_maps,
+        class_registry, factory_returns, repo_path, classes_by_file,
+    ))
+
+    _add_override_edges(graph, override_pairs)
+    _add_decorator_edges(
+        graph, file_trees, import_maps, ids_by_file,
+        functions, function_ids, repo_path,
+    )
+    file_groups = _build_file_groups(function_ids, functions)
+    _add_shared_import_edges(graph, import_maps, file_groups, repo_path)
+    _add_same_directory_edges(graph, file_groups)
+    _add_window_edges(graph, file_groups)
+    _add_parent_child_edges(graph, override_pairs)
+
+    return graph
+
+
+# ── Build phases (extracted from build_repository_graph) ──────────────────
+
+def _group_symbol_ids(functions):
+    """
+    Group symbol ids once, by file and by class.
+
+    Returns (ids_by_file, methods_by_class):
+      ids_by_file:      rel_file -> {name: fid}
+      methods_by_class: "file:Class" -> [(fid, method_name)]
+
+    The per-file and per-class lookups used to rescan every id with
+    startswith — per file, per decorator, and per inheritance pair
+    (measured: 48M startswith calls, ~11s of a 41s cold build on django).
+    """
+    ids_by_file:      Dict[str, Dict[str, str]]        = {}
+    methods_by_class: Dict[str, List[Tuple[str, str]]] = {}
+    for fid in functions:
+        fid_file, fid_name = fid.split(":", 1)
+        ids_by_file.setdefault(fid_file, {})[fid_name] = fid
+        if "." in fid_name:
+            cls_part, meth_part = fid_name.split(".", 1)
+            methods_by_class.setdefault(f"{fid_file}:{cls_part}", []).append((fid, meth_part))
+    return ids_by_file, methods_by_class
+
+
+def _parse_repo_files(repo_path):
+    """Read and parse every Python file: rel_file ("./x.py") -> ast.Module."""
+    file_trees: Dict[str, ast.Module] = {}
+    for filename in find_python_files(repo_path):
+        with open(filename, "rb") as f:
+            raw = f.read()
+        check_and_warn_encoding(logger, filename, raw)
+        source = raw.decode("utf-8", errors="ignore")
+
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as e:
+            warn_syntax_error_once(logger, filename, e)
+            continue
+
+        file_trees["./" + os.path.relpath(filename, repo_path)] = tree
+    return file_trees
+
+
+def _ensure_import_maps(file_trees, import_maps, repo_path):
+    """Build the import map for any file that doesn't have one yet."""
+    for relative_file, tree in file_trees.items():
+        if relative_file not in import_maps:
+            abs_file = os.path.join(repo_path, relative_file[2:])
+            import_maps[relative_file] = build_import_map(
+                abs_file, repo_path, tree=tree
+            )
+
+
+def _call_type_ref(func):
+    """(qualifier, bare_name) for the callee of `x = SomeClass(...)`."""
+    if isinstance(func, ast.Name):
+        return (None, func.id)
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return (func.value.id, func.attr)
+    return None
+
+
+def _class_bases(node):
+    """(qualifier, bare_name) refs for a ClassDef's base classes."""
+    bases = []
+    for b in node.bases:
+        if isinstance(b, ast.Name):
+            bases.append((None, b.id))
+        elif isinstance(b, ast.Attribute) and isinstance(b.value, ast.Name):
+            bases.append((b.value.id, b.attr))
+        elif isinstance(b, ast.Attribute):
+            bases.append((None, b.attr))
+    return bases
+
+
+def _register_factory_return(node, relative_file, factory_returns):
+    """Record the type a module-level function returns, if resolvable from
+    its return statements or (as fallback) its return annotation."""
+    ref = _find_return_type(node)
+    if ref:
+        factory_returns[f"{relative_file}:{node.name}"] = ref
+    ann_ref = _find_annotated_return(node)
+    if ann_ref and not ref:
+        factory_returns[f"{relative_file}:{node.name}"] = ann_ref
+
+
+def _module_var_bindings(node):
+    """
+    Yield (var_name, type_ref) for module-level constructor assignments:
+
+        app = Flask(__name__)           (Assign)
+        db: SQLAlchemy = SQLAlchemy(app)  (AnnAssign)
+    """
+    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+        type_ref = _call_type_ref(node.value.func)
+        if type_ref:
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    yield tgt.id, type_ref
+    elif isinstance(node, ast.AnnAssign) and node.value and isinstance(node.value, ast.Call):
+        type_ref = _call_type_ref(node.value.func)
+        if type_ref and isinstance(node.target, ast.Name):
+            yield node.target.id, type_ref
+
+
+def _scan_module_level(file_trees):
+    """
+    One pass over every module's top-level statements. Returns:
+
+      class_registry:   class_name -> [rel_file, ...]
+      classes_by_file:  rel_file -> [class_name, ...]
+      inheritance:      "rel_file:ClassName" -> bases
+      factory_returns:  "rel_file:func" -> (qualifier, type)
+      module_var_types: rel_file -> {var_name: (qualifier, bare_name)}
+    """
+    class_registry:  Dict[str, List[str]]         = {}
+    classes_by_file: Dict[str, List[str]]         = {}
+    inheritance:     Dict[str, List[Tuple]]       = {}
+    factory_returns: Dict[str, Tuple]             = {}
+    module_var_types: Dict[str, Dict[str, Tuple]] = {}
+
+    for relative_file, tree in file_trees.items():
+        mvt: Dict[str, Tuple] = {}
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                class_registry.setdefault(node.name, []).append(relative_file)
+                classes_by_file.setdefault(relative_file, []).append(node.name)
+                inheritance[f"{relative_file}:{node.name}"] = _class_bases(node)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _register_factory_return(node, relative_file, factory_returns)
+            else:
+                for var_name, type_ref in _module_var_bindings(node):
+                    mvt[var_name] = type_ref
+        if mvt:
+            module_var_types[relative_file] = mvt
+
+    return (class_registry, classes_by_file, inheritance,
+            factory_returns, module_var_types)
+
+
+def _build_attribute_owners(
+    file_trees, import_maps, module_var_types, repo_path,
+    class_registry, classes_by_file, factory_returns, cached_resolve,
+):
+    """
+    Map "rel_file:Class.attr" -> owning class id for every attribute whose
+    type could be resolved. Module-level vars are registered too (keyed
+    "rel_file:var_name") so that `app.run()` in a function body resolves
+    to Flask.run.
+    """
     attribute_owners: Dict[str, str] = {}
 
-    # Also register module-level vars as attribute owners so that
-    # `app.run()` in a function body resolves to Flask.run.
     for rel_file, mvt in module_var_types.items():
         import_map = import_maps[rel_file]
         for var_name, type_ref in mvt.items():
@@ -203,8 +294,6 @@ def build_repository_graph(
                 classes_by_file=classes_by_file,
             )
             if resolved:
-                # Key format matches attribute_owners: "ClassName.attr"
-                # but here var_name is the module-level variable.
                 attribute_owners[f"{rel_file}:{var_name}"] = resolved
 
     for relative_file, tree in file_trees.items():
@@ -215,101 +304,111 @@ def build_repository_graph(
             if type_ref is None:
                 continue
             qualifier, bare_name = type_ref
-            resolved = _cached_resolve_owner_type(qualifier, bare_name, relative_file, import_map)
+            resolved = cached_resolve(qualifier, bare_name, relative_file, import_map)
             if resolved:
                 attribute_owners[f"{relative_file}:{key}"] = resolved
 
-    # ── Build the call graph ──────────────────────────────────────────────
-    graph: Dict[str, List[str]] = {}
+    return attribute_owners
 
+
+def _build_call_edges(
+    graph, file_trees, import_maps, ids_by_file, functions, function_ids,
+    repo_path, attribute_owners, inheritance, class_registry,
+    factory_returns, classes_by_file, cached_resolve,
+):
+    """Direct call edges plus function-reference-as-argument edges."""
     for relative_file, tree in file_trees.items():
         import_map = import_maps[relative_file]
-
         local_name_to_id = ids_by_file.get(relative_file, {})
+        for fn_node, is_method, class_name in _collect_function_nodes(tree):
+            _add_function_call_edges(
+                graph, fn_node, is_method, class_name, relative_file,
+                local_name_to_id, import_map, functions, function_ids,
+                repo_path, attribute_owners, inheritance, class_registry,
+                factory_returns, import_maps, classes_by_file, cached_resolve,
+            )
 
-        function_nodes = _collect_function_nodes(tree)
 
-        for fn_node, is_method, class_name in function_nodes:
-            function_name = f"{class_name}.{fn_node.name}" if class_name else fn_node.name
-            function_id   = f"{relative_file}:{function_name}"
+def _add_function_call_edges(
+    graph, fn_node, is_method, class_name, relative_file,
+    local_name_to_id, import_map, functions, function_ids,
+    repo_path, attribute_owners, inheritance, class_registry,
+    factory_returns, import_maps, classes_by_file, cached_resolve,
+):
+    """Edges out of one function: every call it makes, plus function
+    references it passes as arguments."""
+    function_name = f"{class_name}.{fn_node.name}" if class_name else fn_node.name
+    function_id   = f"{relative_file}:{function_name}"
 
-            graph.setdefault(function_id, [])
+    graph.setdefault(function_id, [])
 
-            param_types    = extract_param_types(fn_node)
-            local_var_types = {**param_types, **extract_local_var_types(fn_node, param_types)}
-            param_names    = _all_param_names(fn_node)
+    param_types    = extract_param_types(fn_node)
+    local_var_types = {**param_types, **extract_local_var_types(fn_node, param_types)}
+    param_names    = _all_param_names(fn_node)
 
-            for child in ast.walk(fn_node):
-                if not isinstance(child, ast.Call):
-                    continue
+    for child in ast.walk(fn_node):
+        if not isinstance(child, ast.Call):
+            continue
 
-                dep = _resolve_call(
-                    child,
-                    is_method,
-                    class_name,
-                    relative_file,
-                    local_name_to_id,
-                    import_map,
-                    functions,
-                    function_ids,
-                    repo_path,
-                    attribute_owners,
-                    inheritance,
-                    class_registry,
-                    factory_returns,
-                    import_maps,
-                    local_var_types,
-                    classes_by_file,
-                    _cached_resolve_owner_type,
-                )
+        dep = _resolve_call(
+            child, is_method, class_name, relative_file,
+            local_name_to_id, import_map, functions, function_ids,
+            repo_path, attribute_owners, inheritance, class_registry,
+            factory_returns, import_maps, local_var_types,
+            classes_by_file, cached_resolve,
+        )
+        if dep and dep != function_id and dep not in graph[function_id]:
+            graph[function_id].append(dep)
 
-                if dep and dep != function_id and dep not in graph[function_id]:
-                    graph[function_id].append(dep)
+        _add_arg_reference_edges(
+            graph, child, function_id, param_names, local_var_types,
+            is_method, class_name, relative_file, local_name_to_id,
+            import_map, functions, function_ids, repo_path,
+            attribute_owners, inheritance, class_registry,
+            factory_returns, import_maps, classes_by_file, cached_resolve,
+        )
 
-                # Function references passed as arguments are dependencies
-                # too: `partial(black.format_file_contents, ...)` in blackd
-                # never calls the function, but a change to it absolutely
-                # lands in blackd's blast radius. Covers positional and
-                # keyword args (`sorted(xs, key=fn)`).
-                for arg in list(child.args) + [kw.value for kw in child.keywords]:
-                    if isinstance(arg, ast.Name):
-                        # Parameters/locals shadow module-level functions —
-                        # `run(task)` where task is a param is not a
-                        # reference to a same-named function.
-                        if arg.id in param_names or arg.id in local_var_types:
-                            continue
-                    elif not isinstance(arg, ast.Attribute):
-                        continue
 
-                    ref = _resolve_func_expr(
-                        arg,
-                        is_method,
-                        class_name,
-                        relative_file,
-                        local_name_to_id,
-                        import_map,
-                        functions,
-                        function_ids,
-                        repo_path,
-                        attribute_owners,
-                        inheritance,
-                        class_registry,
-                        factory_returns,
-                        import_maps,
-                        local_var_types,
-                        classes_by_file,
-                        _cached_resolve_owner_type,
-                    )
-                    if ref and ref != function_id and ref not in graph[function_id]:
-                        graph[function_id].append(ref)
+def _add_arg_reference_edges(
+    graph, call_node, function_id, param_names, local_var_types,
+    is_method, class_name, relative_file, local_name_to_id,
+    import_map, functions, function_ids, repo_path,
+    attribute_owners, inheritance, class_registry,
+    factory_returns, import_maps, classes_by_file, cached_resolve,
+):
+    """Function references passed as arguments are dependencies too:
+    `partial(black.format_file_contents, ...)` in blackd never calls the
+    function, but a change to it absolutely lands in blackd's blast
+    radius. Covers positional and keyword args (`sorted(xs, key=fn)`)."""
+    for arg in list(call_node.args) + [kw.value for kw in call_node.keywords]:
+        if isinstance(arg, ast.Name):
+            # Parameters/locals shadow module-level functions —
+            # `run(task)` where task is a param is not a
+            # reference to a same-named function.
+            if arg.id in param_names or arg.id in local_var_types:
+                continue
+        elif not isinstance(arg, ast.Attribute):
+            continue
 
-    # ── Phase 1A: Inheritance override edges ─────────────────────────────
-    # When ChildClass overrides ParentClass.method, add child → parent edge.
-    # Only child → parent direction: "if I changed the child, show me the
-    # parent contract I might be violating." The reverse (parent → all 400
-    # children) would create mega-hubs that destroy ranking.
+        ref = _resolve_func_expr(
+            arg, is_method, class_name, relative_file,
+            local_name_to_id, import_map, functions, function_ids,
+            repo_path, attribute_owners, inheritance, class_registry,
+            factory_returns, import_maps, local_var_types,
+            classes_by_file, cached_resolve,
+        )
+        if ref and ref != function_id and ref not in graph[function_id]:
+            graph[function_id].append(ref)
+
+
+def _iter_override_pairs(
+    inheritance, methods_by_class, function_ids, import_maps,
+    class_registry, factory_returns, repo_path, classes_by_file,
+):
+    """Yield (child_method_id, parent_method_id) for every method that
+    overrides a same-named method on a resolvable base class."""
     for child_key, bases in inheritance.items():
-        child_file, child_class = child_key.split(":", 1)
+        child_file, _child_class = child_key.split(":", 1)
         for qualifier, base_name in bases:
             base_owner = _resolve_owner_type(
                 qualifier, base_name, child_file,
@@ -319,19 +418,54 @@ def build_repository_graph(
             )
             if not base_owner:
                 continue
-
-            # Find all methods in the child class and look for same-named parent methods
             for fid, method_name in methods_by_class.get(child_key, []):
                 parent_method = f"{base_owner}.{method_name}"
                 if parent_method in function_ids and parent_method != fid:
-                    # Child → parent only (avoids mega-hub on parent side)
-                    if parent_method not in graph.get(fid, []):
-                        graph.setdefault(fid, []).append(parent_method)
+                    yield fid, parent_method
 
-    # ── Phase 1B: Decorator edges ─────────────────────────────────────────
-    # A function decorated with @my_decorator has an implicit dependency on
-    # my_decorator. This is one of the strongest co-change signals:
-    # if the decorator changes, all its callsites likely change too.
+
+def _add_override_edges(graph, override_pairs):
+    """Phase 1A: inheritance override edges. When ChildClass overrides
+    ParentClass.method, add the child → parent edge. Only child → parent
+    direction: "if I changed the child, show me the parent contract I
+    might be violating." The reverse (parent → all 400 children) would
+    create mega-hubs that destroy ranking."""
+    for fid, parent_method in override_pairs:
+        if parent_method not in graph.get(fid, []):
+            graph.setdefault(fid, []).append(parent_method)
+
+
+def _resolve_decorator_ref(
+    deco, relative_file, ids_by_file, import_map,
+    functions, function_ids, repo_path,
+):
+    """Function id a decorator expression refers to, or None.
+    Handles @plain_name, @module.name, and @name(args)."""
+    deco_func = deco.func if isinstance(deco, ast.Call) else deco
+    if isinstance(deco_func, ast.Name):
+        return _lookup(
+            deco_func.id,
+            ids_by_file.get(relative_file, {}),
+            import_map, functions, repo_path,
+        )
+    if isinstance(deco_func, ast.Attribute) and isinstance(deco_func.value, ast.Name):
+        if deco_func.value.id in import_map:
+            src = import_map[deco_func.value.id]
+            rel_src = "./" + os.path.relpath(src, repo_path)
+            dep = f"{rel_src}:{deco_func.attr}"
+            if dep in function_ids:
+                return dep
+    return None
+
+
+def _add_decorator_edges(
+    graph, file_trees, import_maps, ids_by_file,
+    functions, function_ids, repo_path,
+):
+    """Phase 1B: decorator edges. A function decorated with @my_decorator
+    has an implicit dependency on my_decorator. This is one of the
+    strongest co-change signals: if the decorator changes, all its
+    callsites likely change too."""
     for relative_file, tree in file_trees.items():
         import_map = import_maps[relative_file]
         for fn_node, _is_method, _class_name in _collect_function_nodes(tree):
@@ -339,38 +473,30 @@ def build_repository_graph(
             for deco in fn_node.decorator_list:
                 if added >= _DECORATOR_EDGE_MAX:
                     break
-                # @plain_name  or  @module.name  or  @name(args)
-                deco_func = deco.func if isinstance(deco, ast.Call) else deco
-                dep = None
-                if isinstance(deco_func, ast.Name):
-                    dep = _lookup(
-                        deco_func.id,
-                        ids_by_file.get(relative_file, {}),
-                        import_map, functions, repo_path,
-                    )
-                elif isinstance(deco_func, ast.Attribute) and isinstance(deco_func.value, ast.Name):
-                    if deco_func.value.id in import_map:
-                        src = import_map[deco_func.value.id]
-                        rel_src = "./" + os.path.relpath(src, repo_path)
-                        dep = f"{rel_src}:{deco_func.attr}"
-                        if dep not in function_ids:
-                            dep = None
-                if dep:
-                    fn_name_local = (
-                        f"{_class_name}.{fn_node.name}"
-                        if _class_name else fn_node.name
-                    )
-                    fid = f"{relative_file}:{fn_name_local}"
-                    if fid in function_ids and dep != fid and dep not in graph.get(fid, []):
-                        graph.setdefault(fid, []).append(dep)
-                        added += 1
+                dep = _resolve_decorator_ref(
+                    deco, relative_file, ids_by_file, import_map,
+                    functions, function_ids, repo_path,
+                )
+                if not dep:
+                    continue
+                fn_name_local = (
+                    f"{_class_name}.{fn_node.name}"
+                    if _class_name else fn_node.name
+                )
+                fid = f"{relative_file}:{fn_name_local}"
+                if fid in function_ids and dep != fid and dep not in graph.get(fid, []):
+                    graph.setdefault(fid, []).append(dep)
+                    added += 1
 
-    # ── Build file_groups for use by shared-import edges ────────────────────
-    # Sorted by line number within each file: window edges below genuinely
-    # follow definition order, and representative picks (syms[0]) are
-    # deterministic. Building this from set iteration order made those
-    # edges vary with hash seed / insertion order — nondeterministic graphs
-    # are a reproducibility hazard for the benchmark.
+
+def _build_file_groups(function_ids, functions):
+    """
+    rel_file -> [fids], sorted by line number within each file: window
+    edges genuinely follow definition order, and representative picks
+    (syms[0]) are deterministic. Building this from set iteration order
+    made those edges vary with hash seed / insertion order —
+    nondeterministic graphs are a reproducibility hazard for the benchmark.
+    """
     file_groups: Dict[str, List[str]] = {}
     for fid in function_ids:
         ffile = fid.split(":")[0]
@@ -379,11 +505,35 @@ def build_repository_graph(
         file_groups[ffile].sort(
             key=lambda fid: (getattr(functions.get(fid), "lineno", 0) or 0, fid)
         )
+    return file_groups
 
-    # ── Phase 1C: Shared-import consumer edges ───────────────────────────
-    # If file_a and file_b both import from the same internal module,
-    # functions in file_a and file_b are likely to co-change when that
-    # module changes. Create edges between functions across those files.
+
+def _connect_pair(graph, a, b):
+    """Add an undirected co-change edge (both directions, deduplicated)."""
+    if b not in graph.get(a, []):
+        graph.setdefault(a, []).append(b)
+    if a not in graph.get(b, []):
+        graph.setdefault(b, []).append(a)
+
+
+def _connect_file_representatives(graph, files, file_groups):
+    """Connect one representative symbol per file, pairwise."""
+    representatives = []
+    for cfile in files:
+        rep_syms = file_groups.get(cfile, [])
+        if rep_syms:
+            representatives.append(rep_syms[0])   # one rep per file
+    for i, a in enumerate(representatives):
+        for b in representatives[i + 1:]:
+            _connect_pair(graph, a, b)
+
+
+def _add_shared_import_edges(graph, import_maps, file_groups, repo_path):
+    """Phase 1C: shared-import consumer edges. If file_a and file_b both
+    import from the same internal module, functions in file_a and file_b
+    are likely to co-change when that module changes. Create edges between
+    representatives of those files, skipping modules with more than
+    _SHARED_IMPORT_MAX_CONSUMERS consumers."""
     import_consumers: Dict[str, List[str]] = {}
     for rel_file, imap in import_maps.items():
         for _local_name, abs_path in imap.items():
@@ -393,31 +543,20 @@ def build_repository_graph(
                 continue
             import_consumers.setdefault(rel_imported, []).append(rel_file)
 
-    # Deduplicate consumer file lists, then connect representatives
     for _imported_mod, consumer_files in import_consumers.items():
         consumer_files = list(dict.fromkeys(consumer_files))  # deduplicate, preserve order
         if len(consumer_files) < 2 or len(consumer_files) > _SHARED_IMPORT_MAX_CONSUMERS:
             continue
-        # Pick a representative symbol from each consumer file
-        representatives = []
-        for cfile in consumer_files:
-            rep_syms = file_groups.get(cfile, [])
-            if rep_syms:
-                representatives.append(rep_syms[0])
-        # Connect representatives pairwise
-        for i, a in enumerate(representatives):
-            for b in representatives[i + 1:]:
-                if b not in graph.get(a, []):
-                    graph.setdefault(a, []).append(b)
-                if a not in graph.get(b, []):
-                    graph.setdefault(b, []).append(a)
+        _connect_file_representatives(graph, consumer_files, file_groups)
 
-    # ── Phase 1D: Same-directory sibling edges ────────────────────────────
-    # Files in the same package directory tend to co-change (tests ↔ impl,
-    # models ↔ serializers, etc.).  Connect one representative per file to
-    # one representative from every other file in the same directory.
-    # Cap: skip directories with >_SAME_DIR_MAX_FILES Python files to avoid
-    # linking unrelated utility grab-bags.
+
+def _add_same_directory_edges(graph, file_groups):
+    """Phase 1D: same-directory sibling edges. Files in the same package
+    directory tend to co-change (tests ↔ impl, models ↔ serializers,
+    etc.). Connect one representative per file to one representative from
+    every other file in the same directory. Cap: skip directories with
+    >_SAME_DIR_MAX_FILES Python files to avoid linking unrelated utility
+    grab-bags."""
     dir_files: Dict[str, List[str]] = {}
     for rel_file in file_groups:
         dir_part = os.path.dirname(rel_file)
@@ -426,24 +565,16 @@ def build_repository_graph(
     for _dir, dir_file_list in dir_files.items():
         if len(dir_file_list) < 2 or len(dir_file_list) > _SAME_DIR_MAX_FILES:
             continue
-        reps = []
-        for df in dir_file_list:
-            syms = file_groups.get(df, [])
-            if syms:
-                reps.append(syms[0])   # one rep per file
-        for i, a in enumerate(reps):
-            for b in reps[i + 1:]:
-                if b not in graph.get(a, []):
-                    graph.setdefault(a, []).append(b)
-                if a not in graph.get(b, []):
-                    graph.setdefault(b, []).append(a)
+        _connect_file_representatives(graph, dir_file_list, file_groups)
 
-    # ── Phase 1E: Sliding-window within-file edges ────────────────────────
-    # Functions defined near each other in the same file are empirically the
-    # strongest co-change signal after direct calls.  A sliding window of
-    # WINDOW_SIZE links each function to its closest neighbours in definition
-    # order.  Cap: skip files with >FILE_WINDOW_MAX_SYMS symbols (e.g. a
-    # 600-function god-file would create O(n*w) noise edges).
+
+def _add_window_edges(graph, file_groups):
+    """Phase 1E: sliding-window within-file edges. Functions defined near
+    each other in the same file are empirically the strongest co-change
+    signal after direct calls. A sliding window of WINDOW_SIZE links each
+    function to its closest neighbours in definition order. Cap: skip
+    files with >FILE_WINDOW_MAX_SYMS symbols (e.g. a 600-function
+    god-file would create O(n*w) noise edges)."""
     WINDOW_SIZE = 3          # each function linked to ±3 neighbours
     FILE_WINDOW_MAX_SYMS = 60  # skip window edges in very large files
 
@@ -452,37 +583,21 @@ def build_repository_graph(
             continue
         for i, a in enumerate(syms_in_file):
             for j in range(i + 1, min(i + 1 + WINDOW_SIZE, len(syms_in_file))):
-                b = syms_in_file[j]
-                if b not in graph.get(a, []):
-                    graph.setdefault(a, []).append(b)
-                if a not in graph.get(b, []):
-                    graph.setdefault(b, []).append(a)
+                _connect_pair(graph, a, syms_in_file[j])
 
-    # ── Phase 1F: Light parent→child inheritance edges ────────────────────
-    # Child→parent already exists (Phase 1A).  For parents with FEW children
-    # (≤PARENT_CHILD_MAX_CHILDREN), also add parent→child so that a change
-    # to the parent method surfaces its direct overriders.  We skip parents
-    # with many children to avoid creating mega-hubs (e.g. BaseModel in
-    # pydantic has 400+ subclasses — those would destroy ranking).
+
+def _add_parent_child_edges(graph, override_pairs):
+    """Phase 1F: light parent→child inheritance edges. Child→parent
+    already exists (Phase 1A). For parents with FEW children
+    (≤PARENT_CHILD_MAX_CHILDREN), also add parent→child so that a change
+    to the parent method surfaces its direct overriders. We skip parents
+    with many children to avoid creating mega-hubs (e.g. BaseModel in
+    pydantic has 400+ subclasses — those would destroy ranking)."""
     PARENT_CHILD_MAX_CHILDREN = 8
 
-    # Build a map: parent_method_id -> [child_method_ids]
     parent_to_children: Dict[str, List[str]] = {}
-    for child_key, bases in inheritance.items():
-        child_file, child_class = child_key.split(":", 1)
-        for qualifier, base_name in bases:
-            base_owner = _resolve_owner_type(
-                qualifier, base_name, child_file,
-                import_maps.get(child_file, {}),
-                class_registry, factory_returns, import_maps, repo_path,
-                classes_by_file=classes_by_file,
-            )
-            if not base_owner:
-                continue
-            for fid, method_name in methods_by_class.get(child_key, []):
-                parent_method = f"{base_owner}.{method_name}"
-                if parent_method in function_ids and parent_method != fid:
-                    parent_to_children.setdefault(parent_method, []).append(fid)
+    for fid, parent_method in override_pairs:
+        parent_to_children.setdefault(parent_method, []).append(fid)
 
     for parent_method, children in parent_to_children.items():
         if len(children) > PARENT_CHILD_MAX_CHILDREN:
@@ -490,8 +605,6 @@ def build_repository_graph(
         for child_fid in children:
             if child_fid not in graph.get(parent_method, []):
                 graph.setdefault(parent_method, []).append(child_fid)
-
-    return graph
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────
