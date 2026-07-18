@@ -9,6 +9,10 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 ```
 
 - Zero runtime dependencies, Python 3.8+, `pip install -e .`
+- Indexes **Python** (full resolver, benchmarked below) and — with the
+  optional `[typescript]` extra — **TypeScript/JavaScript** (working
+  prototype, measured on 4 repos with honest per-style results including
+  a 0% failure mode; see [Language support](#language-support))
 - Benchmarked on **423 real commits across django, flask, click, httpx,
   pydantic** — plus independent validation runs on black and requests
 - **~2× the recall of grep at every token budget** on real co-change ground
@@ -375,6 +379,62 @@ reported honestly (`token_estimate` and the meta's `Output tokens (full)`
 line cover the entire output) and auto-compacts under tight budgets so
 meta can never dwarf the code it annotates.
 
+## Language support
+
+| Language | Status | How | Retrieval quality |
+|---|---|---|---|
+| Python | **Full** | stdlib `ast`, deep resolver (see below) | Benchmarked: 423 commits, 5 repos + 2 validation repos (numbers above) |
+| TypeScript / JavaScript (ESM) | **Working prototype** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured on 4 repos (below): mean recall **0–68% depending on code style** — not one number |
+| JavaScript (CommonJS) | **Effectively unsupported** | `require()`/`exports.x =` not resolved | Measured 0.0% on express — do not use on CJS repos |
+| Go / Rust / Java / others | Not supported | — | Retrieves nothing |
+
+Mined co-change cases (`verify --from-history 25`, same harness you can
+run on your own repo — Python's mined-case baseline on django is 58.6%
+for comparison):
+
+| Repo | Shape | Cases passed | Mean recall | Why |
+|---|---|---|---|---|
+| honojs/hono | ESM TS framework | 19/25 | **67.9%** | Clean relative-import graph |
+| colinhacks/zod | TS monorepo, type-heavy | 16/25 | **58.3%** | Chained-generic style limits receiver typing |
+| sindresorhus/ky | Small ESM TS lib | 6/25 | **34.5%** | History dominated by one mega-commit; cross-file type↔impl spread |
+| expressjs/express | CommonJS JS | 0/19 | **0.0%** | CJS: `exports.x = function` yields almost no symbols |
+
+Read that table as the finding it is: **retrieval quality tracks code
+style, not language**. ESM TypeScript with a clear import graph lands in
+the same band as Python; CommonJS is a named, measured failure mode.
+These are mined-case smoke signals, not the five-repo benchmark
+methodology — that has not been applied to TS yet.
+
+What the adapter resolves: functions, class methods, arrow consts,
+namespaces, ES imports (named/default/namespace, aliases, barrel
+`index.ts` re-exports incl. `export * from`), tsconfig/jsconfig
+`baseUrl` + `paths` aliases (`@services/*`), `this.method()`, `super()`,
+`new Class()`, `extends` override edges, function references passed as
+arguments — and **declared-type resolution**: parameter/field/local
+annotations and `new X()` inference make `u.login()`, `this.db.query()`
+resolve to the right class method, and every interface/type-alias a
+signature mentions gets a consumer→type edge (editing `types/options.ts`
+pulls its consumers into the blast radius, the TS-specific co-change
+pattern call graphs can't see). Still unresolved, disclosed: untyped
+receivers, tsconfig `extends` chains, CommonJS.
+
+> **⚠️ The `verify` sufficiency score has ZERO discriminating power on
+> TypeScript today.** On hono it reported 100 for every case while
+> measured recall ranged 50–100% — that is not "uncalibrated," it is a
+> confidence signal that currently measures nothing for TS. Its
+> structural inputs (direct-neighbor closure, parse health) were
+> designed against Python graph density. On TS repos: run
+> `--calibrate`, trust the recall numbers, ignore the score. TS-aware
+> sufficiency inputs are roadmap work, and until they exist this
+> warning stays here.
+
+Without the extra installed, DiffContext is exactly the Python-only
+tool: no behavior change, no warnings. Vendored/static JS inside Python
+repos (django's admin jquery, for example) is excluded by an
+adapter-level policy (`static/`, `vendor/`, `*.min.*`, colocated
+`*.test.ts`/`*.spec.ts`), so installing the extra does not pollute
+existing Python indexes.
+
 ## What the resolver handles
 
 Asserted by the test suite on real resolved edges, not "it ran":
@@ -468,13 +528,17 @@ Ordered by measured impact (see the failure taxonomy above):
 5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
    (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
    component weights fit on accumulated case results
-6. **TypeScript support** — Python only, today. The surrounding pipeline
-   (scoring, selection, compilation, caching) is language-agnostic by
-   design, but the parser and graph builder — which do all symbol
-   extraction and graph construction, i.e. the part that makes the tool
-   work — are built on Python's `ast` and a second language requires
-   implementing both from scratch against that language's AST. For any
-   JS/TS/Go/Rust/Java repo, this tool currently retrieves nothing.
+6. ~~**TypeScript support**~~ — working prototype as the `[typescript]`
+   extra (tree-sitter adapter with declared-type resolution and tsconfig
+   aliases; measured on 4 repos — see
+   [Language support](#language-support)). Remaining, in order of
+   measured need: **TS-aware sufficiency inputs** (the score currently
+   has zero discriminating power on TS — the warning box above),
+   **CommonJS support** (`require()`, `exports.x =` — the measured 0%
+   failure mode), per-language hybrid blend weights (current weights
+   were tuned on Python graph density), applying the five-repo benchmark
+   methodology to TS, then further adapters (Go/Rust via the
+   `diffcontext/languages/` template).
 
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 
