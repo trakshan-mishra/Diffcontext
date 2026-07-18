@@ -9,74 +9,29 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 ```
 
 - Zero runtime dependencies, Python 3.8+, `pip install -e .`
-- Indexes **Python** (full resolver, benchmarked below) and — with the
-  optional `[typescript]` extra — **TypeScript/JavaScript** (working
-  prototype, measured on 4 repos with honest per-style results including
-  a 0% failure mode; see [Language support](#language-support))
-- Benchmarked on **423 real commits across django, flask, click, httpx,
-  pydantic** — plus independent validation runs on black and requests
-- **~2× the recall of grep at every token budget** on real co-change ground
-  truth — at **~5-10% precision**: most of what's retrieved is supporting
-  context around the change, not the exact co-change set, so you get a wide
-  net with the right things in it, not a curated shortlist
-  ([details below](#does-it-actually-work-measured-not-claimed))
-- Retrieval quality is **CI-gated**: every push re-runs the benchmark and
-  fails the build if quality drops
+- **~2× the recall of grep at every token budget** on real co-change
+  ground truth — at ~5-10% precision: a wide net with the right things in
+  it, not a curated shortlist ([measured](docs/BENCHMARKS.md))
+- Benchmarked on **423 real commits** across django, flask, click, httpx,
+  pydantic, with independent validation on black and requests; retrieval
+  quality is **CI-gated** on every push
+- Output is **honest by construction**: a meta header discloses exactly
+  which symbols were dropped, so the model knows what it cannot see
+- Python is fully supported; TypeScript/JavaScript (ESM) is a working
+  prototype via the optional `[typescript]` extra
+  ([per-style results, including a 0% failure mode](docs/LANG_ADAPTERS.md))
 
----
+## Why
 
-## The problem (why this exists)
-
-Say you ask an AI assistant to help you change one function in a
-50,000-line project. You have three options, and they're all bad:
-
-1. **Paste the whole repo.** It doesn't fit in the context window. Even
-   when it does, you pay for 200k tokens of code so the model can use 2k
-   of it — and models get *worse* at finding things in huge contexts.
-2. **Paste just the function.** Now the model can't see who calls it,
-   what it calls, or the sibling function that must change in lockstep.
-   It will confidently propose a fix that breaks three callers it never saw.
-3. **Grep for the function's name and paste the matches.** Better — but
-   grep only finds code that *mentions the name*. The config check that
-   must change together with your function, the subclass that overrides
-   it, the handler that receives it through `functools.partial` — none of
-   those necessarily contain the string you grepped for. (We measured
-   this: grep's recall *plateaus* no matter how much budget you give it.
-   See the numbers below.)
-
-DiffContext is option 4: **understand the repository's structure once,
-then, for any change, select the few functions that actually matter and
-compile them into the smallest useful package for the model.**
-
-## The intuition (how a change "spreads" through code)
-
-When a developer changes a function, the *other* code they end up touching
-in the same commit tends to be related in one of three measurable ways:
-
-1. **Connected in the call graph.** You changed `validate_jwt`; whoever
-   *calls* `validate_jwt` might break, and whatever `validate_jwt` *calls*
-   explains how it works. This is the strongest signal — but it's blind to
-   related code that never calls yours.
-2. **Lexically similar.** Two functions full of the same rare words
-   (`refresh_token`, `jwks_cache`) are usually about the same thing, even
-   with no call between them. Classic search-engine ranking (BM25) finds
-   these — but it also ranks up noise that merely *sounds* similar.
-3. **In the same file.** Code that lives together changes together. Weak
-   but cheap, and it catches things the other two miss.
-
-None of these wins alone — we benchmarked each against real commit history
-and each has a measurable blind spot:
-
-| Signal | Hit | Recall | Where it's blind |
-|---|---|---|---|
-| Call graph alone | 0.748 | 0.558 | Related code that never calls yours |
-| BM25 keywords alone | 0.822 | 0.619 | Structure; ranks lexical noise |
-| Same file alone | 0.693 | 0.506 | Anything cross-file |
-| **Hybrid (this product)** | **0.856** | **0.690** | See [limitations](#known-limitations-measured-not-guessed) |
-
-So DiffContext blends all three — **graph 0.5 / BM25 0.35 / same-file
-0.15** — the exact weights that won recall on 4 of 5 benchmark repos.
-`--graph-only` turns the blend off when you want structural certainty only.
+Ask an AI assistant to change one function in a 50,000-line project and
+you have three bad options: paste the whole repo (doesn't fit, and models
+get worse in huge contexts), paste just the function (the model breaks
+three callers it never saw), or grep for the name (grep can't find the
+subclass that overrides it or the handler that receives it through
+`functools.partial` — we measured grep's recall *plateauing* no matter the
+budget). DiffContext is option 4: **understand the repository's structure
+once, then, for any change, select the few functions that actually matter
+and compile them into the smallest useful package for the model.**
 
 ## Quick start
 
@@ -107,229 +62,52 @@ diffcontext verify --from-history 30 --calibrate
 ```
 
 Symbol IDs are always `./relative/path.py:ClassName.method` — no
-parentheses, no arguments.
+parentheses, no arguments. More commands and options: [USAGE.md](USAGE.md).
 
-Try it on a serious codebase you didn't write:
+## How it works
 
-```bash
-git clone https://github.com/psf/black && cd black
-diffcontext index .                       # ~4s, ~650 functions
-diffcontext blast --changed ./src/black/__init__.py:format_file_contents
-# → correctly reports that blackd (the HTTP server, a DIFFERENT package)
-#   is affected — an edge that only exists via functools.partial
-```
+Parse every file once into an AST, resolve imports to real definitions,
+and build a dependency graph (calls, inheritance, decorators, function
+references passed as arguments). For a change, walk the graph outward
+with distance-decayed scores, blend with BM25 lexical similarity and
+same-file co-location, then pack the top candidates into your token
+budget — leading with a meta header that discloses everything that was
+*dropped*. The whole index is cached content-addressed in SQLite, so
+re-indexing an unchanged repo costs ~0.02s and a one-file edit re-parses
+only that file.
 
-## Don't trust our benchmarks — run yours (2 minutes)
-
-Every retrieval number in this README was measured on repos *we* picked.
-`verify` exists so you can grade DiffContext against **your** repo's real
-history and your own known-true expectations — and get an honest answer,
-including "this tool doesn't work well here."
-
-```bash
-cd your-repo
-
-# 1. Mine 20 test cases from YOUR git history (symbols that actually
-#    changed together in past commits) and grade retrieval against them
-diffcontext verify --from-history 20 --calibrate
-
-# 2. Save the mined cases, edit out the noise, keep what you know is true
-diffcontext verify --from-history 20 --out cases.json
-
-# 3. Re-run your curated suite any time — exit code 1 on failure, so it
-#    can gate CI
-diffcontext verify --cases cases.json
-```
-
-Or write a case by hand — one JSON object per expectation you know is
-true about your codebase:
-
-```json
-{
-  "version": 1,
-  "cases": [
-    {
-      "name": "auth-touches-middleware",
-      "changed": ["./api/auth.py:validate_jwt"],
-      "must_include": ["./api/middleware.py:check_auth"],
-      "min_recall": 1.0
-    }
-  ]
-}
-```
-
-That case says: *"if I change `validate_jwt`, a sufficient context MUST
-contain `check_auth`."* Symbol names are typo-checked with fuzzy
-suggestions, so a wrong path fails loudly instead of silently passing.
-And if calibration finds the sufficiency score doesn't track measured
-recall on your repo, `verify` prints **NULL RESULT** in plain text rather
-than a decorative number — finding out the tool doesn't fit your repo *is*
-the feature. Full case format and methodology:
-[docs/VERIFY.md](docs/VERIFY.md).
-
-## What you get back (and why it's shaped that way)
-
-`compile` doesn't just dump code. The output leads with a **meta header
-that tells the model what it CANNOT see**:
-
-```
-=== DIFFCONTEXT META ===
-Repo symbols total    : 648
-Symbols IN context    : 18
-Symbols DROPPED       : 630  ← you cannot see these
-Graph confidence      : 100%  ✓
-Context tokens (code) : 5,644
-Output tokens (full)  : 7,012
-...
-DROPPED SYMBOLS (630) — scored but cut by token budget:
-  - ./src/black/linegen.py:transform_line  (score: 71)
-  ...
-```
-
-Every function in the body is annotated with its callers and callees, and
-anything referenced but *not included* is tagged `[NOT IN CONTEXT]` — so
-the model knows the difference between "this function doesn't exist" and
-"this function exists but wasn't shown to me." That distinction is the
-difference between an honest answer and a hallucinated one.
-
-We stress-tested this honesty claim (see below): at a tight 2,000-token
-budget, **0%** of the ground-truth functions DiffContext failed to include
-were silently invisible — every single miss was disclosed in the dropped
-manifest.
-
-## How it works, step by step
-
-```
-                 ┌─────────────────────────────────────────────────┐
-                 │              RepositoryIndex (cached)            │
-   *.py files ──►│  scanner ─► parser ─► resolver ─► graph_builder  │
-                 │     content-addressed SQLite cache (cache.py):   │
-                 │     unchanged repo ~0.02s · 1-file edit ~0.5s    │
-                 └───────────────────────┬─────────────────────────┘
-                                         │
-  git diff ─► diff/git_diff ─► changed symbols
-                                         │
-                 ┌───────────────────────▼─────────────────────────┐
-                 │                 analyze_impact                   │
-                 │  impact/blast_radius: callers/callees traversal  │
-                 │  impact/scoring:  graph decay scores      (0.50) │
-                 │  lexical.py:      BM25 over symbol source (0.35) │
-                 │  same-file co-location                    (0.15) │
-                 └───────────────────────┬─────────────────────────┘
-                                         │  ranked candidates
-                 ┌───────────────────────▼─────────────────────────┐
-                 │              select + compile                    │
-                 │  context/selector: token budget + top-k          │
-                 │  context/compiler: honest meta (what was         │
-                 │    DROPPED) + annotated code                     │
-                 └──────────────────────────────────────────────────┘
-```
-
-In plain words:
-
-1. **Scan & parse.** Find every `.py` file, parse each one *once* into an
-   AST, and extract every function/method as a `Symbol`.
-2. **Resolve imports.** Turn `from auth.tokens import verify` — and
-   `import black` under a `src/` layout, and re-exports through
-   `__init__.py` — into actual file paths, so calls can be attributed to
-   real definitions.
-3. **Build the graph.** Who calls whom, who inherits from whom, who
-   decorates whom — plus function references passed as *arguments*
-   (`partial(fn, ...)`, `sorted(xs, key=fn)`), which are dependencies even
-   though they're never "called" at that site.
-4. **Cache everything.** The graph is persisted content-addressed (keyed
-   by the hash of every file), so re-indexing an unchanged repo costs
-   ~0.02s and editing one file re-parses only that file — verified equal
-   to a from-scratch rebuild by the test suite.
-5. **Score candidates.** Walk the graph outward from the changed
-   function (scores decay with distance), blend with BM25 similarity and
-   same-file bonus.
-6. **Select & compile.** Pack the top-scoring functions into your token
-   budget (default top-20 per changed symbol — the benchmarked sweet
-   spot), and render with the honest meta header.
-
-```
-diffcontext/
-├── pipeline.py          # Orchestrator: index → impact → compile; hybrid blend
-├── models.py            # Symbol, RepositoryIndex, ImpactResult, ContextPackage
-├── scanner.py           # File discovery
-├── parser.py            # AST symbol extraction
-├── resolver.py          # Import → filesystem path resolution (src-layouts, re-exports)
-├── symbols.py           # Attribute / local-var type tracking
-├── graph_builder.py     # Dependency graph (calls, inheritance, decorators, fn-refs…)
-├── lexical.py           # BM25 signal — pure stdlib, inverted index
-├── cache.py             # Content-addressed SQLite persistence
-├── diff/                # git diff / snapshot → changed symbols
-├── impact/              # blast radius, scoring, traversal, terminal trees
-├── context/             # token-budget selection, honest context compilation
-└── cli/                 # index · impact · diff · compile · blast
-```
+Full walkthrough, module map, and the incremental agent-harness API:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Does it actually work? (measured, not claimed)
 
-### Against real developer behavior, across repos
+Per-commit hit / recall of real co-change partners, hybrid retrieval:
 
-The core benchmark asks: *a developer changed these functions together in
-one commit; shown one, can the tool find the others?* Full methodology —
-distinct-commit sampling, four baselines, bootstrap confidence intervals,
-budget sweep, hand-audited failure taxonomy — in
-[benchmarks/EVAL_V2_REPORT.md](benchmarks/EVAL_V2_REPORT.md). Headline
-(per-commit hit / recall, hybrid):
+| | django | click | flask | httpx | pydantic | black* | requests* |
+|---|---|---|---|---|---|---|---|
+| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 | 0.901 | 0.969 |
+| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 | 0.720 | 0.774 |
 
-| | django | click | flask | httpx | pydantic |
-|---|---|---|---|---|---|
-| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 |
-| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 |
+\* validation repos, never used for tuning.
 
-Independent validation on repos never used for tuning: **black** hybrid
-hit 0.901 / recall 0.720, **requests** hit 0.969 / recall 0.774.
+Head-to-head vs grep at identical token budgets, grep **plateaus** at
+0.215 recall past 4k tokens while DiffContext reaches 0.576 at 8k
+(2.7×). The honest flip side: mean precision is ~0.075 — most retrieved
+symbols are supporting context (callers, callees, siblings) rather than
+the exact co-change set. If you pay per token, precision is this
+product's real problem, and we say so.
 
-The flip side of that recall, stated as plainly as the recall itself:
-cross-repo mean **precision is 0.075 hybrid / 0.060 graph-only** — roughly
-92-94% of retrieved symbols are not in the ground-truth co-change set.
-They're mostly structurally adjacent supporting context (callers, callees,
-same-file siblings), which is often what you want an LLM to see, but if
-you're paying per token, precision — not recall — is this product's real
-problem, and the benchmark report says so in exactly those words. The full
-precision/recall tradeoff, including the per-method sweep, is in
-[benchmarks/EVAL_V2_REPORT.md](benchmarks/EVAL_V2_REPORT.md).
+All tables, the per-signal ablation, the failure taxonomy, and
+reproduction commands: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+A quality gate (`benchmarks/check_regression.py`) re-runs the benchmark
+in CI and fails the build if retrieval quality drops.
 
-### Head-to-head vs grep, at identical token budgets
-
-The question that actually matters for an agent loop: *given the same
-context window, does this beat what a developer does by hand?* 30 real
-co-change queries from black's history; recall of the true co-change
-partners inside the packed window
-([benchmarks/budget_head2head.py](benchmarks/budget_head2head.py)):
-
-| Token budget | grep-packing | DiffContext | |
-|---|---|---|---|
-| 1,000 | 0.083 | 0.122 | +47% |
-| 2,000 | 0.145 | 0.282 | ~2× |
-| 4,000 | 0.215 | 0.408 | ~2× |
-| 8,000 | **0.215 (plateau)** | **0.576** | 2.7× |
-
-Note the shape: grep **plateaus** — beyond ~4k tokens, more budget buys
-nothing, because name-matching cannot find co-change partners that don't
-mention the name. Graph+BM25 retrieval keeps climbing.
-
-Honesty audit at the tight 2k budget (128 ground-truth symbols): 34% made
-it into context, 66% were explicitly disclosed as dropped, **0% silently
-invisible**.
-
-### Quality can't silently regress
-
-`benchmarks/check_regression.py` enforces frozen hit/recall floors and
-runs in CI on every push. If a change to the heuristics drops retrieval
-quality below the floors, the build fails.
-
-```bash
-pip install rank-bm25                          # benchmark-only dependency
-python benchmark_runner.py --clone             # clone the five eval repos
-python benchmarks/eval_v2_hardened.py          # full run (~10 min)
-python benchmarks/budget_head2head.py benchmark_repos/black   # grep head-to-head
-python benchmarks/check_regression.py          # the CI quality gate (~1 min)
-```
+**Don't trust our benchmarks — run yours (2 minutes):**
+`diffcontext verify --from-history 20 --calibrate` mines test cases from
+*your* repo's git history and grades retrieval against them — and prints
+**NULL RESULT** rather than a decorative number when the tool doesn't fit
+your repo. Finding that out *is* the feature. Case format and
+methodology: [docs/VERIFY.md](docs/VERIFY.md).
 
 ## Use as a library
 
@@ -344,203 +122,75 @@ print(ctx.text)                      # paste-ready context with meta-header
 print(ctx.dropped_symbols[:5])       # what the budget cut — never hidden
 ```
 
-### In an agent harness (incremental API)
-
-Built to be called on every agent-loop iteration — repeat calls are cheap
-and output is structured, not just a string:
-
-```python
-from diffcontext.pipeline import index_repository, analyze_impact, compile
-from diffcontext import ScoringConfig
-
-idx = index_repository("/path/to/repo")     # cold: full parse + graph build
-
-# ... agent edits src/auth.py ...
-idx.update(["src/auth.py"])                 # re-parses ONLY the changed file
-
-impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"],
-                        scoring_config=ScoringConfig())    # weights tunable
-ctx = compile(idx, impact, max_tokens=8000,
-              token_counter=my_real_tokenizer)             # e.g. tiktoken
-
-for item in ctx.items:       # structured: re-budget/filter/reorder yourself
-    print(item.symbol_id, item.role, item.score, item.token_estimate)
-```
-
-Measured on pydantic (405 files, ~1,830 symbols): cold index ~2.6–4.2s;
-re-index of an unchanged repo ~0.02s; `index.update()` after a one-file
-edit ~0.4–0.6s vs ~1.6s full re-index — verified equal to a from-scratch
-rebuild by the test suite. Stress-tested on a synthetic 1,500-file /
-6,000-symbol repo: cold 3.7s, warm 0.14s, per-query impact+compile 0.15s.
-
-**Token accounting:** `--max-tokens` budgets the symbol *code*; the meta
-header and caller/callee annotations add overhead on top, which is
-reported honestly (`token_estimate` and the meta's `Output tokens (full)`
-line cover the entire output) and auto-compacts under tight budgets so
-meta can never dwarf the code it annotates.
+For agent loops there's an incremental API — `idx.update([...])`
+re-parses only edited files (~0.5s vs full re-index), output is
+structured per-item, and the token counter is pluggable. Details and
+measured timings: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Language support
 
-| Language | Status | How | Retrieval quality |
-|---|---|---|---|
-| Python | **Full** | stdlib `ast`, deep resolver (see below) | Benchmarked: 423 commits, 5 repos + 2 validation repos (numbers above) |
-| TypeScript / JavaScript (ESM) | **Working prototype** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured on 4 repos (below): mean recall **0–68% depending on code style** — not one number |
-| JavaScript (CommonJS) | **Effectively unsupported** | `require()`/`exports.x =` not resolved | Measured 0.0% on express — do not use on CJS repos |
-| Go / Rust / Java / others | Not supported | — | Retrieves nothing |
+| Language | Status | Retrieval quality |
+|---|---|---|
+| Python | **Full** | Benchmarked: 423 commits, 5 repos + 2 validation repos |
+| TypeScript / JS (ESM) | **Working prototype** (`pip install -e ".[typescript]"`) | Mean recall **0–68% depending on code style** — not one number |
+| JavaScript (CommonJS) | **Effectively unsupported** | Measured **0.0%** on express — do not use on CJS repos |
+| Go / Rust / Java / others | Not supported | Retrieves nothing |
 
-Mined co-change cases (`verify --from-history 25`, same harness you can
-run on your own repo — Python's mined-case baseline on django is 58.6%
-for comparison):
-
-| Repo | Shape | Cases passed | Mean recall | Why |
-|---|---|---|---|---|
-| honojs/hono | ESM TS framework | 19/25 | **67.9%** | Clean relative-import graph |
-| colinhacks/zod | TS monorepo, type-heavy | 16/25 | **58.3%** | Chained-generic style limits receiver typing |
-| sindresorhus/ky | Small ESM TS lib | 6/25 | **34.5%** | History dominated by one mega-commit; cross-file type↔impl spread |
-| expressjs/express | CommonJS JS | 0/19 | **0.0%** | CJS: `exports.x = function` yields almost no symbols |
-
-Read that table as the finding it is: **retrieval quality tracks code
-style, not language**. ESM TypeScript with a clear import graph lands in
-the same band as Python; CommonJS is a named, measured failure mode.
-These are mined-case smoke signals, not the five-repo benchmark
-methodology — that has not been applied to TS yet.
-
-What the adapter resolves: functions, class methods, arrow consts,
-namespaces, ES imports (named/default/namespace, aliases, barrel
-`index.ts` re-exports incl. `export * from`), tsconfig/jsconfig
-`baseUrl` + `paths` aliases (`@services/*`), `this.method()`, `super()`,
-`new Class()`, `extends` override edges, function references passed as
-arguments — and **declared-type resolution**: parameter/field/local
-annotations and `new X()` inference make `u.login()`, `this.db.query()`
-resolve to the right class method, and every interface/type-alias a
-signature mentions gets a consumer→type edge (editing `types/options.ts`
-pulls its consumers into the blast radius, the TS-specific co-change
-pattern call graphs can't see). Still unresolved, disclosed: untyped
-receivers, tsconfig `extends` chains, CommonJS.
-
-> **⚠️ The `verify` sufficiency score has ZERO discriminating power on
-> TypeScript today.** On hono it reported 100 for every case while
-> measured recall ranged 50–100% — that is not "uncalibrated," it is a
-> confidence signal that currently measures nothing for TS. Its
-> structural inputs (direct-neighbor closure, parse health) were
-> designed against Python graph density. On TS repos: run
-> `--calibrate`, trust the recall numbers, ignore the score. TS-aware
-> sufficiency inputs are roadmap work, and until they exist this
-> warning stays here.
-
+Retrieval quality tracks code style, not language. Per-repo numbers,
+what the TS adapter resolves, and a known-broken warning about the
+`verify` score on TS: [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
 Without the extra installed, DiffContext is exactly the Python-only
-tool: no behavior change, no warnings. Vendored/static JS inside Python
-repos (django's admin jquery, for example) is excluded by an
-adapter-level policy (`static/`, `vendor/`, `*.min.*`, colocated
-`*.test.ts`/`*.spec.ts`), so installing the extra does not pollute
-existing Python indexes.
-
-## What the resolver handles
-
-Asserted by the test suite on real resolved edges, not "it ran":
-multi-hop attribute chains (`self.a.b.method()`), multiple inheritance and
-cross-file MRO, circular imports, local-variable instantiation in free
-functions, annotated-parameter receivers, import aliasing, sibling-directory
-bare imports, decorator wrapper attribution, `src/`-layout packages
-(`import black` resolving to `src/black/`), module-attribute calls through
-package re-exports (`black.parse_ast()` → `black/parsing.py`), dotted module
-calls (`import a.b; a.b.fn()`), and function references passed as arguments
-(`functools.partial(fn, ...)`, `sorted(xs, key=fn)`) with parameter-shadowing
-guarded against.
+tool — no behavior change.
 
 ## Known limitations (measured, not guessed)
 
-From the failure taxonomy — 60 hand-audited Django co-change pairs with no
-call-graph connection:
-
-- **Thematic siblings** (same feature, no call between them): the graph is
-  blind; the BM25 leg recovers these partially. *Fixable* — an adaptive
-  blend is the top roadmap item.
-- **Dispatch/override pairs** (same method name across a hierarchy):
-  *partially fixable* via synthetic override edges in the graph.
-- **Cross-subsystem conceptual links** (e.g. a settings flag and the
-  security check that reads it): graph, BM25, and hybrid all score **0/20**.
-  A structural ceiling for every static-analysis retriever — reachable only
-  with signals like git co-change history (roadmap item 3).
-- **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
-  metaclass-generated code are statically unresolvable — this is why
-  pydantic is the weakest benchmark repo for every method tested.
-- **Absolute recall at starvation budgets is low for everyone.** At 1,000
-  tokens, grep manages 0.08 and DiffContext 0.12 — almost nothing fits in
-  1k tokens, and the meta header says so rather than pretending otherwise.
-
-When in doubt: `grep -rn "function_name(" --include="*.py" .` before fully
-trusting "no callers found."
+Static analysis has a ceiling: thematic siblings with no call between
+them, dispatch/override pairs, cross-subsystem conceptual links (all
+methods score **0/20** there), and dynamic dispatch are measured blind
+spots — itemized with the failure taxonomy in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md). When in doubt:
+`grep -rn "function_name(" --include="*.py" .` before fully trusting
+"no callers found."
 
 ## Web service
 
 A FastAPI service + single-file web UI lives in
 [diffcontext-service/](diffcontext-service/): clone a GitHub repo by URL,
 index it, and query blast radius / search / context over HTTP. The
-[Dockerfile](Dockerfile) packages it for container platforms
-(e.g. Hugging Face Spaces).
+[Dockerfile](Dockerfile) packages it for container platforms.
 
 ```bash
 pip install fastapi uvicorn python-multipart aiofiles
 uvicorn diffcontext-service.backend.main:app --port 8000
 ```
 
-## Verify: sufficiency, test cases, calibration
-
-`compile` says "here is relevant context." `verify` answers the harder
-question — *is it sufficient, and how would you know?*
+## Testing & contributing
 
 ```bash
-# Structural sufficiency report for a change (CI-gateable exit code)
-diffcontext verify --ref HEAD~1
-
-# Grade retrieval against expectations YOU know to be true about your repo
-diffcontext verify --cases cases.json
-
-# Mine real test cases from git co-change history, then check whether the
-# sufficiency score actually tracks measured recall on this repo
-diffcontext verify --from-history 30 --calibrate
+python3 -m pytest tests/ -q      # self-contained, <3s
 ```
 
-The score is a structural proxy (direct-neighbor closure, budget-cut
-pressure, graph confidence, parse health), not a guarantee — and the
-calibration mode says so out loud when the proxy doesn't track reality on
-your repo. Case file format, methodology, and the honesty contract:
-[docs/VERIFY.md](docs/VERIFY.md).
-
-## Testing
-
-```bash
-python3 -m pytest tests/ -q      # 103 tests, self-contained, <3s
-```
+Setup, design constraints (zero-dep core), CI gates, and how to add a
+language adapter: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-Ordered by measured impact (see the failure taxonomy above):
-
-1. **Adaptive blend** — up-weight BM25 when graph confidence is low
-2. **Override edges** — link same-named methods across class hierarchies
-3. **Git co-change history as a fourth signal** — the only known path past
-   the cross-subsystem ceiling
-4. **Chain-complete budgeting** — finish one causal chain deeply before
-   spreading breadth across many symbols (evidence: case studies where the
-   right function was retrieved but its explanatory dependency was cut)
-5. ~~**Calibrated confidence scores**~~ — shipped as `diffcontext verify`
-   (see [docs/VERIFY.md](docs/VERIFY.md)); next step is learned per-repo
-   component weights fit on accumulated case results
-6. ~~**TypeScript support**~~ — working prototype as the `[typescript]`
-   extra (tree-sitter adapter with declared-type resolution and tsconfig
-   aliases; measured on 4 repos — see
-   [Language support](#language-support)). Remaining, in order of
-   measured need: **TS-aware sufficiency inputs** (the score currently
-   has zero discriminating power on TS — the warning box above),
-   **CommonJS support** (`require()`, `exports.x =` — the measured 0%
-   failure mode), per-language hybrid blend weights (current weights
-   were tuned on Python graph density), applying the five-repo benchmark
-   methodology to TS, then further adapters (Go/Rust via the
-   `diffcontext/languages/` template).
-
+Ordered by measured impact: **1)** adaptive blend (up-weight BM25 when
+graph confidence is low) · **2)** override edges across class
+hierarchies · **3)** git co-change history as a fourth signal — the only
+known path past the cross-subsystem ceiling · **4)** chain-complete
+budgeting · ~~5) calibrated confidence~~ — shipped as
+`diffcontext verify` · ~~6) TypeScript~~ — shipped as a prototype;
+remaining TS work in [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
+
+## More
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, resolver capabilities, agent API
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, methodology links, limitations
+- [docs/VERIFY.md](docs/VERIFY.md) — sufficiency scoring, test cases, calibration
+- [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md) — TS/JS adapter detail and measured failure modes
+- [README_FULL.md](README_FULL.md) — the original long-form README, preserved intact
 
 ## License
 

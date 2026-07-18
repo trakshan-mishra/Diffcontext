@@ -43,11 +43,10 @@ loudly with fuzzy-match suggestions, so a typo can't silently pass or
 quietly deflate your numbers.
 """
 
-import difflib
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ..pipeline import index_repository, analyze_impact, compile as compile_pipeline
 from ..models import RepositoryIndex
