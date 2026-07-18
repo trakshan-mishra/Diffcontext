@@ -63,6 +63,11 @@ class SymbolCache:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL")
+            # Cache contents are rebuildable from source; NORMAL skips the
+            # per-commit fsync (a measurable cost at one commit per file on
+            # a cold index) and risks nothing worse than a stale cache row
+            # after power loss, which the content hash then invalidates.
+            self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._init_db()
 
@@ -145,11 +150,21 @@ class SymbolCache:
                 (self._GRAPH_CACHE_KEEP,),
             )
 
-    def get_or_parse(self, filepath: str, parse_fn: Callable[[str], Dict[str, Symbol]]) -> Dict[str, Symbol]:
+    def get_or_parse(
+        self,
+        filepath: str,
+        parse_fn: Callable[[str], Dict[str, Symbol]],
+        known_hash: "Optional[str]" = None,
+    ) -> Dict[str, Symbol]:
         """
         Return cached symbols if file hash matches, otherwise parse and persist.
+
+        `known_hash` lets a caller that already read and hashed the file
+        (the pipeline hashes every file for the repo state hash) skip a
+        second full disk read here. It MUST be the hash of the file's
+        current contents.
         """
-        file_hash = get_file_hash(filepath)
+        file_hash = known_hash if known_hash is not None else get_file_hash(filepath)
 
         with self._lock:
             cursor = self._conn.execute("SELECT file_hash FROM files WHERE file_path = ?", (filepath,))

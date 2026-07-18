@@ -8,6 +8,33 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Performance (cold index 3.5× — profile-driven, behavior-identical)
+- Cold indexing of django (909 files, 9,161 symbols) dropped from ~23s to
+  ~6.6s through four fixes, each verified behavior-identical on the full
+  django corpus before landing:
+  - Symbol code extraction split the ENTIRE file per symbol
+    (`ast.get_source_segment` → 9,259 full-file line splits, 22% of cold
+    runtime). Source is now split once per file and symbols sliced by
+    line/col with UTF-8 byte offsets honored; files containing `\r`/`\f`
+    fall back to `ast.get_source_segment`. Output byte-identical on all
+    9,259 django symbols.
+  - Function collection and import scanning walked every AST node;
+    `def`/`class`/`import` are statements, so both now walk statement
+    blocks only, skipping expression subtrees (~10:1 node ratio).
+    Collected symbols and import maps identical on all 909 files.
+  - `_follow_init_reexport` re-read and re-parsed `__init__.py` from disk
+    on every consult — 1,224 redundant parses per django cold index
+    (django.db.models alone is consulted by hundreds of files). Re-export
+    specs are now parsed once and cached with mtime/size validation.
+  - `SymbolCache.get_or_parse` re-read every file from disk to hash it
+    when the pipeline had already hashed the same bytes for the repo
+    state hash; callers now pass `known_hash`. The SQLite cache also
+    pairs WAL with `synchronous=NORMAL` — contents are rebuildable, so
+    the per-file-commit fsync bought nothing.
+- Warm re-index of django: 0.11s. Retrieval quality gate re-run on
+  django after the changes: hybrid hit 0.888 / recall 0.782 (floors
+  0.80 / 0.68) — unchanged, as expected from behavior-identical fixes.
+
 ### Fixed (token budget now bounds the full output — follow-up to the earlier accounting fix)
 - The earlier "honest token accounting" fix (below) made the meta-header
   budget-proportionate and made `token_estimate` report the full output —
