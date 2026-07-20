@@ -1,0 +1,81 @@
+# Roadmap (post-rigor-pass, 2026-07-20)
+
+Every item states its measured motivation. Items land in this order
+unless a measurement says otherwise; each rung must be validated on
+repos not used for its tuning before its claim is made (house rule).
+
+## 1. LLM-judged downstream evaluation (rung 5) — the one missing metric family
+
+Everything measured so far is proxy retrieval quality against co-change
+ground truth. The question a paper reviewer (and a paying user) actually
+asks — *does better context improve LLM task outcomes?* — is unanswered.
+Design, already agreed: fixed model + fixed token budget, swap only the
+context provider (hybrid / BM25 / dense / grep-packing / gap-cutoff),
+generate patches for real tasks, judge with the repo's own test suite
+(SWE-bench-Lite-style subset plus `verify` cases with `task` fields).
+Needs LLM API access + budget. This eval is three things at once:
+the headline result, the de-contamination prerequisite for using
+co-change as a *ranking* signal (it is currently the eval's ground
+truth), and the external validation of the co-change proxy itself.
+
+## 2. Ship the measured wins from the rigor pass
+
+- **Blend weights → [0.3, 0.5, 0.2].** The leave-one-repo-out-honest
+  choice (shipped 0.5/0.35/0.15 was mildly graph-overfit). Update
+  `HYBRID_WEIGHTS`, re-freeze `check_regression.py` floors, note in
+  CHANGELOG. Expected effect: ±0–2 recall points, honesty effect: large.
+- **`--cutoff gap` option.** The largest-gap cutoff is F1-optimal on 5/5
+  repos (~4× top-20 precision at 6–9 symbols, ~30% relative recall
+  cost). Ship as an opt-in flag for token-priced callers; top-k stays
+  the recall-first default.
+- **Dense leg as `[dense]` extra.** The only statistically significant
+  recall gains measured (flask/httpx/pydantic, p<0.05) and the only
+  signal cracking the cross-subsystem bucket — but it drags in
+  sentence-transformers/torch, so opt-in extra, never default.
+  Weights [0.2, 0.35, 0.2, 0.25] from the LORO run.
+
+## 3. Graph coverage fixes (both have named, measured failure modes)
+
+- **Override edges** across class hierarchies — the backend_dispatch
+  bucket is 0/20 for the graph today.
+- **if/try/with collector gap** — `def`s under `if TYPE_CHECKING:` /
+  `try-except ImportError` get zero edges
+  (`graph_builder._collect_function_nodes`, documented in its docstring).
+- Re-run eval_v2 + buckets after each; the regression gate catches losses.
+
+## 4. Positioning against published systems
+
+The benchmark compares signal families, not named competitors. Minimum
+for a paper: a head-to-head against Aider's repo-map at equal token
+budgets on the same co-change queries, plus a conceptual-comparison
+table (RepoGraph / CodexGraph / Agentless-style localization). Also run
+one code-tuned embedding model — all-MiniLM is an NL encoder, so the
+current dense numbers are a floor, not a verdict.
+
+## 5. Co-change as a ranking signal, then learned ranking
+
+Blocked behind item 1 (contamination: co-change is the current eval's
+ground truth; needs the independent downstream eval or a strict temporal
+split first). The cross-subsystem bucket is the prize — history is the
+only signal family with a path to the 15/20 that nothing content-based
+reaches.
+
+## 6. TypeScript to parity
+
+CommonJS support (`exports.x =` — the measured 0%), then the five-repo
+benchmark methodology applied to TS repos (mined-case smoke numbers are
+not benchmark numbers), then per-language blend weights.
+
+## 7. Paper
+
+Thesis shaped by the rigor pass: *a context compiler with calibrated,
+disclosed confidence* — hybrid structural+lexical retrieval (validated
+LORO, significant dense-leg gains), an evidence-aware sufficiency signal
+(uninformative→r≈0.29 measured on 1,459 cases across two languages), and
+per-repo fitted calibration (8/9 held-out repos), with honest nulls
+(adaptive blending, component re-weighting) and a measured GT-validity
+bound. Venue targets: FSE/ASE/ICSE research track once item 1 exists —
+without the downstream eval it's a strong tool paper, with it it's a
+retrieval-for-code paper with a calibration story no baseline ships.
+Artifact: this repo minus vendored clones, plus pinned-SHA scripts
+(already the convention).

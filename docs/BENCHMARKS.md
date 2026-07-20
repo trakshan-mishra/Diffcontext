@@ -3,7 +3,12 @@
 Headline numbers and reproduction commands. Full methodology —
 distinct-commit sampling, four baselines, bootstrap confidence intervals,
 budget sweep, hand-audited failure taxonomy — in
-[benchmarks/EVAL_V2_REPORT.md](../benchmarks/EVAL_V2_REPORT.md).
+[benchmarks/EVAL_V2_REPORT.md](../benchmarks/EVAL_V2_REPORT.md). The
+2026-07 hardening pass — leave-one-repo-out weight validation, a true
+dense baseline, calibration at n=1080, ground-truth validity, paired
+significance tests — is in
+[benchmarks/RIGOR_REPORT_2026-07.md](../benchmarks/RIGOR_REPORT_2026-07.md);
+where this page and that report disagree, the report is newer and wins.
 
 ## Per-signal ablation
 
@@ -90,14 +95,18 @@ From the failure taxonomy — 60 hand-audited Django co-change pairs with no
 call-graph connection:
 
 - **Thematic siblings** (same feature, no call between them): the graph is
-  blind; the BM25 leg recovers these partially. *Fixable* — an adaptive
-  blend is the top roadmap item.
+  blind; the BM25 leg recovers these partially, a dense-embedding leg
+  more (55% of the bucket). Note: per-query *adaptive* re-weighting was
+  measured and is a null result — the fix is better fixed weights
+  ([0.3, 0.5, 0.2] survives leave-one-repo-out) and/or the dense leg,
+  not dynamic blending.
 - **Dispatch/override pairs** (same method name across a hierarchy):
   *partially fixable* via synthetic override edges in the graph.
 - **Cross-subsystem conceptual links** (e.g. a settings flag and the
   security check that reads it): graph, BM25, and hybrid all score **0/20**.
-  A structural ceiling for every static-analysis retriever — reachable only
-  with signals like git co-change history (roadmap item 3).
+  A structural ceiling for static and lexical signals — the measured
+  exceptions are dense embeddings (5/20 with all-MiniLM) and, in
+  principle, git co-change history as a signal.
 - **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
   metaclass-generated code are statically unresolvable — this is why
   pydantic is the weakest benchmark repo for every method tested.

@@ -175,22 +175,24 @@ language adapter: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-Ordered by measured impact: **1)** adaptive blend (up-weight BM25 when
-graph confidence is low) · **2)** override edges across class
-hierarchies · **3)** git co-change history as a fourth signal — the only
-known path past the cross-subsystem ceiling · **4)** chain-complete
-budgeting · ~~5) calibrated confidence~~ — shipped as
-`diffcontext verify` · ~~6) TypeScript~~ — shipped as a prototype;
-remaining TS work in [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
-Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
+The current prioritized plan, each item with its measured motivation, is
+[docs/ROADMAP.md](docs/ROADMAP.md). Highlights: LLM-judged downstream
+evaluation (the one metric family still missing), a dense fourth blend
+leg as an opt-in extra (measured: the only significant recall gains on
+hard repos), override edges (the 0%-recall dispatch bucket), and
+CommonJS. Two former roadmap items are now measured results, not plans:
+adaptive per-query blending (null — dropped) and calibrated confidence
+(shipped as `verify --save-calibration`).
 
 ## More
+
+**Hosted docs: [diffcontext-docs.pages.dev](https://diffcontext-docs.pages.dev/)**
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, resolver capabilities, agent API
 - [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, methodology links, limitations
 - [docs/VERIFY.md](docs/VERIFY.md) — sufficiency scoring, test cases, calibration
 - [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md) — TS/JS adapter detail and measured failure modes
-- [README_FULL.md](README_FULL.md) — the original long-form README, preserved intact
+- [benchmarks/RIGOR_REPORT_2026-07.md](benchmarks/RIGOR_REPORT_2026-07.md) — the 2026-07 methodology-hardening pass (LORO validation, true dense baseline, calibration at scale, GT validity)
 
 ## License
 
