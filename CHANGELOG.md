@@ -8,6 +8,19 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-07-20
+
+### Changed (supported Python versions)
+- `requires-python` moved from `>=3.8` to `>=3.9`; Python 3.8 reached
+  end-of-life in October 2024. The CI matrix now tests 3.9–3.13.
+
+### Added (lint + typing gates in CI)
+- Ruff (pyflakes + core pycodestyle) and mypy now run in CI. Typing uses
+  a frozen 8-module baseline in pyproject.toml that may only shrink;
+  every other module — and every new module — is checked from day one.
+
 ### Changed (hybrid blend weights — LORO-validated)
 - `HYBRID_WEIGHTS` is now (0.3, 0.5, 0.2) (graph, BM25, same-file), the
   leave-one-repo-out-selected blend from the rigor pass; the original

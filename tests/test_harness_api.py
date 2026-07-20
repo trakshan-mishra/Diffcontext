@@ -168,7 +168,9 @@ class TestCacheThreadSafety:
                     errors.append(e)
 
             threads = [threading.Thread(target=worker) for _ in range(8)]
-            for t in threads: t.start()
-            for t in threads: t.join()
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
 
         assert errors == [], f"concurrent cache access failed: {errors}"

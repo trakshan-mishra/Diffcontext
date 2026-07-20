@@ -300,7 +300,7 @@ def _cmd_compile(args):
         print(json.dumps(result, indent=2))
     else:
         print(ctx.text)
-        print(f"\n--- Stats ---")
+        print("\n--- Stats ---")
         print(f"Symbols  : {ctx.symbol_count}")
         print(f"Tokens   : {ctx.token_estimate:,} / {ctx.total_repo_tokens:,}")
         print(f"Reduction: {ctx.reduction_pct:.1f}%")

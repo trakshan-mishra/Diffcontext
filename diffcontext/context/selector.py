@@ -151,6 +151,7 @@ def select_context(
         """Tokens this symbol will actually cost in the compiled output."""
         if graph is None:
             return count(symbols[sym_id].code)
+        assert reverse is not None  # derived from graph above when absent
         # Empty selected_set = every relationship entry gets the longer
         # " [NOT IN CONTEXT]" tag = safe upper bound on the real rendering.
         return count(render_symbol_block(

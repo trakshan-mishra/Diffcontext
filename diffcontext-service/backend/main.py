@@ -24,7 +24,7 @@ import time
 import uuid
 import zipfile
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -74,7 +74,7 @@ def _session_save(repo_id: str, repo_path: str, name: str, git_url: str = ""):
     with _db() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO sessions VALUES (?,?,?,?,?)",
-            (repo_id, repo_path, name, git_url, datetime.utcnow().isoformat())
+            (repo_id, repo_path, name, git_url, datetime.now(timezone.utc).isoformat())
         )
 
 def _session_get(repo_id: str) -> Optional[dict]:
