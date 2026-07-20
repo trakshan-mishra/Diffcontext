@@ -50,6 +50,19 @@ W_PARSE     = 0.10
 VERDICT_SUFFICIENT_MIN = 80.0
 VERDICT_DEGRADED_MIN   = 55.0
 
+# Evidence saturation: how many observations a component needs before it is
+# fully trusted. A component computed from zero observations (no direct
+# neighbors, no ranked-relevant symbols, no outgoing edges) says NOTHING —
+# the old formula scored it as a perfect 1.0, which is why sparse-graph
+# repos (TypeScript especially) reported a constant 100. With no evidence
+# the score now shrinks toward the maximum-uncertainty midpoint (50), and
+# the report says so instead of feigning confidence.
+EVIDENCE_SAT_CLOSURE    = 3     # direct neighbors
+EVIDENCE_SAT_RETENTION  = 3     # ranker-relevant symbols
+EVIDENCE_SAT_CONFIDENCE = 3     # outgoing edges from changed symbols
+LOW_EVIDENCE_MAX        = 0.4   # below this, emit a low-evidence finding
+MIDPOINT                = 50.0  # "don't know" score
+
 
 @dataclass
 class SufficiencyFinding:
@@ -81,6 +94,8 @@ class SufficiencyReport:
     missing_direct: List[str] = field(default_factory=list)
     dropped_high_score: List[str] = field(default_factory=list)
     calibrated: bool = False         # True only when produced by a calibration run
+    evidence: float = 1.0            # [0,1] how much observation backs the score
+    score_legacy: float = 0.0        # pre-evidence-shrinkage formula (A/B measure)
 
     def to_dict(self) -> dict:
         return {
@@ -96,6 +111,8 @@ class SufficiencyReport:
             "dropped_high_score": self.dropped_high_score,
             "findings": [f.to_dict() for f in self.findings],
             "calibrated": self.calibrated,
+            "evidence": round(self.evidence, 3),
+            "score_legacy": round(self.score_legacy, 1),
         }
 
     def render(self) -> str:
@@ -110,6 +127,7 @@ class SufficiencyReport:
             f"  ({len(self.dropped_high_score)} relevant symbols cut by budget)",
             f"  local graph confidence  : {self.local_graph_confidence * 100:.0f}%",
             f"  parse health            : {self.parse_health * 100:.0f}%",
+            f"  evidence behind score   : {self.evidence * 100:.0f}%",
         ]
         if self.findings:
             lines.append("")
@@ -251,12 +269,39 @@ def analyze_sufficiency(
         ))
 
     # ── Composite score + verdict ─────────────────────────────────────────
-    score = 100.0 * (
+    raw = (
         W_CLOSURE * direct_closure
         + W_RETENTION * retention
         + W_CONFIDENCE * local_confidence
         + W_PARSE * parse_health
     )
+    score_legacy = 100.0 * raw
+
+    # Evidence-aware shrinkage: a component backed by zero observations must
+    # not count as a perfect 1.0. Each component's trust saturates after a
+    # few observations; the composite shrinks toward the maximum-uncertainty
+    # midpoint in proportion to the missing evidence. With rich evidence
+    # (any well-connected Python symbol) this reduces to the legacy formula.
+    evidence = (
+        W_CLOSURE * min(1.0, len(direct_neighbors) / EVIDENCE_SAT_CLOSURE)
+        + W_RETENTION * min(1.0, len(relevant) / EVIDENCE_SAT_RETENTION)
+        + W_CONFIDENCE * min(1.0, local_total / EVIDENCE_SAT_CONFIDENCE)
+        + W_PARSE * 1.0
+    )
+    score = evidence * score_legacy + (1.0 - evidence) * MIDPOINT
+
+    if evidence < LOW_EVIDENCE_MAX:
+        findings.append(SufficiencyFinding(
+            severity="warning",
+            kind="low-evidence",
+            message=(
+                f"Only {evidence * 100:.0f}% of the signals this score is built "
+                f"from have any observations behind them (sparse or blind graph "
+                f"around the changed symbols). The score is shrunk toward 50 "
+                f"('unknown') accordingly — do not read it as confidence."
+            ),
+        ))
+
     if score >= VERDICT_SUFFICIENT_MIN:
         verdict = "SUFFICIENT"
     elif score >= VERDICT_DEGRADED_MIN:
@@ -274,4 +319,6 @@ def analyze_sufficiency(
         findings=findings,
         missing_direct=missing_direct,
         dropped_high_score=dropped_high,
+        evidence=evidence,
+        score_legacy=score_legacy,
     )

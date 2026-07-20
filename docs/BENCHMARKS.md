@@ -3,7 +3,12 @@
 Headline numbers and reproduction commands. Full methodology —
 distinct-commit sampling, four baselines, bootstrap confidence intervals,
 budget sweep, hand-audited failure taxonomy — in
-[benchmarks/EVAL_V2_REPORT.md](../benchmarks/EVAL_V2_REPORT.md).
+[benchmarks/EVAL_V2_REPORT.md](../benchmarks/EVAL_V2_REPORT.md). The
+2026-07 hardening pass — leave-one-repo-out weight validation, a true
+dense baseline, calibration at n=1080, ground-truth validity, paired
+significance tests — is in
+[benchmarks/RIGOR_REPORT_2026-07.md](../benchmarks/RIGOR_REPORT_2026-07.md);
+where this page and that report disagree, the report is newer and wins.
 
 ## Per-signal ablation
 
@@ -14,7 +19,12 @@ Each retrieval signal benchmarked alone against real commit history:
 | Call graph alone | 0.748 | 0.558 | Related code that never calls yours |
 | BM25 keywords alone | 0.822 | 0.619 | Structure; ranks lexical noise |
 | Same file alone | 0.693 | 0.506 | Anything cross-file |
-| **Hybrid (this product)** | **0.856** | **0.690** | See [known limitations](#known-limitations-measured-not-guessed) |
+| **Hybrid (this product)** | **0.868** | **0.705** | See [known limitations](#known-limitations-measured-not-guessed) |
+
+Hybrid numbers are at the shipped blend weights [0.3, 0.5, 0.2] — the
+leave-one-repo-out-validated choice from the 2026-07 rigor pass (the
+originally shipped [0.5, 0.35, 0.15] was mildly graph-overfit; see
+RIGOR_REPORT_2026-07.md §3).
 
 ## Against real developer behavior, across repos
 
@@ -24,20 +34,31 @@ one commit; shown one, can the tool find the others?* Headline
 
 | | django | click | flask | httpx | pydantic |
 |---|---|---|---|---|---|
-| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 |
-| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 |
+| Hit | 0.894 | 0.889 | 0.863 | 0.935 | 0.758 |
+| Recall | 0.774 | 0.750 | 0.694 | 0.772 | 0.536 |
 
-Independent validation on repos never used for tuning: **black** hybrid
-hit 0.901 / recall 0.720, **requests** hit 0.969 / recall 0.774.
+Independent validation on repos never used for tuning or weight
+selection: **black** hybrid hit 0.897 / recall 0.712, **requests** 0.953
+/ 0.762, **rich** 0.844 / 0.760, **starlette** 0.929 / 0.776 (frozen
+weights, `results/loro/loro_3leg.json`).
 
 The flip side of that recall, stated as plainly as the recall itself:
-cross-repo mean **precision is 0.075 hybrid / 0.060 graph-only** — roughly
-92-94% of retrieved symbols are not in the ground-truth co-change set.
-They're mostly structurally adjacent supporting context (callers, callees,
-same-file siblings), which is often what you want an LLM to see, but if
-you're paying per token, precision — not recall — is this product's real
-problem, and the benchmark report says so in exactly those words. The full
-precision/recall tradeoff, including the per-method sweep, is in
+cross-repo mean **precision is under 0.1** at the default top-k selection
+— roughly 90%+ of retrieved symbols are not in the ground-truth co-change
+set (and GT-adjusting for incomplete ground truth still leaves it under
+0.15 everywhere; RIGOR_REPORT_2026-07.md §2). They're mostly structurally
+adjacent supporting context (callers, callees, same-file siblings), which
+is often what you want an LLM to see, but if you're paying per token,
+precision — not recall — is this product's real problem.
+
+**The measured precision lever, shipped as `--cutoff gap`:** instead of a
+fixed top-k, cut the ranking at the largest relative score drop. Measured
+F1-optimal on all five benchmark repos — roughly **4× the precision of
+top-20 at 6–9 retrieved symbols**, costing ~30% relative recall
+(RIGOR_REPORT_2026-07.md §7). Not a free lunch, so top-k stays the
+recall-first default; run `diffcontext verify --from-history 20` once
+with `--cutoff gap` and once without to measure the tradeoff on your own
+repo before adopting it. The full precision/recall sweep is in
 [benchmarks/EVAL_V2_REPORT.md](../benchmarks/EVAL_V2_REPORT.md).
 
 ## Head-to-head vs grep, at identical token budgets
@@ -64,6 +85,13 @@ it into context, 66% were explicitly disclosed as dropped, **0% silently
 invisible**.
 
 ## Newer blend variants (ablation rows, 2026-07)
+
+> **Provenance note:** the ablation below was run before the rigor pass
+> landed — its `hybrid` column uses the pre-LORO weights
+> (0.5/0.35/0.15) and its embedding references the TF-IDF stand-in, not
+> the true dense baseline used elsewhere in this document. The relative
+> comparisons between variants are unaffected (all four share the same
+> run); a re-run at the shipped [0.3, 0.5, 0.2] weights is pending.
 
 eval_v2 now measures three additional product configurations alongside
 the frozen `hybrid`:
@@ -153,21 +181,24 @@ From the failure taxonomy — 60 hand-audited Django co-change pairs with no
 call-graph connection:
 
 - **Thematic siblings** (same feature, no call between them): the graph is
-  blind; the BM25 leg recovers these partially. The adaptive blend
-  (shipped 2026-07) up-weights BM25 exactly when the graph is sparse.
+  blind; the BM25 leg recovers these partially, a dense-embedding leg
+  more (55% of the bucket). The adaptive blend (shipped 2026-07)
+  up-weights BM25 exactly when the graph is sparse, but per-query
+  *adaptive* re-weighting was measured and is a null result — the fix is
+  better fixed weights ([0.3, 0.5, 0.2] survives leave-one-repo-out)
+  and/or the dense leg, not dynamic blending.
 - **Dispatch/override pairs** (same method name across a hierarchy):
   addressed by dispatch-sibling override edges (shipped 2026-07,
   family-capped at 6) — large families (a base with dozens of
   overriders) remain out of reach by design (hub protection).
 - **Cross-subsystem conceptual links** (e.g. a settings flag and the
   security check that reads it): graph, BM25, and hybrid all score **0/20**
-  — a structural ceiling for every static-analysis retriever. The git
-  co-change signal (`hybrid_cochange`/`hybrid_full`, shipped 2026-07) is
-  the first method in this suite that can reach these pairs in principle —
-  and, measured, it **still scores 0/20** on this bucket at file-level
-  granularity with a 3,000-commit window (details and next steps in the
-  blend-variants section above). The ceiling stands; we now know one more
-  thing that doesn't break it.
+  — a structural ceiling for static and lexical signals. The measured
+  exception is dense embeddings (5/20 with all-MiniLM). The git co-change
+  signal (`hybrid_cochange`/`hybrid_full`, shipped 2026-07) can reach
+  these pairs in principle — and, measured, it **still scores 0/20** on
+  this bucket at file-level granularity with a 3,000-commit window. The
+  ceiling stands for everything except the dense leg.
 - **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
   metaclass-generated code are statically unresolvable — this is why
   pydantic is the weakest benchmark repo for every method tested.

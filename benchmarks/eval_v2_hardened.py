@@ -224,7 +224,8 @@ def _repo_head_sha(repo_path: str) -> str:
 
 
 def _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25) -> List[str]:
-    """graph+bm25+file blend (0.5/0.35/0.15), same recipe as eval_v1's winner."""
+    """graph+bm25+file blend at the product's HYBRID_WEIGHTS (LORO-validated
+    [0.3, 0.5, 0.2] since 2026-07), so this method always measures what ships."""
     return _hybrid_variants(q, symbols, symbol_ids, graph, reverse_graph, bm25)["hybrid"]
 
 
@@ -236,7 +237,7 @@ def _hybrid_variants(
     per-query graph and BM25 scores (computing them once instead of four
     times):
 
-      hybrid           fixed 0.5/0.35/0.15 blend (the frozen eval_v1 winner)
+      hybrid           fixed HYBRID_WEIGHTS blend (LORO-validated 0.3/0.5/0.2)
       hybrid_adaptive  graph weight scaled by graph confidence, freed
                        weight moved to BM25 (pipeline._adaptive_weights —
                        the SAME function the product uses)

@@ -84,6 +84,13 @@ just the raw context:
 - `--max-tokens N`: hard cap. Lower it to force tighter selection (only
   the highest-scored symbols survive); raise it if you have a
   large-context model and want more surrounding code.
+- `--cutoff gap`: precision mode. Cuts the ranking at the largest
+  relative score drop instead of keeping a fixed top-k — measured ~4× the
+  precision of top-20 at 6–9 symbols, for ~30% relative recall cost
+  (benchmarks/RIGOR_REPORT_2026-07.md §7). Use it when tokens are
+  expensive and missing a co-change partner is cheap; skip it when a miss
+  is expensive. Measure the tradeoff on your own repo first:
+  `diffcontext verify --from-history 20 --cutoff gap` vs without.
 
 ### 6. Checking what changed (only works for committed/staged files)
 

@@ -161,7 +161,7 @@ class TestStructuralCeilingCaveat:
     def test_caveat_adjacent_to_graph_confidence(self):
         ctx = self._compile_at(4000)
         lines = ctx.text.split("\n")
-        conf_idx = next(i for i, l in enumerate(lines) if l.startswith("Graph confidence"))
+        conf_idx = next(i for i, ln in enumerate(lines) if ln.startswith("Graph confidence"))
         assert self.CAVEAT in lines[conf_idx + 1]
 
 

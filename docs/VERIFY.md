@@ -94,6 +94,18 @@ Weights: 45% direct closure, 30% high-score retention, 15% local confidence,
 10% parse health — direct closure dominates because a missing direct neighbor
 is the failure mode the eval_v2 benchmark observed most often.
 
+**The score is evidence-aware.** A component with zero observations behind
+it (no direct neighbors, no outgoing edges, nothing the ranker scored as
+relevant) says nothing, so it must not count as a perfect 1.0 — that
+defect made the old formula report a constant ~100 on sparse graphs
+(σ=9.9 on Python at n=1080, σ=5.0 on TypeScript; correlation with
+measured recall: none). The score now shrinks toward 50 ("don't know")
+in proportion to missing evidence and prints the evidence fraction.
+After the fix, pooled correlation with recall is r≈0.29 (p=0.0001) on
+both Python (n=1080, 9 repos) and TypeScript (n=360, 3 repos) — a real
+ranking signal, though still not a probability, which is what
+calibration below is for.
+
 ---
 
 ## Mode 2: your own test cases
@@ -151,6 +163,16 @@ JSON (always works) or YAML (if PyYAML is installed):
    silent skip — and is flagged with a fuzzy-match suggestion
    (`'create_ordr' not found — did you mean './service.py:create_order'?`),
    so a typo can't quietly inflate or deflate your numbers.
+5. The report also shows a per-run **precision lower bound**
+   (`|must_include ∩ retrieved| / |retrieved|`, changed symbols excluded).
+   "Lower bound" because case ground truth is incomplete — symbols outside
+   `must_include` are not all noise (measured: GT-adjusting moves precision
+   by less than 2×; RIGOR_REPORT_2026-07.md §2). Use it to compare
+   selection policies, not as an absolute score: run once with
+   `--cutoff gap` (the measured precision operating point — fewer, better
+   symbols) and once without, and read recall and the precision bound
+   side by side. Expect `--cutoff gap` to fail recall-gated cases that
+   top-k passes; that is the tradeoff being measured, not a bug.
 
 ```bash
 diffcontext verify --cases cases.json           # human-readable
@@ -207,6 +229,30 @@ That output above is real — it's this repo's own history, and +0.274 is a
 the tool measures itself against evidence it didn't choose and reports the
 result even when unflattering.
 
+**Measured at scale** (1,080 mined cases across 9 Python repos,
+`benchmarks/calibration_at_scale.py`): score/100 read directly as a
+probability of recall loses to just predicting the mean (MAE 0.48 vs
+0.34) — the raw score is a *ranking* signal, never a probability. What
+does predict recall out-of-repo is a least-squares fit over the runtime
+features `verify` already computes (score components + selected /
+missing-direct / dropped counts + tokens): it beat the predict-the-mean
+baseline on held-out MAE in 8/9 repos (held-out r up to 0.65). That fit
+is now a product feature:
+
+```bash
+diffcontext verify --from-history 60 --calibrate --save-calibration
+# ...fits and writes .diffcontext-calibration.json, then later:
+diffcontext verify --ref HEAD~1
+# ...ends with: Calibrated recall estimate: 74% (fit on 60 of this
+#    repo's own history cases — see .diffcontext-calibration.json)
+```
+
+The fit refuses to run under 30 cases (a model fit on a handful of
+points is noise with a JSON file), and re-weighting the four score
+components *alone* was measured to have no held-out predictive power —
+the count features carry the signal. Both facts are in the benchmark
+report, nulls included.
+
 ---
 
 ## How to measure "model accuracy" honestly
@@ -246,9 +292,11 @@ guarantee a right one. The honest pipeline is therefore:
 3. **Task-aware ranking:** blend the case's `task` text into the BM25 signal
    (the query text is already recorded per case, so the A/B is one flag:
    recall with vs without). Only merge if recall improves on cases.
-4. **Learned calibration:** replace the fixed component weights
-   (45/30/15/10) with weights fit on accumulated case results per-repo —
-   the calibration data `verify` already collects *is* the training set.
+4. **Done — learned calibration** (`--save-calibration`): a per-repo
+   recall predictor fit on the calibration data `verify` collects.
+   Measured before shipping: naively re-fitting the four component
+   weights has ~zero held-out power (reported as the null it is); the
+   extended runtime-feature fit generalizes in 8/9 held-out repos.
 5. **Q2 harness:** `verify --llm` mode — for each case with a `task`, ask a
    model for a patch given the compiled context, apply it, run the repo's
    tests, and report end-task pass rate alongside recall. This is the first

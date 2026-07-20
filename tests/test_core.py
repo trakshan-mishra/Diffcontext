@@ -18,15 +18,12 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from diffcontext.parser import extract_all_symbols, extract_symbols
+from diffcontext.parser import extract_all_symbols
 from diffcontext.scanner import find_python_files
-from diffcontext.resolver import build_import_map
 from diffcontext.graph_builder import build_repository_graph
 from diffcontext.impact.blast_radius import get_blast_radius
 from diffcontext.impact.traversal import expand_dependencies
 from diffcontext.impact.scoring import compute_impact_scores
-from diffcontext.context.selector import select_context
-from diffcontext.context.compiler import compile_context
 from diffcontext.pipeline import index_repository, analyze_impact, compile
 
 

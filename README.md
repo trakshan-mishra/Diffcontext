@@ -8,7 +8,7 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
                                      graph ∪ BM25 ∪ file      top-k + tokens
 ```
 
-- Zero runtime dependencies, Python 3.8+, `pip install -e .`
+- Zero runtime dependencies, Python 3.9+, `pip install -e .`
 - **~2× the recall of grep at every token budget** on real co-change
   ground truth — at ~5-10% precision: a wide net with the right things in
   it, not a curated shortlist ([measured](docs/BENCHMARKS.md))
@@ -63,6 +63,8 @@ diffcontext verify --from-history 30 --calibrate
 
 Symbol IDs are always `./relative/path.py:ClassName.method` — no
 parentheses, no arguments. More commands and options: [USAGE.md](USAGE.md).
+Production recipes — agent loops, PR review, CI gates, and when *not* to
+use this: [docs/USE_CASES.md](docs/USE_CASES.md).
 
 ## How it works
 
@@ -88,17 +90,21 @@ Per-commit hit / recall of real co-change partners, hybrid retrieval:
 
 | | django | click | flask | httpx | pydantic | black* | requests* |
 |---|---|---|---|---|---|---|---|
-| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 | 0.901 | 0.969 |
-| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 | 0.720 | 0.774 |
+| Hit | 0.894 | 0.889 | 0.863 | 0.935 | 0.758 | 0.897 | 0.953 |
+| Recall | 0.774 | 0.750 | 0.694 | 0.772 | 0.536 | 0.712 | 0.762 |
 
-\* validation repos, never used for tuning.
+\* validation repos, never used for tuning or weight selection.
 
 Head-to-head vs grep at identical token budgets, grep **plateaus** at
 0.215 recall past 4k tokens while DiffContext reaches 0.576 at 8k
-(2.7×). The honest flip side: mean precision is ~0.075 — most retrieved
-symbols are supporting context (callers, callees, siblings) rather than
-the exact co-change set. If you pay per token, precision is this
-product's real problem, and we say so.
+(2.7×). The honest flip side: mean precision is under 0.1 at the default
+top-k selection — most retrieved symbols are supporting context (callers,
+callees, siblings) rather than the exact co-change set. If you pay per
+token, use **`--cutoff gap`**: it cuts the ranking at the largest score
+drop instead of a fixed top-k — measured ~4× the precision at 6–9
+symbols, costing ~30% relative recall. Top-k stays the recall-first
+default; measure the tradeoff on your own repo with
+`diffcontext verify --from-history 20 --cutoff gap`.
 
 All tables, the per-signal ablation, the failure taxonomy, and
 reproduction commands: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
@@ -124,6 +130,7 @@ impact = analyze_impact(
     history=CoChangeIndex("/path/to/repo"),        # optional 4th signal: git co-change
 )
 ctx = compile(idx, impact, max_tokens=8000, top_k=20)
+# token-priced callers: compile(..., cutoff="gap") for the precision operating point
 
 print(ctx.text)                      # paste-ready context with meta-header
 print(ctx.dropped_symbols[:5])       # what the budget cut — never hidden
@@ -182,27 +189,32 @@ language adapter: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-~~1) adaptive blend~~ — **shipped** (graph weight scales with graph
-confidence; freed weight moves to BM25) · ~~2) override edges across
-class hierarchies~~ — **shipped** (dispatch-sibling edges, family-capped) ·
-~~3) git co-change history as a fourth signal~~ — **shipped** as
-`CoChangeIndex` / `--with-history`, benchmarked with test-commit
-exclusion · **4)** chain-complete budgeting · **5)** extrinsic
-(downstream LLM task) evaluation — the main remaining gap between this
-and a main-track research paper, see [docs/RESEARCH.md](docs/RESEARCH.md) ·
-~~6) calibrated confidence~~ — shipped as `diffcontext verify` ·
-~~7) TypeScript~~ — shipped as a prototype; remaining TS work in
-[docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
-Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
+The current prioritized plan, each item with its measured motivation, is
+[docs/ROADMAP.md](docs/ROADMAP.md). Highlights still open: LLM-judged
+downstream evaluation (the one metric family still missing — the main gap
+between this and a main-track research paper, see
+[docs/RESEARCH.md](docs/RESEARCH.md)), a dense fourth blend leg as an
+opt-in extra (measured: the only significant recall gains on hard repos),
+chain-complete budgeting, and CommonJS. Recently shipped from the
+roadmap: dispatch-sibling override edges (the 0%-recall dispatch bucket),
+git co-change history as a fourth signal (`CoChangeIndex` /
+`--with-history`, benchmarked with test-commit exclusion), calibrated
+confidence (`verify --save-calibration`), and TypeScript as a prototype
+(remaining TS work in [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md)).
+Adaptive per-query blending shipped (on by default in `analyze_impact`,
+opt out with `adaptive=False`) but measured as a null in the rigor pass —
+no significant recall change on any benchmark repo.
 
 ## More
+
+**Hosted docs: [diffcontext-docs.pages.dev](https://diffcontext-docs.pages.dev/)**
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, resolver capabilities, agent API
 - [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, methodology links, limitations
 - [docs/RESEARCH.md](docs/RESEARCH.md) — literature positioning and the gap list for a publishable paper
 - [docs/VERIFY.md](docs/VERIFY.md) — sufficiency scoring, test cases, calibration
 - [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md) — TS/JS adapter detail and measured failure modes
-- [README_FULL.md](README_FULL.md) — the original long-form README, preserved intact
+- [benchmarks/RIGOR_REPORT_2026-07.md](benchmarks/RIGOR_REPORT_2026-07.md) — the 2026-07 methodology-hardening pass (LORO validation, true dense baseline, calibration at scale, GT validity)
 
 ## License
 
