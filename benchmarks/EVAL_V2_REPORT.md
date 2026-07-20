@@ -270,6 +270,34 @@ points vs §2 for exactly this reason; rankings are consistent.
   stand-in for dense retrieval, in 4/5 repos — and loses where its graph
   leg is blind. No claim is made against actual embedding models yet.
 
+## 9. True dense re-run (2026-07-20): §8's stand-in corrected on the record
+
+The missing dense run exists now — same six methods, same pinned
+snapshots, encoder `sentence-transformers/all-MiniLM-L6-v2` (recorded in
+every summary). Two §8 conclusions drawn from the `tfidf-cosine-approx`
+stand-in **reverse** under a real encoder:
+
+- The stand-in overstated dense retrieval (mean recall 0.664 → true
+  0.597). **BM25 is again the strongest single baseline** (mean 0.624);
+  the hybrid leads recall in 4/5 repos at mean 0.693.
+- "Hybrid loses to embedding on pydantic" is retracted: true dense
+  scores 0.441 there vs hybrid 0.524 (BM25 0.531 remains pydantic's
+  narrow winner).
+
+What survives and strengthens: dense is the only signal that cracks the
+cross-subsystem ceiling (5/20 = 25% vs 0/20 for graph/BM25/hybrid) and
+leads every failure bucket — and added as a fourth blend leg it yields
+the first statistically significant recall gains over the shipped hybrid
+(flask +3.9 pts p=0.007, httpx +3.0 p=0.024, pydantic +3.6 p=0.003,
+leave-one-repo-out selected). Caveat: all-MiniLM is an NL encoder; no
+claim is made about code-tuned embedding models.
+
+Full methodology-hardening pass — leave-one-repo-out weight validation
+(shipped 0.5/0.35/0.15 was mildly overfit; honest recommendation
+[0.3, 0.5, 0.2]), adaptive-blend null result, ground-truth validity
+measurement, calibration at scale, cutoff policies — in
+[RIGOR_REPORT_2026-07.md](RIGOR_REPORT_2026-07.md).
+
 ---
 *Reproduce: `python benchmarks/eval_v2_hardened.py` (all repos + Django buckets). Raw per-case data: `benchmarks/results/eval_v2/<repo>_cases.csv` (one row per commit × query × method). Summaries with CIs and strata: `<repo>_summary.json`, `all_summaries.json`.*
 

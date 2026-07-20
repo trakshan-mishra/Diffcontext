@@ -8,6 +8,38 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Changed (evidence-aware sufficiency score — measured fix)
+- The sufficiency score no longer treats absence of evidence as a perfect
+  1.0: it shrinks toward 50 ("don't know") in proportion to missing
+  observations, reports an `evidence` fraction, and keeps the legacy value
+  as `score_legacy`. Measured at scale (calibration_at_scale.py, clean
+  indexes): legacy r=0.016 with recall on 1,080 Python cases (the old
+  citable r=0.274 was a polluted-index artifact) and constant-~100 on TS;
+  evidence-aware r≈0.29 (p=0.0001) on both Python (n=1080) and TS (n=379).
+
+### Added (learned per-repo calibration — `--save-calibration`)
+- `verify --calibrate` fits a dependency-free least-squares recall
+  predictor over runtime features (score components + selected /
+  missing-direct / dropped-high counts + tokens); `--save-calibration`
+  persists it to `.diffcontext-calibration.json`, and later `verify` runs
+  report a calibrated recall estimate. Validated leave-one-repo-out:
+  beats predict-the-mean on held-out MAE in 8/9 Python repos (r to 0.65);
+  re-fitting the four component weights alone is a measured null.
+
+### Added (benchmark rigor pass — see benchmarks/RIGOR_REPORT_2026-07.md)
+- True dense baseline run (all-MiniLM-L6-v2): corrects §8's TF-IDF
+  stand-in — BM25 is again the strongest single baseline; the pydantic
+  "hybrid loses to embedding" claim is retracted; dense uniquely cracks
+  the cross-subsystem ceiling (25% vs 0%) and as a fourth blend leg gives
+  the first significant recall gains (flask/httpx/pydantic, p<0.05, LORO).
+- Leave-one-repo-out weight validation: shipped 0.5/0.35/0.15 was mildly
+  graph-overfit; honest recommendation [0.3, 0.5, 0.2]; held-out damage
+  ≤2.4 recall points, n.s. Adaptive per-query blending: null result.
+- Ground-truth validity measured (gt_validity.py): FP-future-co-change
+  lift 1.1–8× over random; adjusted precision stays <0.15 — GT noise does
+  not explain the precision problem. Largest-gap cutoff measured as the
+  F1-optimal operating point on 5/5 repos (~4× top-20 precision).
+
 ### Added (experimental TypeScript/JavaScript support — `[typescript]` extra)
 - New `diffcontext/languages/` adapter layer: the pipeline (scoring,
   selection, compilation, caching, diff mapping, verify) was already

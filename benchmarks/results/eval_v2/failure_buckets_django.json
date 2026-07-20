@@ -6,7 +6,7 @@
       "hit_rate": {
         "diffcontext": 0.0,
         "bm25": 0.5,
-        "embedding": 0.5,
+        "embedding": 0.55,
         "hybrid": 0.15
       },
       "pairs": [
@@ -17,7 +17,7 @@
           "target": "./django/contrib/admin/options.py:InlineModelAdmin.get_formset",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -97,7 +97,7 @@
           "target": "./django/db/models/sql/compiler.py:SQLCompiler._get_combinator_part_sql",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -187,7 +187,7 @@
           "target": "./django/contrib/admin/options.py:ModelAdmin.get_changelist_instance",
           "hit_diffcontext": 0,
           "hit_bm25": 1,
-          "hit_embedding": 1,
+          "hit_embedding": 0,
           "hit_hybrid": 0
         },
         {
@@ -217,7 +217,7 @@
       "hit_rate": {
         "diffcontext": 0.0,
         "bm25": 0.3,
-        "embedding": 0.3,
+        "embedding": 0.35,
         "hybrid": 0.25
       },
       "pairs": [
@@ -288,7 +288,7 @@
           "target": "./django/db/backends/sqlite3/schema.py:DatabaseSchemaEditor._alter_field",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -428,7 +428,7 @@
       "hit_rate": {
         "diffcontext": 0.0,
         "bm25": 0.0,
-        "embedding": 0.15,
+        "embedding": 0.25,
         "hybrid": 0.0
       },
       "pairs": [
@@ -439,7 +439,7 @@
           "target": "./django/core/management/__init__.py:ManagementUtility.__init__",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -519,7 +519,7 @@
           "target": "./django/core/signing.py:_unsign_cookie",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -539,7 +539,7 @@
           "target": "./django/core/signing.py:_unsign_cookie",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 0,
+          "hit_embedding": 1,
           "hit_hybrid": 0
         },
         {
@@ -559,7 +559,7 @@
           "target": "./django/conf/__init__.py:Settings.__init__",
           "hit_diffcontext": 0,
           "hit_bm25": 0,
-          "hit_embedding": 1,
+          "hit_embedding": 0,
           "hit_hybrid": 0
         },
         {
@@ -635,6 +635,6 @@
       ]
     }
   },
-  "embedding_encoder": "tfidf-cosine-approx",
+  "embedding_encoder": "sentence-transformers/all-MiniLM-L6-v2",
   "repo_head_sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb"
 }
