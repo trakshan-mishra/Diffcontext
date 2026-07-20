@@ -314,6 +314,13 @@ class Calibration:
     buckets: List[CalibrationBucket]
     pearson_r: Optional[float]     # None when undefined (constant series)
     n_cases: int
+    # Fitted per-repo recall predictor over runtime-available features
+    # (see MODEL_FEATURES). None when too few cases to fit responsibly.
+    # Measured basis: benchmarks/calibration_at_scale.py — re-weighting the
+    # four score components alone has ~zero held-out predictive power, but
+    # this extended feature set beat the predict-the-mean baseline on
+    # held-out MAE in 8/9 Python repos (held-out r up to 0.65).
+    model: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return {
@@ -323,7 +330,138 @@ class Calibration:
                 {"range": [b.lo, b.hi], "n": b.n, "mean_recall": round(b.mean_recall, 3)}
                 for b in self.buckets
             ],
+            "model": self.model,
         }
+
+
+# Runtime-available features for the fitted recall predictor. Every one is
+# computable BEFORE knowing the answer: score components plus how much the
+# selector kept/cut. (Ground-truth-dependent quantities must never be here.)
+MODEL_FEATURES = (
+    "direct_closure", "high_score_retention", "local_graph_confidence",
+    "parse_health", "selected_count", "n_missing_direct", "n_dropped_high",
+    "context_tokens",
+)
+MIN_MODEL_CASES = 30
+CALIBRATION_FILENAME = ".diffcontext-calibration.json"
+
+
+def _model_features(sufficiency: SufficiencyReport, selected_count: int,
+                    context_tokens: int) -> List[float]:
+    return [
+        sufficiency.direct_closure,
+        sufficiency.high_score_retention,
+        sufficiency.local_graph_confidence,
+        sufficiency.parse_health,
+        float(selected_count),
+        float(len(sufficiency.missing_direct)),
+        float(len(sufficiency.dropped_high_score)),
+        float(context_tokens),
+    ]
+
+
+def _solve_linear(A: List[List[float]], b: List[float]) -> Optional[List[float]]:
+    """Gaussian elimination with partial pivoting. Returns None if singular."""
+    n = len(A)
+    M = [row[:] + [b[i]] for i, row in enumerate(A)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(M[r][col]))
+        if abs(M[piv][col]) < 1e-12:
+            return None
+        M[col], M[piv] = M[piv], M[col]
+        for r in range(col + 1, n):
+            f = M[r][col] / M[col][col]
+            for c in range(col, n + 1):
+                M[r][c] -= f * M[col][c]
+    x = [0.0] * n
+    for r in range(n - 1, -1, -1):
+        x[r] = (M[r][n] - sum(M[r][c] * x[c] for c in range(r + 1, n))) / M[r][r]
+    return x
+
+
+def fit_recall_model(results: List[CaseResult]) -> Optional[dict]:
+    """
+    Least-squares fit of measured recall on standardized runtime features.
+    Dependency-free (pure Python normal equations). Returns None when there
+    are too few cases — a model fit on a handful of points is noise with a
+    JSON file, and we refuse to produce one.
+    """
+    rows = [r for r in results if r.sufficiency is not None]
+    if len(rows) < MIN_MODEL_CASES:
+        return None
+    X = [_model_features(r.sufficiency, r.selected_count, r.context_tokens)
+         for r in rows]
+    y = [r.recall for r in rows]
+    n, d = len(X), len(MODEL_FEATURES)
+
+    means = [sum(row[j] for row in X) / n for j in range(d)]
+    stds = []
+    for j in range(d):
+        var = sum((row[j] - means[j]) ** 2 for row in X) / n
+        stds.append(var ** 0.5 if var > 1e-12 else 1.0)
+    Z = [[(row[j] - means[j]) / stds[j] for j in range(d)] + [1.0] for row in X]
+
+    # Ridge-regularized normal equations: (Z^T Z + λI) w = Z^T y. The tiny
+    # λ exists for degenerate columns — a zero-variance feature (e.g.
+    # parse_health on a repo with no broken files) standardizes to an
+    # all-zero column and would make plain least squares singular; with
+    # ridge it just gets weight 0. The intercept is not penalized.
+    dim = d + 1
+    lam = 1e-6
+    ZtZ = [[sum(Z[i][a] * Z[i][b_] for i in range(n))
+            + (lam if (a == b_ and a < d) else 0.0)
+            for b_ in range(dim)]
+           for a in range(dim)]
+    Zty = [sum(Z[i][a] * y[i] for i in range(n)) for a in range(dim)]
+    w = _solve_linear(ZtZ, Zty)
+    if w is None:
+        return None
+
+    preds = [max(0.0, min(1.0, sum(Z[i][a] * w[a] for a in range(dim))))
+             for i in range(n)]
+    mean_y = sum(y) / n
+    mae = sum(abs(p - yy) for p, yy in zip(preds, y)) / n
+    baseline_mae = sum(abs(mean_y - yy) for yy in y) / n
+    return {
+        "version": 1,
+        "features": list(MODEL_FEATURES),
+        "means": [round(v, 6) for v in means],
+        "stds": [round(v, 6) for v in stds],
+        "weights": [round(v, 6) for v in w[:-1]],
+        "intercept": round(w[-1], 6),
+        "n_cases": n,
+        "mean_recall": round(mean_y, 4),
+        "train_mae": round(mae, 4),
+        "baseline_mae": round(baseline_mae, 4),
+    }
+
+
+def predict_recall(model: dict, sufficiency: SufficiencyReport,
+                   selected_count: int, context_tokens: int) -> float:
+    """Apply a fitted calibration model; returns predicted recall in [0,1]."""
+    feats = _model_features(sufficiency, selected_count, context_tokens)
+    z = [(feats[j] - model["means"][j]) / model["stds"][j]
+         for j in range(len(model["features"]))]
+    raw = sum(zj * wj for zj, wj in zip(z, model["weights"])) + model["intercept"]
+    return max(0.0, min(1.0, raw))
+
+
+def save_calibration(cal: Calibration, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cal.to_dict(), f, indent=2)
+        f.write("\n")
+
+
+def load_calibration(path: str) -> Optional[dict]:
+    """Load a saved calibration file; returns its dict or None if absent/bad."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
 
 
 def calibrate(results: List[CaseResult]) -> Calibration:
@@ -360,7 +498,8 @@ def calibrate(results: List[CaseResult]) -> Calibration:
         if vx > 0 and vy > 0:
             pearson = cov / (vx ** 0.5 * vy ** 0.5)
 
-    return Calibration(buckets=buckets, pearson_r=pearson, n_cases=n)
+    return Calibration(buckets=buckets, pearson_r=pearson, n_cases=n,
+                       model=fit_recall_model(results))
 
 
 # ---------------------------------------------------------------------------
@@ -427,5 +566,22 @@ def render_calibration(cal: Calibration) -> str:
             )
     else:
         lines.append("Pearson r: undefined (need ≥3 cases with score/recall variance)")
+    if cal.model is not None:
+        m = cal.model
+        lines.append("")
+        lines.append(
+            f"Fitted recall predictor ({m['n_cases']} cases): train MAE "
+            f"{m['train_mae']:.3f} vs predict-the-mean {m['baseline_mae']:.3f}."
+        )
+        lines.append(
+            "Save it with --save-calibration; `diffcontext verify` will then "
+            "report a calibrated recall estimate instead of a bare score."
+        )
+    elif cal.n_cases < MIN_MODEL_CASES:
+        lines.append("")
+        lines.append(
+            f"(No recall predictor fitted: {cal.n_cases} cases < "
+            f"{MIN_MODEL_CASES} minimum. Run with more history cases.)"
+        )
     lines.append("=== END CALIBRATION ===")
     return "\n".join(lines)
