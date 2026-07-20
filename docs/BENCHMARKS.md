@@ -84,6 +84,76 @@ Honesty audit at the tight 2k budget (128 ground-truth symbols): 34% made
 it into context, 66% were explicitly disclosed as dropped, **0% silently
 invisible**.
 
+## Newer blend variants (ablation rows, 2026-07)
+
+> **Provenance note:** the ablation below was run before the rigor pass
+> landed — its `hybrid` column uses the pre-LORO weights
+> (0.5/0.35/0.15) and its embedding references the TF-IDF stand-in, not
+> the true dense baseline used elsewhere in this document. The relative
+> comparisons between variants are unaffected (all four share the same
+> run); a re-run at the shipped [0.3, 0.5, 0.2] weights is pending.
+
+eval_v2 now measures three additional product configurations alongside
+the frozen `hybrid`:
+
+- `hybrid_adaptive` — graph weight scaled by graph confidence (number of
+  blast-radius candidates); freed weight moves to BM25. Identical to
+  `hybrid` on well-connected changes by construction.
+- `hybrid_cochange` — the frozen blend plus git co-change association as
+  a fourth signal. **Leakage control:** the co-change index is mined
+  with every evaluated commit excluded, so the signal never contains
+  the commit it is scored on.
+- `hybrid_full` — adaptive weights + co-change signal (the current
+  product default when `--with-history` is passed).
+
+The Django failure buckets also report `hybrid_full`, so the
+cross-subsystem bucket (historically 0/20 for every static method)
+directly measures what the history signal buys.
+
+**Measured (2026-07 full-history run, per-commit hit/recall):**
+
+| repo | n | hybrid | hybrid_adaptive | hybrid_cochange | hybrid_full |
+|---|---|---|---|---|---|
+| click | 95 | 0.879/0.734 | 0.872/0.728 | 0.860/0.717 | 0.857/0.712 |
+| django | 87 | 0.897/0.780 | 0.897/0.780 | 0.897/0.778 | 0.897/0.778 |
+| flask | 74 | 0.834/0.670 | 0.834/0.670 | 0.834/0.670 | 0.834/0.670 |
+| httpx | 83 | 0.934/0.755 | 0.934/0.752 | 0.933/0.753 | 0.933/0.750 |
+| pydantic | 85 | 0.764/0.533 | 0.772/0.537 | 0.773/0.547 | 0.769/0.540 |
+
+Read honestly: the additions help most where the graph is weakest
+(pydantic — the dynamic-dispatch repo — gains ~1pt hit and ~1.4pt
+recall from co-change) and are within noise elsewhere; click shows a
+~2pt recall cost that is **not** significant after Holm adjustment
+(p_holm = 0.058). No repo shows a significant aggregate difference
+between `hybrid_full` and `hybrid` — the wins are concentrated in
+early-rank metrics (r@10) and the weak-graph repo, which is exactly
+where the mechanisms were aimed.
+
+**Negative result, stated plainly:** the Django cross-subsystem bucket
+stays at **0/20 for `hybrid_full`** (embedding: 3/20). File-level
+co-change association with a 3,000-commit mining window and a
+min-co-change threshold of 2 does not reach these pairs — django's
+history is deep enough that the linking commits fall outside the
+window, and the association is diluted across django's large files.
+The ceiling is dented in principle (the signal *can* see such pairs;
+the thematic bucket moved 15%→20%) but not broken in practice.
+Next candidates: symbol-level coupling, deeper mining windows, and
+recency-weighted association.
+
+## Is the difference real? (paired significance testing)
+
+`benchmarks/significance.py` runs a two-sided Wilcoxon signed-rank test
+over per-commit metric pairs (a commit counts once, matching the primary
+aggregate) between `hybrid_full` and every baseline, with
+Holm-Bonferroni adjustment across comparisons. Pure stdlib.
+
+Across all five repos (74–95 commits each), on recall: `hybrid_full`
+beats graph-only, same-file, and random at adjusted p < 0.001 on every
+repo; beats BM25 on django (p_holm = 0.0001); and is *not* statistically
+separable from the fixed `hybrid`, from BM25 (except django), or from
+the embedding baseline elsewhere — reported as exactly that, not rounded
+up to a win. On flask it beats `hybrid` on F1 (p_holm ≈ 0.015).
+
 ## Quality can't silently regress
 
 [benchmarks/check_regression.py](../benchmarks/check_regression.py)
@@ -112,17 +182,23 @@ call-graph connection:
 
 - **Thematic siblings** (same feature, no call between them): the graph is
   blind; the BM25 leg recovers these partially, a dense-embedding leg
-  more (55% of the bucket). Note: per-query *adaptive* re-weighting was
-  measured and is a null result — the fix is better fixed weights
-  ([0.3, 0.5, 0.2] survives leave-one-repo-out) and/or the dense leg,
-  not dynamic blending.
+  more (55% of the bucket). The adaptive blend (shipped 2026-07)
+  up-weights BM25 exactly when the graph is sparse, but per-query
+  *adaptive* re-weighting was measured and is a null result — the fix is
+  better fixed weights ([0.3, 0.5, 0.2] survives leave-one-repo-out)
+  and/or the dense leg, not dynamic blending.
 - **Dispatch/override pairs** (same method name across a hierarchy):
-  *partially fixable* via synthetic override edges in the graph.
+  addressed by dispatch-sibling override edges (shipped 2026-07,
+  family-capped at 6) — large families (a base with dozens of
+  overriders) remain out of reach by design (hub protection).
 - **Cross-subsystem conceptual links** (e.g. a settings flag and the
-  security check that reads it): graph, BM25, and hybrid all score **0/20**.
-  A structural ceiling for static and lexical signals — the measured
-  exceptions are dense embeddings (5/20 with all-MiniLM) and, in
-  principle, git co-change history as a signal.
+  security check that reads it): graph, BM25, and hybrid all score **0/20**
+  — a structural ceiling for static and lexical signals. The measured
+  exception is dense embeddings (5/20 with all-MiniLM). The git co-change
+  signal (`hybrid_cochange`/`hybrid_full`, shipped 2026-07) can reach
+  these pairs in principle — and, measured, it **still scores 0/20** on
+  this bucket at file-level granularity with a 3,000-commit window. The
+  ceiling stands for everything except the dense leg.
 - **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and
   metaclass-generated code are statically unresolvable — this is why
   pydantic is the weakest benchmark repo for every method tested.

@@ -8,6 +8,8 @@ Edge types (v2):
   4. Decorator edges             — @decorator applied to a function  →  fn→decorator
   5. Annotated return-type edges — def f() -> MyClass: ...  →  f→MyClass.__init__
   6. Same-directory sibling edges— one representative per file, light connectivity
+  7. Dispatch-sibling override edges — same method name across subclasses of one
+     base (≤6 per family), covering duck-typed dispatch with no parent method
 
 Performance:
   - Import maps built ONCE in pre-pass.
@@ -110,12 +112,12 @@ def build_repository_graph(
         factory_returns, classes_by_file, _cached_resolve_owner_type,
     )
 
-    # Resolved once, used by both inheritance phases (1A and 1F below);
+    # Resolved once, used by all inheritance phases (1A, 1F, 1G below);
     # resolution inputs don't change between them.
-    override_pairs = list(_iter_override_pairs(
+    override_pairs, dispatch_groups = _resolve_inheritance_structures(
         inheritance, methods_by_class, function_ids, import_maps,
         class_registry, factory_returns, repo_path, classes_by_file,
-    ))
+    )
 
     _add_override_edges(graph, override_pairs)
     _add_decorator_edges(
@@ -127,6 +129,7 @@ def build_repository_graph(
     _add_same_directory_edges(graph, file_groups)
     _add_window_edges(graph, file_groups)
     _add_parent_child_edges(graph, override_pairs)
+    _add_sibling_override_edges(graph, dispatch_groups)
 
     return graph
 
@@ -401,12 +404,26 @@ def _add_arg_reference_edges(
             graph[function_id].append(ref)
 
 
-def _iter_override_pairs(
+def _resolve_inheritance_structures(
     inheritance, methods_by_class, function_ids, import_maps,
     class_registry, factory_returns, repo_path, classes_by_file,
 ):
-    """Yield (child_method_id, parent_method_id) for every method that
-    overrides a same-named method on a resolvable base class."""
+    """
+    One resolution pass over every class's base references. Returns
+    (override_pairs, dispatch_groups):
+
+      override_pairs:  [(child_method_id, parent_method_id)] for every
+                       method overriding a same-named method that EXISTS
+                       on a resolvable base class.
+      dispatch_groups: {(base_key, method_name): [method_id, ...]} for
+                       every non-dunder method defined by a subclass of
+                       base_key — whether or not the base defines it.
+                       Captures duck-typed dispatch families (e.g. per-
+                       backend implementations of the same operation)
+                       where no parent method exists to route through.
+    """
+    override_pairs: List[Tuple[str, str]] = []
+    dispatch_groups: Dict[Tuple[str, str], List[str]] = {}
     for child_key, bases in inheritance.items():
         child_file, _child_class = child_key.split(":", 1)
         for qualifier, base_name in bases:
@@ -421,7 +438,14 @@ def _iter_override_pairs(
             for fid, method_name in methods_by_class.get(child_key, []):
                 parent_method = f"{base_owner}.{method_name}"
                 if parent_method in function_ids and parent_method != fid:
-                    yield fid, parent_method
+                    override_pairs.append((fid, parent_method))
+                # Dunders (__init__, __repr__, ...) are defined by nearly
+                # every subclass — grouping them yields noise, not dispatch.
+                if not method_name.startswith("__"):
+                    dispatch_groups.setdefault(
+                        (base_owner, method_name), []
+                    ).append(fid)
+    return override_pairs, dispatch_groups
 
 
 def _add_override_edges(graph, override_pairs):
@@ -606,6 +630,29 @@ def _add_parent_child_edges(graph, override_pairs):
         for child_fid in children:
             if child_fid not in graph.get(parent_method, []):
                 graph.setdefault(parent_method, []).append(child_fid)
+
+
+_SIBLING_OVERRIDE_MAX_GROUP = 6   # skip dispatch families larger than this
+
+
+def _add_sibling_override_edges(graph, dispatch_groups):
+    """Phase 1G: dispatch-sibling override edges. Two subclasses of the
+    same base that define the same method name form a dispatch pair —
+    change one backend's implementation and its siblings are the code
+    most likely to co-change (a measured blind spot: the eval_v2
+    backend/dispatch failure bucket). Unlike Phase 1A/1F these edges do
+    not require the base class to define the method at all, which is the
+    common duck-typed-dispatch shape. Pairwise and bidirectional, but
+    only for small families: a method defined by dozens of subclasses
+    (visit_* on every AST visitor) is a hub, not a dispatch pair, and
+    would destroy ranking."""
+    for (_base, _name), members in dispatch_groups.items():
+        uniq = list(dict.fromkeys(members))
+        if len(uniq) < 2 or len(uniq) > _SIBLING_OVERRIDE_MAX_GROUP:
+            continue
+        for i, a in enumerate(uniq):
+            for b in uniq[i + 1:]:
+                _connect_pair(graph, a, b)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────

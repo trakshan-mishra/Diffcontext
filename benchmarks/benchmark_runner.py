@@ -92,11 +92,15 @@ def clone_repos(base_dir: str, repos: Optional[List[str]] = None):
 
         url = BENCHMARK_REPOS[name]["url"]
         print(f"  Cloning {name} from {url}...")
+        # Full history, not a shallow clone: the co-change ground-truth
+        # mining AND the co-change retrieval signal both read git log —
+        # a --depth clone silently starves both (measured: 24 mined
+        # commits on flask at depth=100 vs 70+ with full history).
         result = subprocess.run(
-            ["git", "clone", "--depth=100", url, repo_dir],
+            ["git", "clone", url, repo_dir],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=600,
         )
         if result.returncode == 0:
             print(f"  ✓ {name} cloned")

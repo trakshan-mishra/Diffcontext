@@ -128,6 +128,56 @@ class TestGraphBuilder:
         edges = sum(len(deps) for deps in graph.values())
         assert edges > 0, "Should have cross-file dependency edges"
 
+    def test_sibling_override_edges(self, tmp_path):
+        # Two backends override the same method; the base does NOT define
+        # it (duck-typed dispatch). Changing one backend must surface the
+        # other via a direct dispatch-sibling edge.
+        # Backends live in different directories so no same-dir/window
+        # phase can connect them — only the dispatch-sibling phase.
+        (tmp_path / "base.py").write_text(
+            "class Backend:\n    def connect(self):\n        pass\n"
+        )
+        # A leading helper makes it (not the method under test) the file
+        # representative used by shared-import/same-dir edges.
+        (tmp_path / "pg").mkdir()
+        (tmp_path / "pg" / "backend.py").write_text(
+            "from base import Backend\n"
+            "def pg_helper():\n    return 0\n"
+            "class PgBackend(Backend):\n"
+            "    def last_insert_id(self):\n        return 1\n"
+        )
+        (tmp_path / "mysql").mkdir()
+        (tmp_path / "mysql" / "backend.py").write_text(
+            "from base import Backend\n"
+            "def my_helper():\n    return 0\n"
+            "class MyBackend(Backend):\n"
+            "    def last_insert_id(self):\n        return 2\n"
+        )
+        graph = build_repository_graph(str(tmp_path))
+        pg = "./pg/backend.py:PgBackend.last_insert_id"
+        my = "./mysql/backend.py:MyBackend.last_insert_id"
+        assert my in graph.get(pg, []), "dispatch sibling edge pg -> mysql missing"
+        assert pg in graph.get(my, []), "dispatch sibling edge mysql -> pg missing"
+
+    def test_sibling_override_edges_capped_for_large_families(self, tmp_path):
+        # A method defined by many subclasses is a hub, not a dispatch
+        # pair — no pairwise edges for families above the cap.
+        (tmp_path / "base.py").write_text(
+            "class Node:\n    def kind(self):\n        pass\n"
+        )
+        for i in range(8):
+            (tmp_path / f"n{i}").mkdir()
+            (tmp_path / f"n{i}" / "node.py").write_text(
+                "from base import Node\n"
+                f"def helper_{i}():\n    return 0\n"
+                f"class N{i}(Node):\n"
+                "    def visit(self):\n        return 0\n"
+            )
+        graph = build_repository_graph(str(tmp_path))
+        a = "./n0/node.py:N0.visit"
+        b = "./n1/node.py:N1.visit"
+        assert b not in graph.get(a, []), "large dispatch family must not be pairwise-connected"
+
     def test_no_self_loops(self):
         # Structural invariant: a function should never list itself as
         # its own dependency. Originally only checked against Flask;
