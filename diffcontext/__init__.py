@@ -40,6 +40,7 @@ __version__ = "0.2.0"
 __all__ = [
     "__version__",
     "BlastResult",
+    "CoChangeIndex",
     "ContextItem",
     "ScoringConfig",
     "blast_radius",
@@ -55,6 +56,7 @@ from .pipeline import index_repository, analyze_impact
 from .pipeline import compile as _compile_pipeline
 from .diff.git_diff import find_changed_symbols
 from .impact.blast_radius import get_blast_radius
+from .history import CoChangeIndex
 from .impact.scoring import ScoringConfig
 from .models import ContextItem
 

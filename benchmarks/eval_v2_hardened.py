@@ -60,7 +60,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from diffcontext.parser import extract_all_symbols
 from diffcontext.graph_builder import build_repository_graph
+from diffcontext.history import CoChangeIndex
 from diffcontext.impact.blast_radius import build_reverse_graph
+from diffcontext.pipeline import HYBRID_WEIGHTS, _adaptive_weights
 
 from benchmarks.ground_truth import _get_changed_line_ranges, _find_functions_at_lines
 from benchmarks.baselines import (
@@ -79,7 +81,9 @@ from benchmarks.eval_v1 import (
 TARGET_COMMITS   = 100          # distinct commits per repo (may find fewer)
 SCAN_LIMIT       = 6000         # how many commits of history to scan
 BUDGETS          = [10, 20, 30, 50, 70]
-METHODS          = ["diffcontext", "hybrid", "bm25", "embedding", "samefile", "random_k"]
+METHODS          = ["diffcontext", "hybrid", "hybrid_adaptive", "hybrid_cochange",
+                    "hybrid_full", "bm25", "embedding", "samefile", "random_k"]
+COCHANGE_WEIGHT  = 0.15         # weight of the history signal in *_cochange/_full
 NOISY_SYMBOLS    = 20           # >= this many changed symbols -> flag commit
 NOISY_FILES      = 10           # >= this many changed .py files -> flag commit
 RESULTS_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "eval_v2")
@@ -221,23 +225,63 @@ def _repo_head_sha(repo_path: str) -> str:
 
 def _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25) -> List[str]:
     """graph+bm25+file blend (0.5/0.35/0.15), same recipe as eval_v1's winner."""
+    return _hybrid_variants(q, symbols, symbol_ids, graph, reverse_graph, bm25)["hybrid"]
+
+
+def _hybrid_variants(
+    q, symbols, symbol_ids, graph, reverse_graph, bm25, cochange=None,
+) -> Dict[str, List[str]]:
+    """
+    Rank all four hybrid blend variants for one query, sharing the
+    per-query graph and BM25 scores (computing them once instead of four
+    times):
+
+      hybrid           fixed 0.5/0.35/0.15 blend (the frozen eval_v1 winner)
+      hybrid_adaptive  graph weight scaled by graph confidence, freed
+                       weight moved to BM25 (pipeline._adaptive_weights —
+                       the SAME function the product uses)
+      hybrid_cochange  fixed blend + git co-change association as a fourth
+                       signal (COCHANGE_WEIGHT * assoc). `cochange` is a
+                       CoChangeIndex mined with every evaluated commit
+                       EXCLUDED (see evaluate_repo) — no train-on-test.
+      hybrid_full      adaptive weights + co-change signal
+    """
     g_scores = _normalize(_graph_scores(q, graph, reverse_graph))
     q_tokens = _tokenize(symbols[q].code)
     bm25_raw = bm25.bm25.get_scores(q_tokens)
     b_scores = _normalize({sid: bm25_raw[i] for i, sid in enumerate(symbol_ids)
                            if sid != q and bm25_raw[i] > 0})
     q_file = q.split(":")[0] if ":" in q else ""
-    combined: Dict[str, float] = defaultdict(float)
-    for sid, sc in g_scores.items():
-        combined[sid] += 0.5 * sc
-    for sid, sc in b_scores.items():
-        combined[sid] += 0.35 * sc
-    for sid in symbol_ids:
-        if sid != q and sid.split(":")[0] == q_file:
-            combined[sid] += 0.15
-    ranked = [s for s, _ in sorted(combined.items(), key=lambda x: x[1], reverse=True)
-              if s != q][:CANDIDATE_LIMIT]
-    return truncate_by_token_budget(symbols, ranked)
+    hist = cochange.scores_for_files([q_file]) if cochange is not None else {}
+
+    def rank(weights, use_hist: bool) -> List[str]:
+        w_g, w_b, w_f = weights
+        combined: Dict[str, float] = defaultdict(float)
+        for sid, sc in g_scores.items():
+            combined[sid] += w_g * sc
+        for sid, sc in b_scores.items():
+            combined[sid] += w_b * sc
+        for sid in symbol_ids:
+            if sid == q:
+                continue
+            sid_file = sid.split(":")[0]
+            if sid_file == q_file:
+                combined[sid] += w_f
+            if use_hist:
+                h = hist.get(sid_file, 0.0)
+                if h > 0.0:
+                    combined[sid] += COCHANGE_WEIGHT * h
+        ranked = [s for s, _ in sorted(combined.items(), key=lambda x: x[1], reverse=True)
+                  if s != q][:CANDIDATE_LIMIT]
+        return truncate_by_token_budget(symbols, ranked)
+
+    adaptive_w = _adaptive_weights(len(g_scores))
+    return {
+        "hybrid": rank(HYBRID_WEIGHTS, False),
+        "hybrid_adaptive": rank(adaptive_w, False),
+        "hybrid_cochange": rank(HYBRID_WEIGHTS, True),
+        "hybrid_full": rank(adaptive_w, True),
+    }
 
 
 def evaluate_repo(repo_path: str) -> Optional[Dict]:
@@ -277,6 +321,15 @@ def evaluate_repo(repo_path: str) -> Optional[Dict]:
     if not valid_commits:
         return None
 
+    # Co-change history index with EVERY evaluated commit excluded — the
+    # signal must never contain the commit it is being tested on.
+    t_cci = time.perf_counter()
+    cochange = CoChangeIndex(
+        repo_path, exclude_commits={c.commit_hash for c in commits},
+    )
+    print(f"  Co-change index: {cochange.mined_commits} commits mined "
+          f"(evaluated commits excluded) in {time.perf_counter()-t_cci:.0f}s")
+
     rows: List[Dict] = []          # per (commit, query, method) case rows
     t0 = time.perf_counter()
     for c, vsyms in valid_commits:
@@ -287,7 +340,8 @@ def evaluate_repo(repo_path: str) -> Optional[Dict]:
             k_match = max(len(g_ranked), 1)
             method_ranked = {
                 "diffcontext": g_ranked,
-                "hybrid": _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25),
+                **_hybrid_variants(q, symbols, symbol_ids, graph, reverse_graph,
+                                   bm25, cochange=cochange),
                 "bm25": truncate_by_token_budget(symbols, bm25.retrieve(q, top_k=CANDIDATE_LIMIT)),
                 "embedding": truncate_by_token_budget(symbols, emb_bl.retrieve(q, top_k=CANDIDATE_LIMIT)),
                 "samefile": truncate_by_token_budget(symbols, file_bl.retrieve(q, top_k=CANDIDATE_LIMIT)),
@@ -438,6 +492,13 @@ def failure_buckets(repo_path: str, per_bucket: int = 20) -> Dict:
     bm25 = BM25Baseline(symbols)
     emb_bl = EmbeddingBaseline(symbols)
     print(f"  Embedding baseline encoder: {emb_bl.encoder}")
+    # Same leakage rule as evaluate_repo: the co-change index never
+    # contains a commit whose pairs are being evaluated.
+    cochange = CoChangeIndex(
+        repo_path, exclude_commits={c.commit_hash for c in commits},
+    )
+    print(f"  Co-change index: {cochange.mined_commits} commits mined "
+          f"(pair-source commits excluded)")
 
     def has_edge(a, b):
         return b in graph.get(a, []) or a in graph.get(b, [])
@@ -498,19 +559,22 @@ def failure_buckets(repo_path: str, per_bucket: int = 20) -> Dict:
                      "embedding_encoder": emb_bl.encoder,
                      "repo_head_sha": _repo_head_sha(repo_path)}
     for bname, pairs in buckets.items():
-        hits = {"diffcontext": 0, "bm25": 0, "embedding": 0, "hybrid": 0}
+        hits = {"diffcontext": 0, "bm25": 0, "embedding": 0, "hybrid": 0,
+                "hybrid_full": 0}
         detailed = []
         for p in pairs:
             q, g = p["query"], p["target"]
             g_ranked = truncate_by_token_budget(symbols, _graph_ranked(q, graph, reverse_graph))
             b_ranked = truncate_by_token_budget(symbols, bm25.retrieve(q, top_k=CANDIDATE_LIMIT))
             e_ranked = truncate_by_token_budget(symbols, emb_bl.retrieve(q, top_k=CANDIDATE_LIMIT))
-            h_ranked = _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25)
+            variants = _hybrid_variants(q, symbols, symbol_ids, graph,
+                                        reverse_graph, bm25, cochange=cochange)
             row_hits = {
                 "diffcontext": int(g in set(g_ranked)),
                 "bm25": int(g in set(b_ranked)),
                 "embedding": int(g in set(e_ranked)),
-                "hybrid": int(g in set(h_ranked)),
+                "hybrid": int(g in set(variants["hybrid"])),
+                "hybrid_full": int(g in set(variants["hybrid_full"])),
             }
             for m in hits:
                 hits[m] += row_hits[m]
