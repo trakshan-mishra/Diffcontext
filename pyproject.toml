@@ -7,21 +7,37 @@ name = "diffcontext"
 dynamic = ["version"]
 description = "Static-analysis-powered repository context compiler for LLMs"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "Trakshan Mishra", email = "trakshanmishra477@gmail.com" },
 ]
+keywords = ["llm", "context", "static-analysis", "call-graph", "retrieval", "code-search"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/trakshan-mishra/diffcontext"
+Changelog = "https://github.com/trakshan-mishra/diffcontext/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "ruff>=0.4",
+    "mypy>=1.8",
 ]
 # TypeScript/JavaScript indexing (experimental — see README language table).
 # The core stays zero-dependency; without this extra, DiffContext is the
@@ -46,3 +62,41 @@ version = { attr = "diffcontext.__version__" }
 
 [tool.setuptools.package-data]
 diffcontext = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]  # pyflakes + core pycodestyle; enforced in CI
+
+[tool.ruff.lint.per-file-ignores]
+# Deliberate late imports: optional tree-sitter extras are imported after the
+# availability probe so a missing extra fails fast with a clear message.
+"diffcontext/languages/typescript.py" = ["E402"]
+# pytest.importorskip must run before the imports it guards.
+"tests/test_typescript_adapter.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+# Enforced in CI on every module NOT listed in the baseline below.
+
+# Typing baseline (ratchet, frozen 2026-07-20): these modules predate the
+# typing gate and fail checking today (47 errors total, mostly Optional
+# narrowing and untyped tree-sitter nodes — annotation debt, not known
+# bugs). Rule: never ADD a module here; fix a module's errors, remove it
+# from this list, and it stays clean forever. New modules are checked from
+# day one.
+[[tool.mypy.overrides]]
+module = [
+    "diffcontext.cache",
+    "diffcontext.graph_builder",
+    "diffcontext.pipeline",
+    "diffcontext.symbols",
+    "diffcontext.context.compiler",
+    "diffcontext.impact.scoring",
+    "diffcontext.languages.typescript",
+    "diffcontext.verify.cases",
+]
+ignore_errors = true

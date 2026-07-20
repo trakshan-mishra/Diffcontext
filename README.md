@@ -8,7 +8,7 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
                                      graph ∪ BM25 ∪ file      top-k + tokens
 ```
 
-- Zero runtime dependencies, Python 3.8+, `pip install -e .`
+- Zero runtime dependencies, Python 3.9+, `pip install -e .`
 - **~2× the recall of grep at every token budget** on real co-change
   ground truth — at ~5-10% precision: a wide net with the right things in
   it, not a curated shortlist ([measured](docs/BENCHMARKS.md))
@@ -63,6 +63,8 @@ diffcontext verify --from-history 30 --calibrate
 
 Symbol IDs are always `./relative/path.py:ClassName.method` — no
 parentheses, no arguments. More commands and options: [USAGE.md](USAGE.md).
+Production recipes — agent loops, PR review, CI gates, and when *not* to
+use this: [docs/USE_CASES.md](docs/USE_CASES.md).
 
 ## How it works
 

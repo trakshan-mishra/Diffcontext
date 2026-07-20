@@ -77,5 +77,30 @@ per-repo fitted calibration (8/9 held-out repos), with honest nulls
 bound. Venue targets: FSE/ASE/ICSE research track once item 1 exists —
 without the downstream eval it's a strong tool paper, with it it's a
 retrieval-for-code paper with a calibration story no baseline ships.
-Artifact: this repo minus vendored clones, plus pinned-SHA scripts
-(already the convention).
+
+What a PC will demand beyond the current evidence, in order:
+
+- **The downstream eval (item 1).** Non-negotiable for a research-track
+  claim; every other row here supports it.
+- **Published-system baselines (item 4),** not just signal families:
+  Aider repo-map head-to-head at equal budgets minimum; positioning
+  table vs RepoGraph / CodexGraph / Agentless-style localization; one
+  code-tuned embedding model so the dense numbers are not an NL-encoder
+  floor.
+- **Effect sizes and multiple-comparison handling.** The paired
+  permutation tests exist; add a standardized effect size (e.g. Cliff's
+  δ) next to every p, and a Holm correction wherever a table reports a
+  family of tests (LORO folds, cutoff policies).
+- **Threats-to-validity section drafted from measurements, not
+  boilerplate:** construct (co-change GT incompleteness — measured, §2),
+  internal (LORO for all tuning — done), external (one ecosystem:
+  9 Python + 4 TS repos; say so), plus LLM-eval contamination controls
+  once item 1 runs.
+- **Artifact evaluation readiness:** one-command reproduction (Docker
+  image that runs eval_v2 + LORO from pinned SHAs), archived with a DOI
+  (Zenodo) at submission time. The pinned-SHA convention is already in
+  place; the missing piece is the single entry point.
+- **A user-facing case study** (optional but strengthening): one real
+  agent loop (e.g. an open coding agent) instrumented with/without
+  DiffContext on a fixed task set — this doubles as item 1's
+  ecological-validity argument.

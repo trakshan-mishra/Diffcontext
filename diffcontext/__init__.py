@@ -32,7 +32,7 @@ Usage as a library:
     print(ctx.reduction_pct)    # how much code was filtered out
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Public, semver-covered API. Everything not listed here (graph_builder,
 # resolver, symbols, scanner, parser internals) is importable but carries no
@@ -54,7 +54,9 @@ from typing import Callable, Dict, List, Optional
 from .pipeline import index_repository, analyze_impact
 from .pipeline import compile as _compile_pipeline
 from .diff.git_diff import find_changed_symbols
-from .impact.blast_radius import get_blast_radius
+# Redundant alias: intentional re-export (used by library callers even
+# though nothing in this module calls it).
+from .impact.blast_radius import get_blast_radius as get_blast_radius
 from .impact.scoring import ScoringConfig
 from .models import ContextItem
 
