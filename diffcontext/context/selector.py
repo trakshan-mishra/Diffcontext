@@ -45,6 +45,38 @@ from .compiler import build_reverse_graph, relationship_cap, render_symbol_block
 # Prevents one huge function from crowding out ten relevant small ones.
 MAX_SINGLE_SYMBOL_FRACTION = 0.25
 
+# Largest-gap cutoff ("gap50" in the benchmarks): the relative-drop search
+# window and the score floor below which a candidate is not retrievable at
+# all. Both values are the exact ones measured in blend_loro.py
+# eval_cutoff_policies (benchmarks/RIGOR_REPORT_2026-07.md §7).
+GAP_CUTOFF_WINDOW = 50
+GAP_SCORE_EPSILON = 1e-12
+
+
+def gap_cut_count(ranked_scores: List[float]) -> int:
+    """
+    How many leading candidates the largest-gap cutoff keeps.
+
+    `ranked_scores` must be positive scores sorted descending. The cut lands
+    at the largest relative drop (score[i] / score[i+1]) between consecutive
+    candidates within the first GAP_CUTOFF_WINDOW — the policy measured
+    F1-optimal on all five benchmark repos: ~4x the precision of fixed
+    top-20 at 6-9 retrieved symbols, for ~30% relative recall cost
+    (benchmarks/RIGOR_REPORT_2026-07.md §7). With fewer than 3 candidates
+    there is no distribution to read, so everything is kept.
+    """
+    n = len(ranked_scores)
+    if n < 3:
+        return n
+    head = ranked_scores[:GAP_CUTOFF_WINDOW]
+    best_i, best_ratio = 1, 0.0
+    for i in range(len(head) - 1):
+        ratio = head[i] / max(head[i + 1], GAP_SCORE_EPSILON)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_i = i + 1
+    return best_i
+
 
 def select_context(
     symbols: Dict[str, Symbol],
@@ -56,6 +88,7 @@ def select_context(
     graph: Optional[Dict[str, List[str]]] = None,
     reverse: Optional[Dict[str, Set[str]]] = None,
     rel_cap: Optional[int] = None,
+    cutoff: Optional[str] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -85,6 +118,14 @@ def select_context(
         rel_cap: Relationship-block entry cap used for size measurement;
             defaults to compiler.relationship_cap(max_tokens) so selector
             and compiler always measure the same rendering.
+        cutoff: Optional dynamic cutoff policy applied to the score ranking
+            BEFORE top_k and the token budget (the order the benchmark
+            measured). "gap" cuts at the largest relative score drop
+            (see gap_cut_count) and additionally drops zero-score
+            candidates, which the policy never retrieves. None/"topk"
+            keeps today's recall-first behavior. Note: the benchmark
+            measured the policy per single-changed-symbol query; with
+            multiple changed symbols it applies to the merged ranking.
 
     Returns:
         (selected_ids, dropped_ids)
@@ -92,6 +133,11 @@ def select_context(
         the token budget. The LLM is told about these explicitly.
     """
     count = token_counter or _estimate_tokens
+
+    if cutoff not in (None, "topk", "gap"):
+        raise ValueError(
+            f"unknown cutoff policy {cutoff!r} — expected 'gap', 'topk', or None"
+        )
 
     if not scores:
         return list(changed), []
@@ -132,9 +178,22 @@ def select_context(
         reverse=True,
     )
 
+    gap_kept: Optional[Set[str]] = None
+    if cutoff == "gap":
+        candidates = [
+            (sid, sc) for sid, sc in scored
+            if sid in symbols and sc > GAP_SCORE_EPSILON
+        ]
+        keep_n = gap_cut_count([sc for _, sc in candidates])
+        gap_kept = {sid for sid, _ in candidates[:keep_n]}
+
     included_non_changed = 0
     for sym_id, score in scored:
         if sym_id not in symbols:
+            continue
+
+        if gap_kept is not None and sym_id not in gap_kept:
+            dropped.append(sym_id)
             continue
 
         if top_k is not None and included_non_changed >= top_k:

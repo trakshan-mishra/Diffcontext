@@ -75,6 +75,15 @@ def main():
         "--graph-only", action="store_true",
         help="Disable the hybrid (graph+BM25+same-file) blend and rank by call graph alone",
     )
+    p_compile.add_argument(
+        "--cutoff", choices=["topk", "gap"], default="topk",
+        help=(
+            "Selection policy. 'gap' cuts at the largest relative score drop "
+            "— measured ~4x the precision of top-20 at 6-9 symbols, costing "
+            "~30%% relative recall (benchmarks/RIGOR_REPORT_2026-07.md #7). "
+            "Use for token-priced callers; default 'topk' stays recall-first."
+        ),
+    )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -104,6 +113,14 @@ def main():
     p_verify.add_argument(
         "--top-k", type=int, default=20,
         help="Max context symbols per changed symbol (0 = unlimited)",
+    )
+    p_verify.add_argument(
+        "--cutoff", choices=["topk", "gap"], default="topk",
+        help=(
+            "Selection policy to verify under (see `compile --cutoff`). Run "
+            "--from-history once with each to measure the recall/precision "
+            "tradeoff on YOUR repo before adopting 'gap'."
+        ),
     )
     p_verify.add_argument(
         "--cases", default=None, metavar="FILE",
@@ -268,7 +285,9 @@ def _cmd_compile(args):
     )
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
-    ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes, top_k=top_k)
+    cutoff = args.cutoff if args.cutoff != "topk" else None
+    ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes,
+                  top_k=top_k, cutoff=cutoff)
 
     if args.json:
         result = {
@@ -398,7 +417,8 @@ def _cmd_verify(args):
                 print(f"then run: diffcontext verify --cases {args.out} --calibrate")
                 return
 
-        results = run_cases(args.repo, cases)
+        cutoff = args.cutoff if args.cutoff != "topk" else None
+        results = run_cases(args.repo, cases, cutoff=cutoff)
 
         cal = calibrate(results) if args.calibrate else None
         if cal is not None and args.save_calibration:
@@ -448,7 +468,8 @@ def _cmd_verify(args):
     impact = analyze_impact(idx, changed, max_depth=args.depth)
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
-    ctx = compile(idx, impact, max_tokens=max_tokens, top_k=top_k)
+    cutoff = args.cutoff if args.cutoff != "topk" else None
+    ctx = compile(idx, impact, max_tokens=max_tokens, top_k=top_k, cutoff=cutoff)
 
     report = analyze_sufficiency(idx, impact, ctx)
 

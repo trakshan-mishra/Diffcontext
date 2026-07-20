@@ -506,10 +506,14 @@ def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
 
 
 # Hybrid blend weights (graph, lexical/BM25, same-file). These are the
-# eval_v2-benchmarked values: the blend beat every individual signal's
-# recall on 4/5 repos (see benchmarks/EVAL_V2_REPORT.md). Change them only
-# with benchmark evidence.
-HYBRID_WEIGHTS = (0.5, 0.35, 0.15)
+# leave-one-repo-out-validated values from the 2026-07 rigor pass
+# (benchmarks/RIGOR_REPORT_2026-07.md §3): the original same-repo-tuned
+# (0.5, 0.35, 0.15) over-weighted the graph; every LORO fold selects a
+# BM25-heavier blend, and (0.3, 0.5, 0.2) beat the old weights on 4/5
+# held-out folds (+1.2 to +2.4 recall points, individually n.s.) while
+# staying within ±1.1 points on four repos never used for any selection.
+# Change only with benchmark evidence.
+HYBRID_WEIGHTS = (0.3, 0.5, 0.2)
 
 
 def _blend_hybrid(
@@ -640,6 +644,7 @@ def compile(
     token_counter: Optional[Callable[[str], int]] = None,
     scoring_config: Optional["ScoringConfig"] = None,
     top_k: Optional[int] = None,
+    cutoff: Optional[str] = None,
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
@@ -653,6 +658,12 @@ def compile(
         top_k:          Optional cap on non-changed symbols, applied on top
                         of the token budget (see select_context; ~20 per
                         changed symbol is the benchmarked sweet spot).
+        cutoff:         "gap" applies the largest-gap dynamic cutoff before
+                        top_k and the budget — the measured precision
+                        operating point (~4x top-20 precision at 6-9
+                        symbols, ~30% relative recall cost; see
+                        benchmarks/RIGOR_REPORT_2026-07.md §7). Default
+                        None keeps recall-first top-k selection.
     """
     selected, dropped = select_context(
         index.symbols,
@@ -663,6 +674,7 @@ def compile(
         top_k=top_k,
         graph=index.graph,
         reverse=index.reverse_graph,
+        cutoff=cutoff,
     )
 
     return compile_context(
@@ -686,6 +698,7 @@ def run_pipeline(
     changed_symbols: List[str],
     max_depth: Optional[int] = 2,
     max_tokens: Optional[int] = 10000,
+    cutoff: Optional[str] = None,
 ) -> ContextPackage:
     """
     Full pipeline in one call:
@@ -693,4 +706,4 @@ def run_pipeline(
     """
     index = index_repository(repo_path)
     impact = analyze_impact(index, changed_symbols, max_depth=max_depth)
-    return compile(index, impact, max_tokens=max_tokens)
+    return compile(index, impact, max_tokens=max_tokens, cutoff=cutoff)

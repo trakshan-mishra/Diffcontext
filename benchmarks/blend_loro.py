@@ -61,7 +61,11 @@ from benchmarks.eval_v2_hardened import extract_distinct_commits
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "loro")
 DEV_REPOS = ["click", "django", "flask", "httpx", "pydantic"]
-SHIPPED = (0.5, 0.35, 0.15)          # graph, bm25, samefile — pipeline.py HYBRID_WEIGHTS
+# graph, bm25, samefile. The weights this script's recorded 2026-07 results
+# call "shipped" — the pre-rigor-pass pipeline values. The pipeline now ships
+# the LORO-selected (0.3, 0.5, 0.2) that this script's analysis recommended;
+# kept at the old values here so the recorded results stay reproducible.
+SHIPPED = (0.5, 0.35, 0.15)
 GRID_STEP = 0.05
 PER_COMPONENT_CAP = 400              # per-component candidate cap (rank fusion depth)
 ADAPTIVE_N0 = [3, 5, 10, 20, 40]     # graph-evidence saturation points to try

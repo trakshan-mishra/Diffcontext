@@ -8,11 +8,15 @@ retrieval quality drops below frozen floors. Run it before every release:
     python benchmarks/check_regression.py                  # flask (fast, ~1 min)
     python benchmarks/check_regression.py benchmark_repos/django
 
-Floors are set just below the 95% CI lower bounds measured on 2026-07-10
-(see benchmarks/EVAL_V2_REPORT.md), so ordinary sampling noise passes but a
+Floors are set ~0.09-0.12 below the values measured on 2026-07-20, when
+they were re-frozen after HYBRID_WEIGHTS moved to the LORO-validated
+[0.3, 0.5, 0.2] (measured then: flask diffcontext 0.773/0.579, hybrid
+0.863/0.694; django diffcontext 0.795/0.664, hybrid 0.897/0.787 — every
+floor tightened, none loosened). Ordinary sampling noise passes but a
 real regression trips the gate. If you deliberately change retrieval
-behavior, re-run the full benchmark, update EVAL_V2_REPORT.md, and only
-then adjust these floors — never loosen them to make a red gate green.
+behavior, re-run the benchmark on both gate repos, record the numbers
+here, and only then adjust these floors — never loosen them to make a
+red gate green.
 
 Exit code: 0 = pass, 1 = regression detected.
 """
@@ -33,12 +37,12 @@ from benchmarks.eval_v2_hardened import evaluate_repo
 # so freezing a floor for it would make the gate flaky by construction.
 FLOORS = {
     "flask": {
-        "diffcontext": {"hit": 0.65, "recall": 0.45},
-        "hybrid":      {"hit": 0.74, "recall": 0.55},
+        "diffcontext": {"hit": 0.68, "recall": 0.48},
+        "hybrid":      {"hit": 0.77, "recall": 0.58},
     },
     "django": {
-        "diffcontext": {"hit": 0.68, "recall": 0.55},
-        "hybrid":      {"hit": 0.80, "recall": 0.68},
+        "diffcontext": {"hit": 0.70, "recall": 0.56},
+        "hybrid":      {"hit": 0.81, "recall": 0.69},
     },
 }
 

@@ -163,6 +163,16 @@ JSON (always works) or YAML (if PyYAML is installed):
    silent skip — and is flagged with a fuzzy-match suggestion
    (`'create_ordr' not found — did you mean './service.py:create_order'?`),
    so a typo can't quietly inflate or deflate your numbers.
+5. The report also shows a per-run **precision lower bound**
+   (`|must_include ∩ retrieved| / |retrieved|`, changed symbols excluded).
+   "Lower bound" because case ground truth is incomplete — symbols outside
+   `must_include` are not all noise (measured: GT-adjusting moves precision
+   by less than 2×; RIGOR_REPORT_2026-07.md §2). Use it to compare
+   selection policies, not as an absolute score: run once with
+   `--cutoff gap` (the measured precision operating point — fewer, better
+   symbols) and once without, and read recall and the precision bound
+   side by side. Expect `--cutoff gap` to fail recall-gated cases that
+   top-k passes; that is the tradeoff being measured, not a bug.
 
 ```bash
 diffcontext verify --cases cases.json           # human-readable
