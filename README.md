@@ -67,12 +67,15 @@ parentheses, no arguments. More commands and options: [USAGE.md](USAGE.md).
 ## How it works
 
 Parse every file once into an AST, resolve imports to real definitions,
-and build a dependency graph (calls, inheritance, decorators, function
-references passed as arguments). For a change, walk the graph outward
-with distance-decayed scores, blend with BM25 lexical similarity and
-same-file co-location, then pack the top candidates into your token
-budget — leading with a meta header that discloses everything that was
-*dropped*. The whole index is cached content-addressed in SQLite, so
+and build a dependency graph (calls, inheritance, dispatch-sibling
+overrides, decorators, function references passed as arguments). For a
+change, walk the graph outward with distance-decayed scores, blend with
+BM25 lexical similarity and same-file co-location (weights adapt: when
+the graph has little to say, BM25 gets its weight) — plus, optionally,
+git co-change history (`--with-history`), the only signal that can reach
+related code with no structural or lexical connection. Then pack the top
+candidates into your token budget — leading with a meta header that
+discloses everything that was *dropped*. The whole index is cached content-addressed in SQLite, so
 re-indexing an unchanged repo costs ~0.02s and a one-file edit re-parses
 only that file.
 
@@ -112,10 +115,14 @@ methodology: [docs/VERIFY.md](docs/VERIFY.md).
 ## Use as a library
 
 ```python
+from diffcontext import CoChangeIndex
 from diffcontext.pipeline import index_repository, analyze_impact, compile
 
 idx = index_repository("/path/to/repo")
-impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])   # hybrid by default
+impact = analyze_impact(
+    idx, ["./src/auth.py:validate_jwt"],           # hybrid + adaptive by default
+    history=CoChangeIndex("/path/to/repo"),        # optional 4th signal: git co-change
+)
 ctx = compile(idx, impact, max_tokens=8000, top_k=20)
 
 print(ctx.text)                      # paste-ready context with meta-header
@@ -175,19 +182,24 @@ language adapter: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-Ordered by measured impact: **1)** adaptive blend (up-weight BM25 when
-graph confidence is low) · **2)** override edges across class
-hierarchies · **3)** git co-change history as a fourth signal — the only
-known path past the cross-subsystem ceiling · **4)** chain-complete
-budgeting · ~~5) calibrated confidence~~ — shipped as
-`diffcontext verify` · ~~6) TypeScript~~ — shipped as a prototype;
-remaining TS work in [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
+~~1) adaptive blend~~ — **shipped** (graph weight scales with graph
+confidence; freed weight moves to BM25) · ~~2) override edges across
+class hierarchies~~ — **shipped** (dispatch-sibling edges, family-capped) ·
+~~3) git co-change history as a fourth signal~~ — **shipped** as
+`CoChangeIndex` / `--with-history`, benchmarked with test-commit
+exclusion · **4)** chain-complete budgeting · **5)** extrinsic
+(downstream LLM task) evaluation — the main remaining gap between this
+and a main-track research paper, see [docs/RESEARCH.md](docs/RESEARCH.md) ·
+~~6) calibrated confidence~~ — shipped as `diffcontext verify` ·
+~~7) TypeScript~~ — shipped as a prototype; remaining TS work in
+[docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md).
 Longer-form planning notes: [docs/PLAN.md](docs/PLAN.md).
 
 ## More
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, resolver capabilities, agent API
 - [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, methodology links, limitations
+- [docs/RESEARCH.md](docs/RESEARCH.md) — literature positioning and the gap list for a publishable paper
 - [docs/VERIFY.md](docs/VERIFY.md) — sufficiency scoring, test cases, calibration
 - [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md) — TS/JS adapter detail and measured failure modes
 - [README_FULL.md](README_FULL.md) — the original long-form README, preserved intact

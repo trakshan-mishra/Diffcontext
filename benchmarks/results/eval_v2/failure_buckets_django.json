@@ -7,7 +7,8 @@
         "diffcontext": 0.0,
         "bm25": 0.5,
         "embedding": 0.5,
-        "hybrid": 0.15
+        "hybrid": 0.15,
+        "hybrid_full": 0.2
       },
       "pairs": [
         {
@@ -18,7 +19,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "57c8c8b107",
@@ -28,7 +30,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "57c8c8b107",
@@ -38,7 +41,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "57c8c8b107",
@@ -48,7 +52,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "57c8c8b107",
@@ -58,7 +63,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "57c8c8b107",
@@ -68,7 +74,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -78,7 +85,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "fbe902d4a4",
@@ -88,7 +96,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -98,7 +107,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -108,7 +118,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "fbe902d4a4",
@@ -118,7 +129,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -128,7 +140,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -138,7 +151,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -148,7 +162,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "fbe902d4a4",
@@ -158,7 +173,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "fbe902d4a4",
@@ -168,7 +184,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "122f0b62a1",
@@ -178,7 +195,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "122f0b62a1",
@@ -188,7 +206,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "122f0b62a1",
@@ -198,7 +217,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "122f0b62a1",
@@ -208,7 +228,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         }
       ]
     },
@@ -218,7 +239,8 @@
         "diffcontext": 0.0,
         "bm25": 0.3,
         "embedding": 0.3,
-        "hybrid": 0.25
+        "hybrid": 0.25,
+        "hybrid_full": 0.25
       },
       "pairs": [
         {
@@ -229,7 +251,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "65a9f14196",
@@ -239,7 +262,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "65a9f14196",
@@ -249,7 +273,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "65a9f14196",
@@ -259,7 +284,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "4bbc27c868",
@@ -269,7 +295,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "4bbc27c868",
@@ -279,7 +306,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "21c51c2623",
@@ -289,7 +317,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "21c51c2623",
@@ -299,7 +328,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "a586f03f36",
@@ -309,7 +339,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "a586f03f36",
@@ -319,7 +350,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "63c56cda13",
@@ -329,7 +361,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "63c56cda13",
@@ -339,7 +372,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 1,
           "hit_embedding": 1,
-          "hit_hybrid": 1
+          "hit_hybrid": 1,
+          "hit_hybrid_full": 1
         },
         {
           "commit": "ed79c5959a",
@@ -349,7 +383,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -359,7 +394,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -369,7 +405,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -379,7 +416,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -389,7 +427,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -399,7 +438,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -409,7 +449,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "ed79c5959a",
@@ -419,7 +460,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         }
       ]
     },
@@ -429,7 +471,8 @@
         "diffcontext": 0.0,
         "bm25": 0.0,
         "embedding": 0.15,
-        "hybrid": 0.0
+        "hybrid": 0.0,
+        "hybrid_full": 0.0
       },
       "pairs": [
         {
@@ -440,7 +483,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -450,7 +494,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -460,7 +505,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -470,7 +516,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -480,7 +527,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -490,7 +538,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -500,7 +549,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "537c6df3e6",
@@ -510,7 +560,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -520,7 +571,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -530,7 +582,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -540,7 +593,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -550,7 +604,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -560,7 +615,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "3328078a01",
@@ -570,7 +626,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 1,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -580,7 +637,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -590,7 +648,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -600,7 +659,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -610,7 +670,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -620,7 +681,8 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         },
         {
           "commit": "804660d685",
@@ -630,11 +692,12 @@
           "hit_diffcontext": 0,
           "hit_bm25": 0,
           "hit_embedding": 0,
-          "hit_hybrid": 0
+          "hit_hybrid": 0,
+          "hit_hybrid_full": 0
         }
       ]
     }
   },
   "embedding_encoder": "tfidf-cosine-approx",
-  "repo_head_sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb"
+  "repo_head_sha": "3d34265d5d1b83fee5df3c1b6f55087b1a6a1ded"
 }

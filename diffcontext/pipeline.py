@@ -511,12 +511,33 @@ def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
 # with benchmark evidence.
 HYBRID_WEIGHTS = (0.5, 0.35, 0.15)
 
+# Number of graph-scored candidates at which graph confidence saturates
+# to 1.0 for the adaptive blend. Below it, graph weight is scaled down
+# proportionally and the freed weight moves to BM25 — a sparse blast
+# radius means the graph has little to say and lexical similarity is the
+# better bet (the measured "thematic siblings" blind spot).
+ADAPTIVE_GRAPH_SATURATION = 8
+
+
+def _adaptive_weights(n_graph_candidates: int, weights=HYBRID_WEIGHTS):
+    """Shift weight from the graph signal to BM25 when the graph produced
+    few candidates. With >= ADAPTIVE_GRAPH_SATURATION graph candidates the
+    result equals `weights` exactly (no behavior change on well-connected
+    changes)."""
+    w_graph, w_lex, w_file = weights
+    confidence = min(1.0, n_graph_candidates / ADAPTIVE_GRAPH_SATURATION)
+    w_graph_eff = w_graph * confidence
+    return (w_graph_eff, w_lex + (w_graph - w_graph_eff), w_file)
+
 
 def _blend_hybrid(
     index: RepositoryIndex,
     changed_symbols: List[str],
     graph_scores: Dict[str, float],
     weights=HYBRID_WEIGHTS,
+    adaptive: bool = True,
+    history_scores: Optional[Dict[str, float]] = None,
+    history_weight: float = 0.15,
 ) -> Dict[str, float]:
     """
     Blend graph impact scores with BM25 and same-file signals.
@@ -526,10 +547,20 @@ def _blend_hybrid(
     min-max normalized to [0, 1]. A symbol with no call-graph connection to
     the change can still surface through lexical similarity or co-location —
     the two failure modes where the graph alone is blind.
+
+    With `adaptive=True` (default) the graph weight is scaled by graph
+    confidence: when the blast radius produced few candidates, the freed
+    weight moves to BM25 (see _adaptive_weights). On well-connected
+    changes the weights are exactly `weights` — no behavior change.
+
+    `history_scores` (per-file git co-change association in [0, 1], from
+    diffcontext.history) is an optional fourth signal: every symbol in a
+    file that historically co-changed with the changed files gets
+    `history_weight * association` added — the only signal that can reach
+    co-change partners with no structural or lexical connection at all.
     """
     from .lexical import get_lexical_index
 
-    w_graph, w_lex, w_file = weights
     changed_set = set(changed_symbols)
     changed_in_index = [s for s in changed_symbols if s in index.symbols]
     if not changed_in_index:
@@ -538,6 +569,10 @@ def _blend_hybrid(
     graph_norm = _normalize_scores(
         {s: sc for s, sc in graph_scores.items() if s not in changed_set}
     )
+
+    if adaptive:
+        weights = _adaptive_weights(len(graph_norm), weights)
+    w_graph, w_lex, w_file = weights
 
     # Lexical: max BM25 score against any changed symbol's code
     lex_raw: Dict[str, float] = {}
@@ -550,16 +585,28 @@ def _blend_hybrid(
 
     changed_files = {s.split(":")[0] for s in changed_in_index}
 
+    history_files = {
+        f for f, sc in (history_scores or {}).items() if sc > 0.0
+    }
+
     blended: Dict[str, float] = {}
     candidates = set(graph_norm) | set(lex_norm)
     candidates.update(
         sid for sid in index.symbols
         if sid.split(":")[0] in changed_files and sid not in changed_set
     )
+    if history_files:
+        candidates.update(
+            sid for sid in index.symbols
+            if sid.split(":")[0] in history_files and sid not in changed_set
+        )
     for sid in candidates:
         score = w_graph * graph_norm.get(sid, 0.0) + w_lex * lex_norm.get(sid, 0.0)
-        if sid.split(":")[0] in changed_files:
+        sid_file = sid.split(":")[0]
+        if sid_file in changed_files:
             score += w_file
+        if history_scores:
+            score += history_weight * history_scores.get(sid_file, 0.0)
         blended[sid] = 100.0 * score
 
     # Changed symbols keep their unblended score so they stay ranked on top.
@@ -575,6 +622,8 @@ def analyze_impact(
     max_depth: Optional[int] = 2,
     scoring_config: Optional["ScoringConfig"] = None,
     hybrid: bool = True,
+    adaptive: bool = True,
+    history: Optional[object] = None,
 ) -> ImpactResult:
     """
     Phase 2: Given changed symbols, compute blast radius and impact scores.
@@ -584,6 +633,14 @@ def analyze_impact(
     won the eval_v2 benchmark on every repo tested. Pass hybrid=False for
     the graph-only signal (e.g. for blast-radius verification, where only
     real call edges should count).
+
+    adaptive: scale the graph weight by graph confidence — when the blast
+        radius produced few candidates, the freed weight moves to BM25.
+        Identical to the fixed blend on well-connected changes.
+    history:  optional diffcontext.history.CoChangeIndex. When given, git
+        co-change association is blended as a fourth signal — the only
+        signal that can reach co-change partners with no structural or
+        lexical connection (the measured cross-subsystem ceiling).
 
     Fix: expanded_deps is now passed into compute_impact_scores so those
     nodes are actually scored. Previously they were computed and discarded.
@@ -620,9 +677,16 @@ def analyze_impact(
         config=scoring_config,
     )
 
-    # ── Hybrid blend (graph + BM25 + same-file) ──────────────────────────
+    # ── Hybrid blend (graph + BM25 + same-file [+ history]) ──────────────
     if hybrid:
-        scores = _blend_hybrid(index, changed_symbols, scores)
+        history_scores = (
+            history.scores_for_symbols(changed_symbols)
+            if history is not None else None
+        )
+        scores = _blend_hybrid(
+            index, changed_symbols, scores,
+            adaptive=adaptive, history_scores=history_scores,
+        )
 
     return ImpactResult(
         changed=changed_symbols,
