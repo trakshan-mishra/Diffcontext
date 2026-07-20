@@ -1,0 +1,117 @@
+[
+  {
+    "repo": "click",
+    "n_queries": 344,
+    "head_sha": "7df2f82305f20f1611a9668b38d26933b648d807",
+    "windows": {
+      "3": {
+        "fp_future_rate": 0.0139,
+        "random_future_rate": 0.0081,
+        "lift": 1.72,
+        "raw_precision": 0.0758,
+        "adjusted_precision": 0.0886,
+        "n_fp": 12630
+      },
+      "10": {
+        "fp_future_rate": 0.0416,
+        "random_future_rate": 0.0243,
+        "lift": 1.71,
+        "raw_precision": 0.0758,
+        "adjusted_precision": 0.1143,
+        "n_fp": 12630
+      }
+    }
+  },
+  {
+    "repo": "django",
+    "n_queries": 307,
+    "head_sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb",
+    "windows": {
+      "3": {
+        "fp_future_rate": 0.003,
+        "random_future_rate": 0.0004,
+        "lift": 8.0,
+        "raw_precision": 0.0491,
+        "adjusted_precision": 0.0519,
+        "n_fp": 16205
+      },
+      "10": {
+        "fp_future_rate": 0.0047,
+        "random_future_rate": 0.0012,
+        "lift": 4.0,
+        "raw_precision": 0.0491,
+        "adjusted_precision": 0.0535,
+        "n_fp": 16205
+      }
+    }
+  },
+  {
+    "repo": "flask",
+    "n_queries": 245,
+    "head_sha": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+    "windows": {
+      "3": {
+        "fp_future_rate": 0.0336,
+        "random_future_rate": 0.0147,
+        "lift": 2.29,
+        "raw_precision": 0.0834,
+        "adjusted_precision": 0.1142,
+        "n_fp": 8187
+      },
+      "10": {
+        "fp_future_rate": 0.0664,
+        "random_future_rate": 0.0481,
+        "lift": 1.38,
+        "raw_precision": 0.0834,
+        "adjusted_precision": 0.1443,
+        "n_fp": 8187
+      }
+    }
+  },
+  {
+    "repo": "httpx",
+    "n_queries": 336,
+    "head_sha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+    "windows": {
+      "3": {
+        "fp_future_rate": 0.0141,
+        "random_future_rate": 0.013,
+        "lift": 1.09,
+        "raw_precision": 0.068,
+        "adjusted_precision": 0.0811,
+        "n_fp": 19035
+      },
+      "10": {
+        "fp_future_rate": 0.0428,
+        "random_future_rate": 0.0327,
+        "lift": 1.31,
+        "raw_precision": 0.068,
+        "adjusted_precision": 0.1079,
+        "n_fp": 19035
+      }
+    }
+  },
+  {
+    "repo": "pydantic",
+    "n_queries": 359,
+    "head_sha": "859945e47311f884368378335cb487e9cbe7e66a",
+    "windows": {
+      "3": {
+        "fp_future_rate": 0.0018,
+        "random_future_rate": 0.0015,
+        "lift": 1.15,
+        "raw_precision": 0.0924,
+        "adjusted_precision": 0.094,
+        "n_fp": 8427
+      },
+      "10": {
+        "fp_future_rate": 0.0084,
+        "random_future_rate": 0.0055,
+        "lift": 1.54,
+        "raw_precision": 0.0924,
+        "adjusted_precision": 0.1001,
+        "n_fp": 8427
+      }
+    }
+  }
+]

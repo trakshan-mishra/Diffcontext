@@ -62,23 +62,31 @@ def pearson(x: np.ndarray, y: np.ndarray) -> Optional[float]:
     return float(np.corrcoef(x, y)[0, 1])
 
 
+def _rank(a: np.ndarray) -> np.ndarray:
+    """Average ranks with ties, vectorized."""
+    order = np.argsort(a, kind="stable")
+    r = np.empty(a.size, dtype=float)
+    r[order] = np.arange(a.size, dtype=float)
+    _, inv, counts = np.unique(a, return_inverse=True, return_counts=True)
+    sums = np.bincount(inv, weights=r)
+    return sums[inv] / counts[inv]
+
+
 def spearman(x: np.ndarray, y: np.ndarray) -> Optional[float]:
-    def rank(a):
-        order = np.argsort(a)
-        r = np.empty_like(order, dtype=float)
-        r[order] = np.arange(a.size)
-        # average ties
-        for v in np.unique(a):
-            m = a == v
-            r[m] = r[m].mean()
-        return r
-    return pearson(rank(x), rank(y))
+    return pearson(_rank(x), _rank(y))
 
 
 def perm_p_corr(x: np.ndarray, y: np.ndarray, corr_fn, n_perm: int = 10000,
                 seed: int = 42) -> Optional[float]:
-    """Two-sided permutation p-value for a correlation statistic."""
-    obs = corr_fn(x, y)
+    """Two-sided permutation p-value for a correlation statistic.
+
+    Rank-transforms ONCE for spearman (a permutation of y has the same
+    ranks, permuted), then permutes under plain pearson — the naive
+    re-rank-per-permutation version is quadratic and unusably slow.
+    """
+    if corr_fn is spearman:
+        x, y = _rank(x), _rank(y)
+    obs = pearson(x, y)
     if obs is None:
         return None
     rng = np.random.default_rng(seed)
@@ -86,7 +94,7 @@ def perm_p_corr(x: np.ndarray, y: np.ndarray, corr_fn, n_perm: int = 10000,
     yy = y.copy()
     for _ in range(n_perm):
         rng.shuffle(yy)
-        r = corr_fn(x, yy)
+        r = pearson(x, yy)
         if r is not None and abs(r) >= abs(obs):
             count += 1
     return (count + 1) / (n_perm + 1)
@@ -214,6 +222,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repos", nargs="*", default=None)
     ap.add_argument("--max-cases", type=int, default=MAX_CASES)
+    ap.add_argument("--tag", default="", help="suffix for the output filename")
     args = ap.parse_args()
 
     bench = os.path.normpath(os.path.join(os.path.dirname(__file__), "..",
@@ -379,7 +388,8 @@ def main():
         print(f"  * {v}")
     report["verdicts"] = verdicts
 
-    out = os.path.join(RESULTS_DIR, "calibration_at_scale.json")
+    suffix = f"_{args.tag}" if args.tag else ""
+    out = os.path.join(RESULTS_DIR, f"calibration_at_scale{suffix}.json")
     with open(out, "w") as f:
         json.dump({"report": report, "rows": rows}, f, indent=2)
     print(f"\nSaved {out}")
