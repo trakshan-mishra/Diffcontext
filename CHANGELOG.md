@@ -8,6 +8,31 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Changed (hybrid blend weights — LORO-validated)
+- `HYBRID_WEIGHTS` is now (0.3, 0.5, 0.2) (graph, BM25, same-file), the
+  leave-one-repo-out-selected blend from the rigor pass; the original
+  (0.5, 0.35, 0.15) was mildly graph-overfit from same-repo tuning.
+  Measured effect at the new weights (loro_3leg.json, independently
+  confirmed by a fresh check_regression run on flask: hit 0.863 / recall
+  0.694, matching the recorded analysis): +1.2 to +2.4 recall points on
+  4/5 dev repos, within ±1.1 (n.s.) on the four never-touched validation
+  repos. `eval_v2_hardened.py`'s hybrid method now imports the product's
+  weights so the benchmark always measures what ships.
+
+### Added (`--cutoff gap` — the measured precision lever)
+- `compile`/`verify` (CLI) and `compile()`/`select_context()` (library)
+  accept a cutoff policy. `gap` cuts the ranking at the largest relative
+  score drop in the top 50 instead of keeping a fixed top-k — measured
+  F1-optimal on all five benchmark repos: ~4× the precision of top-20 at
+  6–9 retrieved symbols, ~30% relative recall cost
+  (RIGOR_REPORT_2026-07.md §7). Opt-in; top-k stays the recall-first
+  default. Cut symbols are disclosed in the DROPPED manifest as always.
+- `verify` now reports a per-case and mean **precision lower bound**
+  (`precision_lb`) next to recall, so the top-k vs gap tradeoff is
+  measurable on your own repo's history (measured on click, 25 history
+  cases: 18.0 → 6.0 symbols/case, precision ≥33% → ≥45%, recall 72% →
+  35%): `verify --from-history 20 --cutoff gap` vs the same without.
+
 ### Changed (evidence-aware sufficiency score — measured fix)
 - The sufficiency score no longer treats absence of evidence as a perfect
   1.0: it shrinks toward 50 ("don't know") in proportion to missing

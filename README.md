@@ -85,17 +85,21 @@ Per-commit hit / recall of real co-change partners, hybrid retrieval:
 
 | | django | click | flask | httpx | pydantic | black* | requests* |
 |---|---|---|---|---|---|---|---|
-| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 | 0.901 | 0.969 |
-| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 | 0.720 | 0.774 |
+| Hit | 0.894 | 0.889 | 0.863 | 0.935 | 0.758 | 0.897 | 0.953 |
+| Recall | 0.774 | 0.750 | 0.694 | 0.772 | 0.536 | 0.712 | 0.762 |
 
-\* validation repos, never used for tuning.
+\* validation repos, never used for tuning or weight selection.
 
 Head-to-head vs grep at identical token budgets, grep **plateaus** at
 0.215 recall past 4k tokens while DiffContext reaches 0.576 at 8k
-(2.7×). The honest flip side: mean precision is ~0.075 — most retrieved
-symbols are supporting context (callers, callees, siblings) rather than
-the exact co-change set. If you pay per token, precision is this
-product's real problem, and we say so.
+(2.7×). The honest flip side: mean precision is under 0.1 at the default
+top-k selection — most retrieved symbols are supporting context (callers,
+callees, siblings) rather than the exact co-change set. If you pay per
+token, use **`--cutoff gap`**: it cuts the ranking at the largest score
+drop instead of a fixed top-k — measured ~4× the precision at 6–9
+symbols, costing ~30% relative recall. Top-k stays the recall-first
+default; measure the tradeoff on your own repo with
+`diffcontext verify --from-history 20 --cutoff gap`.
 
 All tables, the per-signal ablation, the failure taxonomy, and
 reproduction commands: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
@@ -117,6 +121,7 @@ from diffcontext.pipeline import index_repository, analyze_impact, compile
 idx = index_repository("/path/to/repo")
 impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])   # hybrid by default
 ctx = compile(idx, impact, max_tokens=8000, top_k=20)
+# token-priced callers: compile(..., cutoff="gap") for the precision operating point
 
 print(ctx.text)                      # paste-ready context with meta-header
 print(ctx.dropped_symbols[:5])       # what the budget cut — never hidden

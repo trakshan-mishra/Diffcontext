@@ -105,12 +105,21 @@ class CaseResult:
     selected_count: int
     context_tokens: int
     sufficiency: Optional[SufficiencyReport] = None
+    # |must_include ∩ retrieved| / |retrieved non-changed symbols|. A LOWER
+    # BOUND on true precision: co-change ground truth is incomplete, so some
+    # "noise" symbols are actually relevant (measured small — GT-adjusted
+    # precision stays within ~2x; RIGOR_REPORT_2026-07.md §2). None when
+    # nothing beyond the changed symbols was selected.
+    precision_lb: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
             "name": self.case.name,
             "passed": self.passed,
             "recall": round(self.recall, 3),
+            "precision_lb": (
+                round(self.precision_lb, 3) if self.precision_lb is not None else None
+            ),
             "missing": self.missing,
             "forbidden_hits": self.forbidden_hits,
             "unknown_symbols": self.unknown_symbols,
@@ -247,6 +256,7 @@ def run_cases(
     repo_path: str,
     cases: List[Case],
     index: Optional[RepositoryIndex] = None,
+    cutoff: Optional[str] = None,
 ) -> List[CaseResult]:
     """
     Run every case against the real pipeline (index once, reuse).
@@ -254,6 +264,10 @@ def run_cases(
     Recall counts ALL must_include entries in the denominator — a symbol
     that doesn't exist in the index is a miss, not a silent skip, and gets
     flagged with a fuzzy suggestion so typos are visible in the report.
+
+    cutoff: selection policy forwarded to compile ("gap" = the measured
+    precision operating point) so users can measure the recall/precision
+    tradeoff on their own repo's cases before adopting it.
     """
     repo_path = os.path.abspath(repo_path)
     idx = index or index_repository(repo_path)
@@ -269,7 +283,9 @@ def run_cases(
         impact = analyze_impact(idx, case.changed, max_depth=case.depth)
         max_tokens = case.budget if case.budget > 0 else None
         top_k = case.top_k * len(case.changed) if case.top_k > 0 else None
-        package = compile_pipeline(idx, impact, max_tokens=max_tokens, top_k=top_k)
+        package = compile_pipeline(
+            idx, impact, max_tokens=max_tokens, top_k=top_k, cutoff=cutoff,
+        )
 
         selected = {item.symbol_id for item in package.items}
         want = set(case.must_include)
@@ -277,6 +293,13 @@ def run_cases(
         recall = len(hit) / len(want)
         missing = sorted(want - selected)
         forbidden_hits = sorted(set(case.must_exclude) & selected)
+
+        # Precision over what was actually retrieved (changed symbols are
+        # the query, not retrieval). Lower bound — see CaseResult.
+        retrieved = selected - set(case.changed)
+        precision_lb = (
+            len(want & retrieved) / len(retrieved) if retrieved else None
+        )
 
         passed = recall >= case.min_recall and not forbidden_hits
 
@@ -292,6 +315,7 @@ def run_cases(
             selected_count=len(selected),
             context_tokens=package.token_estimate,
             sufficiency=sufficiency,
+            precision_lb=precision_lb,
         ))
     return results
 
@@ -528,9 +552,19 @@ def render_results(results: List[CaseResult]) -> str:
             lines.append(f"      ⚠ '{sym}' not found in index (typo?){hint}")
     mean_recall = sum(r.recall for r in results) / len(results) if results else 0.0
     lines.append("")
-    lines.append(
+    total = (
         f"TOTAL: {n_pass}/{len(results)} passed, mean recall {mean_recall * 100:.1f}%"
     )
+    with_prec = [r for r in results if r.precision_lb is not None]
+    if with_prec:
+        mean_prec = sum(r.precision_lb for r in with_prec) / len(with_prec)
+        mean_syms = sum(r.selected_count for r in with_prec) / len(with_prec)
+        total += (
+            f", mean precision ≥{mean_prec * 100:.1f}% "
+            f"({mean_syms:.1f} symbols/case; lower bound — co-change GT is "
+            f"incomplete)"
+        )
+    lines.append(total)
     lines.append("=== END CASE RESULTS ===")
     return "\n".join(lines)
 

@@ -20,14 +20,14 @@ truth), and the external validation of the co-change proxy itself.
 
 ## 2. Ship the measured wins from the rigor pass
 
-- **Blend weights → [0.3, 0.5, 0.2].** The leave-one-repo-out-honest
-  choice (shipped 0.5/0.35/0.15 was mildly graph-overfit). Update
-  `HYBRID_WEIGHTS`, re-freeze `check_regression.py` floors, note in
-  CHANGELOG. Expected effect: ±0–2 recall points, honesty effect: large.
-- **`--cutoff gap` option.** The largest-gap cutoff is F1-optimal on 5/5
-  repos (~4× top-20 precision at 6–9 symbols, ~30% relative recall
-  cost). Ship as an opt-in flag for token-priced callers; top-k stays
-  the recall-first default.
+- ~~**Blend weights → [0.3, 0.5, 0.2].**~~ **Shipped 2026-07-20.**
+  `HYBRID_WEIGHTS` updated, floors re-frozen, CHANGELOG noted; flask
+  gate re-run confirms the recorded LORO numbers (hit 0.863 / recall
+  0.694) through the product path.
+- ~~**`--cutoff gap` option.**~~ **Shipped 2026-07-20** on `compile` and
+  `verify` (opt-in; top-k stays the recall-first default), together with
+  a `precision_lb` column in verify results so the tradeoff is
+  measurable per-repo.
 - **Dense leg as `[dense]` extra.** The only statistically significant
   recall gains measured (flask/httpx/pydantic, p<0.05) and the only
   signal cracking the cross-subsystem bucket — but it drags in

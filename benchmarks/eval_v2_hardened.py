@@ -220,7 +220,11 @@ def _repo_head_sha(repo_path: str) -> str:
 
 
 def _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25) -> List[str]:
-    """graph+bm25+file blend (0.5/0.35/0.15), same recipe as eval_v1's winner."""
+    """graph+bm25+file blend at the product's HYBRID_WEIGHTS, so this method
+    always measures what actually ships (LORO-validated [0.3, 0.5, 0.2]
+    since 2026-07; previously the same-repo-tuned [0.5, 0.35, 0.15])."""
+    from diffcontext.pipeline import HYBRID_WEIGHTS
+    w_graph, w_bm25, w_file = HYBRID_WEIGHTS
     g_scores = _normalize(_graph_scores(q, graph, reverse_graph))
     q_tokens = _tokenize(symbols[q].code)
     bm25_raw = bm25.bm25.get_scores(q_tokens)
@@ -229,12 +233,12 @@ def _hybrid_ranked(q, symbols, symbol_ids, graph, reverse_graph, bm25) -> List[s
     q_file = q.split(":")[0] if ":" in q else ""
     combined: Dict[str, float] = defaultdict(float)
     for sid, sc in g_scores.items():
-        combined[sid] += 0.5 * sc
+        combined[sid] += w_graph * sc
     for sid, sc in b_scores.items():
-        combined[sid] += 0.35 * sc
+        combined[sid] += w_bm25 * sc
     for sid in symbol_ids:
         if sid != q and sid.split(":")[0] == q_file:
-            combined[sid] += 0.15
+            combined[sid] += w_file
     ranked = [s for s, _ in sorted(combined.items(), key=lambda x: x[1], reverse=True)
               if s != q][:CANDIDATE_LIMIT]
     return truncate_by_token_budget(symbols, ranked)
