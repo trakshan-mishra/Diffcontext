@@ -118,6 +118,14 @@ def main():
         help="With --from-history: write generated cases to FILE instead of running them",
     )
     p_verify.add_argument(
+        "--save-calibration", action="store_true",
+        help=(
+            "With --calibrate: persist the score buckets and fitted recall "
+            "predictor to .diffcontext-calibration.json so later `verify` "
+            "runs report calibrated confidence instead of a bare score"
+        ),
+    )
+    p_verify.add_argument(
         "--calibrate", action="store_true",
         help="With --cases/--from-history: report how the structural score tracks measured recall",
     )
@@ -362,7 +370,8 @@ def _cmd_verify(args):
     from ..verify import (
         analyze_sufficiency, load_cases, save_cases, run_cases,
         cases_from_history, calibrate, render_results, render_calibration,
-        CaseFormatError,
+        CaseFormatError, CALIBRATION_FILENAME,
+        predict_recall, save_calibration, load_calibration,
     )
 
     # ── Mode 1/2: test cases (from file or from git history) ─────────────
@@ -391,16 +400,28 @@ def _cmd_verify(args):
 
         results = run_cases(args.repo, cases)
 
+        cal = calibrate(results) if args.calibrate else None
+        if cal is not None and args.save_calibration:
+            cal_path = os.path.join(os.path.abspath(args.repo), CALIBRATION_FILENAME)
+            save_calibration(cal, cal_path)
+
         if args.json:
             payload = {"results": [r.to_dict() for r in results]}
-            if args.calibrate:
-                payload["calibration"] = calibrate(results).to_dict()
+            if cal is not None:
+                payload["calibration"] = cal.to_dict()
             print(json.dumps(payload, indent=2))
         else:
             print(render_results(results))
-            if args.calibrate:
+            if cal is not None:
                 print()
-                print(render_calibration(calibrate(results)))
+                print(render_calibration(cal))
+                if args.save_calibration and cal.model is not None:
+                    print(f"\nSaved calibration to {CALIBRATION_FILENAME} — "
+                          f"`diffcontext verify` now reports calibrated confidence.")
+                elif args.save_calibration:
+                    print(f"\nSaved score buckets to {CALIBRATION_FILENAME} "
+                          f"(no recall predictor: not enough cases or a "
+                          f"degenerate fit).")
 
         sys.exit(0 if all(r.passed for r in results) else 1)
 
@@ -430,10 +451,31 @@ def _cmd_verify(args):
     ctx = compile(idx, impact, max_tokens=max_tokens, top_k=top_k)
 
     report = analyze_sufficiency(idx, impact, ctx)
+
+    # Apply a saved per-repo calibration, if one exists: the structural
+    # score alone is a ranking signal, not a probability (measured in
+    # benchmarks/calibration_at_scale.py); the fitted mapping is what turns
+    # it into disclosed confidence.
+    cal_data = load_calibration(
+        os.path.join(os.path.abspath(args.repo), CALIBRATION_FILENAME))
+    predicted = None
+    if cal_data and cal_data.get("model"):
+        predicted = predict_recall(cal_data["model"], report,
+                                   len(ctx.items), ctx.token_estimate)
+        report.calibrated = True
+
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2))
+        payload = report.to_dict()
+        if predicted is not None:
+            payload["calibrated_recall_estimate"] = round(predicted, 3)
+            payload["calibration_n_cases"] = cal_data["model"]["n_cases"]
+        print(json.dumps(payload, indent=2))
     else:
         print(report.render())
+        if predicted is not None:
+            print(f"\nCalibrated recall estimate: {predicted * 100:.0f}% "
+                  f"(fit on {cal_data['model']['n_cases']} of this repo's own "
+                  f"history cases — see {CALIBRATION_FILENAME})")
 
     # Exit code mirrors the verdict so CI can gate on it.
     sys.exit(0 if report.verdict == "SUFFICIENT" else 1)
