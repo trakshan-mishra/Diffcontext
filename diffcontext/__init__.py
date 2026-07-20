@@ -40,6 +40,7 @@ __version__ = "0.3.0"
 __all__ = [
     "__version__",
     "BlastResult",
+    "CoChangeIndex",
     "ContextItem",
     "ScoringConfig",
     "blast_radius",
@@ -57,6 +58,7 @@ from .diff.git_diff import find_changed_symbols
 # Redundant alias: intentional re-export (used by library callers even
 # though nothing in this module calls it).
 from .impact.blast_radius import get_blast_radius as get_blast_radius
+from .history import CoChangeIndex
 from .impact.scoring import ScoringConfig
 from .models import ContextItem
 

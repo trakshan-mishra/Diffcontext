@@ -69,12 +69,15 @@ use this: [docs/USE_CASES.md](docs/USE_CASES.md).
 ## How it works
 
 Parse every file once into an AST, resolve imports to real definitions,
-and build a dependency graph (calls, inheritance, decorators, function
-references passed as arguments). For a change, walk the graph outward
-with distance-decayed scores, blend with BM25 lexical similarity and
-same-file co-location, then pack the top candidates into your token
-budget — leading with a meta header that discloses everything that was
-*dropped*. The whole index is cached content-addressed in SQLite, so
+and build a dependency graph (calls, inheritance, dispatch-sibling
+overrides, decorators, function references passed as arguments). For a
+change, walk the graph outward with distance-decayed scores, blend with
+BM25 lexical similarity and same-file co-location (weights adapt: when
+the graph has little to say, BM25 gets its weight) — plus, optionally,
+git co-change history (`--with-history`), the only signal that can reach
+related code with no structural or lexical connection. Then pack the top
+candidates into your token budget — leading with a meta header that
+discloses everything that was *dropped*. The whole index is cached content-addressed in SQLite, so
 re-indexing an unchanged repo costs ~0.02s and a one-file edit re-parses
 only that file.
 
@@ -118,10 +121,14 @@ methodology: [docs/VERIFY.md](docs/VERIFY.md).
 ## Use as a library
 
 ```python
+from diffcontext import CoChangeIndex
 from diffcontext.pipeline import index_repository, analyze_impact, compile
 
 idx = index_repository("/path/to/repo")
-impact = analyze_impact(idx, ["./src/auth.py:validate_jwt"])   # hybrid by default
+impact = analyze_impact(
+    idx, ["./src/auth.py:validate_jwt"],           # hybrid + adaptive by default
+    history=CoChangeIndex("/path/to/repo"),        # optional 4th signal: git co-change
+)
 ctx = compile(idx, impact, max_tokens=8000, top_k=20)
 # token-priced callers: compile(..., cutoff="gap") for the precision operating point
 
@@ -183,13 +190,20 @@ language adapter: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Roadmap
 
 The current prioritized plan, each item with its measured motivation, is
-[docs/ROADMAP.md](docs/ROADMAP.md). Highlights: LLM-judged downstream
-evaluation (the one metric family still missing), a dense fourth blend
-leg as an opt-in extra (measured: the only significant recall gains on
-hard repos), override edges (the 0%-recall dispatch bucket), and
-CommonJS. Two former roadmap items are now measured results, not plans:
-adaptive per-query blending (null — dropped) and calibrated confidence
-(shipped as `verify --save-calibration`).
+[docs/ROADMAP.md](docs/ROADMAP.md). Highlights still open: LLM-judged
+downstream evaluation (the one metric family still missing — the main gap
+between this and a main-track research paper, see
+[docs/RESEARCH.md](docs/RESEARCH.md)), a dense fourth blend leg as an
+opt-in extra (measured: the only significant recall gains on hard repos),
+chain-complete budgeting, and CommonJS. Recently shipped from the
+roadmap: dispatch-sibling override edges (the 0%-recall dispatch bucket),
+git co-change history as a fourth signal (`CoChangeIndex` /
+`--with-history`, benchmarked with test-commit exclusion), calibrated
+confidence (`verify --save-calibration`), and TypeScript as a prototype
+(remaining TS work in [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md)).
+Adaptive per-query blending shipped (on by default in `analyze_impact`,
+opt out with `adaptive=False`) but measured as a null in the rigor pass —
+no significant recall change on any benchmark repo.
 
 ## More
 
@@ -197,6 +211,7 @@ adaptive per-query blending (null — dropped) and calibrated confidence
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, resolver capabilities, agent API
 - [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, methodology links, limitations
+- [docs/RESEARCH.md](docs/RESEARCH.md) — literature positioning and the gap list for a publishable paper
 - [docs/VERIFY.md](docs/VERIFY.md) — sufficiency scoring, test cases, calibration
 - [docs/LANG_ADAPTERS.md](docs/LANG_ADAPTERS.md) — TS/JS adapter detail and measured failure modes
 - [benchmarks/RIGOR_REPORT_2026-07.md](benchmarks/RIGOR_REPORT_2026-07.md) — the 2026-07 methodology-hardening pass (LORO validation, true dense baseline, calibration at scale, GT validity)

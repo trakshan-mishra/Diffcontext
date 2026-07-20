@@ -8,7 +8,47 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added (retrieval-quality bottleneck pass — roadmap items 1–3 shipped)
+- **Dispatch-sibling override edges** (graph phase 1G): subclasses of the
+  same resolved base that define the same method name are now connected
+  pairwise — including when the base never defines the method (the
+  duck-typed per-backend dispatch shape the failure taxonomy measured as
+  a blind spot). Families larger than 6 are skipped (hub protection);
+  dunder methods are excluded as noise.
+- **Adaptive hybrid blend** (roadmap item 1, on by default in
+  `analyze_impact`): the graph signal's weight is scaled by graph
+  confidence (number of blast-radius candidates); freed weight moves to
+  BM25. On well-connected changes the weights are exactly the frozen
+  benchmarked blend — behavior only changes where the graph had little
+  to say. Opt out with `analyze_impact(..., adaptive=False)`.
+- **Git co-change history as a fourth signal** (roadmap item 3):
+  `diffcontext.history.CoChangeIndex` mines file-level co-change
+  association from `git log` (zero dependencies, graceful degradation to
+  an empty index outside git repos). Opt in via
+  `analyze_impact(..., history=CoChangeIndex(repo))` or
+  `diffcontext compile --with-history`. This is the only signal that can
+  reach co-change partners with no structural or lexical connection —
+  the measured cross-subsystem ceiling. Exported as
+  `diffcontext.CoChangeIndex`.
+- **Benchmark: leakage-controlled evaluation of the history signal.**
+  eval_v2 gained `hybrid_adaptive`, `hybrid_cochange`, and `hybrid_full`
+  methods; the co-change index used for scoring is mined with every
+  evaluated commit excluded, so the signal never contains the commit it
+  is tested on. The Django failure buckets now also report
+  `hybrid_full`, directly measuring the cross-subsystem fix.
+- **Benchmark: paired significance testing** (`benchmarks/significance.py`):
+  two-sided Wilcoxon signed-rank over per-commit metric pairs against
+  every baseline, with Holm-Bonferroni adjustment. Pure stdlib.
+- **docs/RESEARCH.md**: positioning against the 2024–2026 repo-context
+  literature (GraphCoder, RepoGraph, LocAgent, CodexGraph, RepoHyper,
+  CoCoMIC, …), the claim candidates the current evidence supports, and
+  the explicit gap list for an ICSE/FSE/ASE-grade submission.
+
+### Fixed
+- `benchmark_runner.py --clone` cloned with `--depth=100` while printing
+  "full git history" — silently starving both ground-truth mining
+  (24 vs 74 usable commits on flask) and the co-change signal. Clones
+  are now full-history.
 
 ## [0.3.0] — 2026-07-20
 
@@ -77,7 +117,6 @@ Nothing yet.
   lift 1.1–8× over random; adjusted precision stays <0.15 — GT noise does
   not explain the precision problem. Largest-gap cutoff measured as the
   F1-optimal operating point on 5/5 repos (~4× top-20 precision).
-
 ### Added (experimental TypeScript/JavaScript support — `[typescript]` extra)
 - New `diffcontext/languages/` adapter layer: the pipeline (scoring,
   selection, compilation, caching, diff mapping, verify) was already
