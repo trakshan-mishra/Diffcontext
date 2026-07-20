@@ -85,6 +85,38 @@ class TestSufficiency:
         assert report.verdict in text
         assert "structural proxy" in text  # honesty note present when uncalibrated
 
+    def test_zero_evidence_scores_unknown_not_perfect(self):
+        # A symbol with no edges, no neighbors, and no ranked-relevant
+        # candidates gives the score NOTHING to observe. The legacy formula
+        # scored this as a perfect 100 (the TypeScript constant-100 bug);
+        # it must now sit at the "don't know" midpoint with a low-evidence
+        # finding, not feign confidence.
+        from diffcontext.models import (
+            RepositoryIndex, ImpactResult, ContextPackage, Symbol,
+        )
+        q = "./lonely.py:orphan"
+        idx = RepositoryIndex(
+            symbols={q: Symbol(id=q, file="lonely.py", name="orphan",
+                               code="def orphan(): pass")},
+            graph={q: []},
+        )
+        impact = ImpactResult(changed=[q], scores={})
+        pkg = ContextPackage(text="", symbol_count=1, token_estimate=10,
+                             total_repo_tokens=10)
+        report = analyze_sufficiency(idx, impact, pkg)
+        assert report.evidence < 0.2
+        assert abs(report.score - 50.0) < 10.0
+        assert report.score_legacy == 100.0
+        assert "low-evidence" in {f.kind for f in report.findings}
+
+    def test_rich_evidence_matches_legacy_formula(self):
+        # With a well-connected changed symbol the evidence factor saturates
+        # and the new score converges to the legacy one.
+        idx, impact, pkg = _compile_for(CHANGED)
+        report = analyze_sufficiency(idx, impact, pkg)
+        assert report.evidence > 0.7
+        assert abs(report.score - report.score_legacy) < 15.0
+
 
 class TestCaseLoading:
     def test_roundtrip_save_load(self, tmp_path):
