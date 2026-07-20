@@ -49,17 +49,27 @@ can't see).
 Still unresolved, disclosed: untyped receivers, tsconfig `extends`
 chains, CommonJS.
 
-## Known-broken: the `verify` score on TypeScript
+## The `verify` score on TypeScript (fixed, measured)
 
-> **⚠️ The `verify` sufficiency score has ZERO discriminating power on
-> TypeScript today.** On hono it reported 100 for every case while
-> measured recall ranged 50–100% — that is not "uncalibrated," it is a
-> confidence signal that currently measures nothing for TS. Its
-> structural inputs (direct-neighbor closure, parse health) were
-> designed against Python graph density. On TS repos: run
-> `--calibrate`, trust the recall numbers, ignore the score. TS-aware
-> sufficiency inputs are roadmap work, and until they exist this
-> warning stays here.
+The score used to have **zero** discriminating power on TS: components
+with no observations behind them (no direct neighbors, no outgoing
+edges — routine in a sparse TS graph) defaulted to a perfect 1.0, so
+every case scored ~100 regardless of measured recall. Measured at scale
+(360 mined cases across hono/zod/ky, `benchmarks/calibration_at_scale.py`):
+the legacy formula scored **μ=99.2, σ=5.0, r=0.02 with recall (nothing)**.
+
+The score is now **evidence-aware**: it shrinks toward 50 ("don't know")
+in proportion to missing evidence, and the report prints the evidence
+fraction. Same 360-case measurement after the fix: **μ=81.0, σ=17.3,
+pooled r=0.29 (p=0.0001)** — real discrimination, though per-repo
+strength varies (ky r=0.42; hono/zod n.s.). CommonJS express, where the
+adapter extracts almost nothing, now honestly reports ~55 low-evidence
+instead of a confident 100.
+
+The same measurement showed the legacy formula was equally uninformative
+on *Python* at scale (r=0.016, n=1080) — this was never a TS-only bug,
+TS just made it obvious. For actual confidence, calibrate on your repo:
+`diffcontext verify --from-history 60 --calibrate --save-calibration`.
 
 ## Exclusion policy (why installing the extra is safe)
 
@@ -70,12 +80,13 @@ does not pollute existing Python indexes.
 
 ## Adapter roadmap, in order of measured need
 
-1. **TS-aware sufficiency inputs** — the score currently has zero
-   discriminating power on TS (warning above)
-2. **CommonJS support** — `require()`, `exports.x =`; the measured 0%
+1. **CommonJS support** — `require()`, `exports.x =`; the measured 0%
    failure mode
-3. **Per-language hybrid blend weights** — current weights were tuned on
+2. **Per-language hybrid blend weights** — current weights were tuned on
    Python graph density
-4. **Apply the five-repo benchmark methodology to TS**
+3. **Apply the five-repo benchmark methodology to TS**
+
+(TS-aware sufficiency was item 1; done via the evidence-aware score —
+see the section above for the before/after measurement.)
 5. **Further adapters** (Go/Rust) via the `diffcontext/languages/`
    template
