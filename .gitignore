@@ -23,5 +23,6 @@ diffcontext_state.json
 # Benchmark working data (regenerate: python benchmarks/eval_v2_hardened.py)
 benchmark_repos/
 benchmarks/results/
+benchmarks/downstream/results/
 benchmark_results.json
 DiffContext_Status_Summary.pdf
