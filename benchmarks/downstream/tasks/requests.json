@@ -1,0 +1,77 @@
+{
+ "version": 1,
+ "tasks": [
+  {
+   "repo": "requests",
+   "commit": "a4f9a5999bdb9bf2d6e7c8aa973b28cacb17134f",
+   "parent": "3816cfa1abd42dca21b9e837f26c59b246016aaf",
+   "commit_msg": "Port bpo-39057 to Requests (#7427)",
+   "test_files": [
+    "tests/test_utils.py"
+   ],
+   "code_files": [
+    "src/requests/utils.py"
+   ],
+   "gold_patch": "diff --git a/src/requests/utils.py b/src/requests/utils.py\nindex 838bf7bb..120336dd 100644\n--- a/src/requests/utils.py\n+++ b/src/requests/utils.py\n@@ -851,9 +851,11 @@ def should_bypass_proxies(url: str, no_proxy: str | None) -> bool:\n                 host_with_port += f\":{parsed.port}\"\n \n             for host in no_proxy_hosts:\n+                host = host.lstrip(\".\")\n+                if hostname == host or host_with_port == host:\n+                    return True\n+                host = \".\" + host\n                 if hostname.endswith(host) or host_with_port.endswith(host):\n-                    # The URL does match something in no_proxy, so we don't want\n-                    # to apply the proxies on this URL.\n                     return True\n \n     with set_environ(\"no_proxy\", no_proxy_arg):\n",
+   "seed_symbols": [
+    "./src/requests/utils.py:should_bypass_proxies"
+   ],
+   "added_symbols": [],
+   "fail_output": "........................................ [ 31%]\n........................................................................ [ 62%]\n.................................................................F\n=================================== FAILURES ===================================\n_ test_should_bypass_proxies_no_proxy_domain_boundary[http://prelocalhost/-False] _\n\nurl = 'http://prelocalhost/', expected = False\n\n    @pytest.mark.parametrize(\n        \"url, expected\",\n        (\n            (\"http://localhost/\", True),\n            (\"http://anotherdomain.com:8888/\", True),\n            (\"http://newdomain.com:1234/\", True),\n            (\"http://www.newdomain.com:1234/\", True),\n            (\"http://foo.d.o.t/\", True),\n            (\"http://d.o.t/\", True),\n            (\"http://prelocalhost/\", False),\n            (\"http://newdomain.com/\", False),\n            (\"http://newdomain.com:1235/\", False),\n        ),\n    )\n    def test_should_bypass_proxies_no_proxy_domain_boundary(url, expected):\n        \"\"\"Ensure no_proxy matching respects domain boundaries and does not\n        greedily match domains that merely endswith the no_proxy entry.\n        See CPython bpo-39057.\n        \"\"\"\n        no_proxy = \"localhost, anotherdomain.com, newdomain.com:1234, .d.o.t\"\n>       assert should_bypass_proxies(url, no_proxy=no_proxy) == expected\nE       AssertionError: assert True == False\nE        +  where True = should_bypass_proxies('http://prelocalhost/', no_proxy='localhost, anotherdomain.com, newdomain.com:1234, .d.o.t')\n\ntests/test_utils.py:867: AssertionError\n=============================== warnings summary ===============================\ntests/test_utils.py::TestContentEncodingDetection::test_none\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta charset=\"UTF-8\">]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta http-equiv=\"Content-type\" content=\"text/html;charset=UTF-8\">]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta http-equiv=\"Content-type\" content=\"text/html;charset=UTF-8\" />]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<?xml version=\"1.0\" encoding=\"UTF-8\"?>]\ntests/test_utils.py::TestContentEncodingDetection::test_precedence\n  /tmp/claude-1000/-home-trakshan-temporary-titanic-csv-diff-Diffcontext/02c1790e-81f2-48b6-a902-3c38c63d66c7/scratchpad/diffcontext-downstream-mine/wt/src/requests/utils.py:527: DeprecationWarning: In requests 3.0, get_encodings_from_content will be removed. For more information, please see the discussion on issue #2266. (This warning should only appear once.)\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_utils.py::test_should_bypass_proxies_no_proxy_domain_boundary[http://prelocalhost/-False]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 208 passed, 1 skipped, 6 warnings in 0.30s\n"
+  },
+  {
+   "repo": "requests",
+   "commit": "fd628095d7b9ddbf3e987d8a4bf0e6062768916f",
+   "parent": "e8d2c015eecda8273612dd4562425e00cd164ba5",
+   "commit_msg": "Preserve leading slashes in request path_url (#7315)",
+   "test_files": [
+    "tests/test_adapters.py"
+   ],
+   "code_files": [
+    "src/requests/adapters.py"
+   ],
+   "gold_patch": "diff --git a/src/requests/adapters.py b/src/requests/adapters.py\nindex c5726aed..40fe8a6d 100644\n--- a/src/requests/adapters.py\n+++ b/src/requests/adapters.py\n@@ -590,8 +590,6 @@ class HTTPAdapter(BaseAdapter):\n             using_socks_proxy = proxy_scheme.startswith(\"socks\")\n \n         url = request.path_url\n-        if url.startswith(\"//\"):  # Don't confuse urllib3\n-            url = f\"/{url.lstrip('/')}\"\n \n         if is_proxied_http_request and not using_socks_proxy:\n             url = urldefragauth(request.url)\n",
+   "seed_symbols": [
+    "./src/requests/adapters.py:HTTPAdapter.request_url"
+   ],
+   "added_symbols": [],
+   "fail_output": "F\n=================================== FAILURES ===================================\n_______________ test_request_url_handles_leading_path_separators _______________\n\n    def test_request_url_handles_leading_path_separators():\n        \"\"\"See also https://github.com/psf/requests/issues/6643.\"\"\"\n        a = requests.adapters.HTTPAdapter()\n        p = requests.Request(method=\"GET\", url=\"http://127.0.0.1:10000//v:h\").prepare()\n>       assert \"//v:h\" == a.request_url(p, {})\nE       AssertionError: assert '//v:h' == '/v:h'\nE         \nE         - /v:h\nE         + //v:h\nE         ? +\n\ntests/test_adapters.py:8: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_adapters.py::test_request_url_handles_leading_path_separators\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 0.03s\n"
+  },
+  {
+   "repo": "requests",
+   "commit": "f0198e6dfc431a2293dc16e1b1e8fcddc910a7f3",
+   "parent": "bc7dd0fc4d56e808bcdd85ac2d797b3107c89259",
+   "commit_msg": "Fix malformed value parsing for Content-Type (#7309)",
+   "test_files": [
+    "tests/test_utils.py"
+   ],
+   "code_files": [
+    "src/requests/utils.py"
+   ],
+   "gold_patch": "diff --git a/src/requests/utils.py b/src/requests/utils.py\nindex 54959bb8..42238375 100644\n--- a/src/requests/utils.py\n+++ b/src/requests/utils.py\n@@ -502,26 +502,23 @@ def get_encodings_from_content(content):\n \n \n def _parse_content_type_header(header):\n-    \"\"\"Returns content type and parameters from given header\n+    \"\"\"Returns content type and parameters from given header.\n \n     :param header: string\n     :return: tuple containing content type and dictionary of\n-         parameters\n+         parameters.\n     \"\"\"\n \n     tokens = header.split(\";\")\n     content_type, params = tokens[0].strip(), tokens[1:]\n     params_dict = {}\n-    items_to_strip = \"\\\"' \"\n+    strip_chars = \"\\\"' \"\n \n     for param in params:\n         param = param.strip()\n-        if param:\n-            key, value = param, True\n-            index_of_equals = param.find(\"=\")\n-            if index_of_equals != -1:\n-                key = param[:index_of_equals].strip(items_to_strip)\n-                value = param[index_of_equals + 1 :].strip(items_to_strip)\n+        if param and (idx := param.find(\"=\")) != -1:\n+            key = param[:idx].strip(strip_chars)\n+            value = param[idx + 1 :].strip(strip_chars)\n             params_dict[key.lower()] = value\n     return content_type, params_dict\n \n",
+   "seed_symbols": [
+    "./src/requests/utils.py:_parse_content_type_header"
+   ],
+   "added_symbols": [],
+   "fail_output": "           (\n                    \"multipart/form-data\",\n                    {\n                        \"boundary\": \"something\",\n                        \"boundary2\": \"something_else\",\n                    },\n                ),\n            ),\n            (\n                \"multipart/form-data; boundary = something ; 'boundary2=something_else' ; no_equals \",\n                (\n                    \"multipart/form-data\",\n                    {\n                        \"boundary\": \"something\",\n                        \"boundary2\": \"something_else\",\n                    },\n                ),\n            ),\n            (\n                'multipart/form-data; boundary = something ; \"boundary2=something_else\" ; no_equals ',\n                (\n                    \"multipart/form-data\",\n                    {\n                        \"boundary\": \"something\",\n                        \"boundary2\": \"something_else\",\n                    },\n                ),\n            ),\n            (\"application/json ; ; \", (\"application/json\", {})),\n        ),\n    )\n    def test__parse_content_type_header(value, expected):\n>       assert _parse_content_type_header(value) == expected\nE       AssertionError: assert ('multipart/f...quals': True}) == ('multipart/f...ething_else'})\nE         \nE         At index 1 diff: {'boundary': 'something', 'boundary2': 'something_else', 'no_equals': True} != {'boundary': 'something', 'boundary2': 'something_else'}\nE         Use -v to get more diff\n\ntests/test_utils.py:636: AssertionError\n=============================== warnings summary ===============================\ntests/test_utils.py::TestContentEncodingDetection::test_none\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta charset=\"UTF-8\">]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta http-equiv=\"Content-type\" content=\"text/html;charset=UTF-8\">]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta http-equiv=\"Content-type\" content=\"text/html;charset=UTF-8\" />]\ntests/test_utils.py::TestContentEncodingDetection::test_pragmas[<?xml version=\"1.0\" encoding=\"UTF-8\"?>]\ntests/test_utils.py::TestContentEncodingDetection::test_precedence\n  /tmp/claude-1000/-home-trakshan-temporary-titanic-csv-diff-Diffcontext/02c1790e-81f2-48b6-a902-3c38c63d66c7/scratchpad/diffcontext-downstream-mine/wt/src/requests/utils.py:484: DeprecationWarning: In requests 3.0, get_encodings_from_content will be removed. For more information, please see the discussion on issue #2266. (This warning should only appear once.)\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_utils.py::test__parse_content_type_header[multipart/form-data; boundary = something ; boundary2='something_else' ; no_equals -expected4]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 137 passed, 1 skipped, 6 warnings in 0.20s\n"
+  },
+  {
+   "repo": "requests",
+   "commit": "47914226c2968802f2cdee3f6f0f6e06e4472f64",
+   "parent": "1b40fdd004bfc8ba5301bcf8a6908264e9b6b877",
+   "commit_msg": "Fix empty netrc entry usage (#7205)",
+   "test_files": [
+    "tests/test_utils.py"
+   ],
+   "code_files": [
+    "src/requests/utils.py"
+   ],
+   "gold_patch": "diff --git a/src/requests/utils.py b/src/requests/utils.py\nindex 4d3039b2..d113a6ff 100644\n--- a/src/requests/utils.py\n+++ b/src/requests/utils.py\n@@ -231,7 +231,7 @@ def get_netrc_auth(url, raise_errors=False):\n \n         try:\n             _netrc = netrc(netrc_path).authenticators(host)\n-            if _netrc:\n+            if _netrc and any(_netrc):\n                 # Return with login / password\n                 login_i = 0 if _netrc[0] else 1\n                 return (_netrc[login_i], _netrc[2])\n",
+   "seed_symbols": [
+    "./src/requests/utils.py:get_netrc_auth"
+   ],
+   "added_symbols": [],
+   "fail_output": "..s................F\n=================================== FAILURES ===================================\n___________ TestGetNetrcAuth.test_empty_default_credentials_ignored ____________\n\nself = <tests.test_utils.TestGetNetrcAuth object at 0x74f262efc050>\ntmp_path = PosixPath('/tmp/pytest-of-trakshan/pytest-39/test_empty_default_credentials0')\nmonkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74f262f1d910>\n\n    def test_empty_default_credentials_ignored(self, tmp_path, monkeypatch):\n        \"\"\"Empty default credentials should not be returned.\"\"\"\n        netrc_path = tmp_path / \".netrc\"\n        monkeypatch.setenv(\"NETRC\", str(netrc_path))\n        with open(netrc_path, \"w\") as f:\n            f.write(\"machine example.com login user password pass\\ndefault\\n\")\n    \n        auth = get_netrc_auth(\"http://httpbin.org/\")\n>       assert auth is None\nE       AssertionError: assert ('', '') is None\n\ntests/test_utils.py:181: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_utils.py::TestGetNetrcAuth::test_empty_default_credentials_ignored\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 18 passed, 1 skipped in 0.13s\n"
+  }
+ ]
+}

@@ -1,0 +1,236 @@
+{
+ "version": 1,
+ "tasks": [
+  {
+   "repo": "starlette",
+   "commit": "e3f972225adb1d84b80dba132f520cc24cb84229",
+   "parent": "348f86dc92fed6e3c0314154e38deec90a6bcabd",
+   "commit_msg": "Only dispatch standard HTTP verbs in `HTTPEndpoint` (#3286)",
+   "test_files": [
+    "tests/test_endpoints.py"
+   ],
+   "code_files": [
+    "starlette/endpoints.py"
+   ],
+   "gold_patch": "diff --git a/starlette/endpoints.py b/starlette/endpoints.py\nindex aa067fc..bdd51dc 100644\n--- a/starlette/endpoints.py\n+++ b/starlette/endpoints.py\n@@ -33,7 +33,11 @@ class HTTPEndpoint:\n         request = Request(self.scope, receive=self.receive)\n         handler_name = \"get\" if request.method == \"HEAD\" and not hasattr(self, \"head\") else request.method.lower()\n \n-        handler: Callable[[Request], Any] = getattr(self, handler_name, self.method_not_allowed)\n+        handler: Callable[[Request], Any]\n+        if request.method in self._allowed_methods or (request.method == \"HEAD\" and \"GET\" in self._allowed_methods):\n+            handler = getattr(self, handler_name)\n+        else:\n+            handler = self.method_not_allowed\n         is_async = is_async_callable(handler)\n         if is_async:\n             response = await handler(request)\n",
+   "seed_symbols": [
+    "./starlette/endpoints.py:HTTPEndpoint.dispatch"
+   ],
+   "added_symbols": [],
+   "fail_output": "...F\n=================================== FAILURES ===================================\n________ test_http_endpoint_does_not_dispatch_non_verb_method[asyncio] _________\n\ntest_client_factory = functools.partial(<class 'starlette.testclient.TestClient'>, backend='asyncio', backend_options={})\n\n    def test_http_endpoint_does_not_dispatch_non_verb_method(test_client_factory: TestClientFactory) -> None:\n        class Endpoint(HTTPEndpoint):\n            async def get(self, request: Request) -> PlainTextResponse:\n                return PlainTextResponse(\"Hello, world!\")  # pragma: no cover\n    \n            async def _do_delete(self, request: Request) -> PlainTextResponse:\n                return PlainTextResponse(\"Privileged helper\")  # pragma: no cover\n    \n        app = Router(routes=[Route(\"/\", endpoint=Endpoint)])\n        client = test_client_factory(app)\n    \n        response = client.request(\"_DO_DELETE\", \"/\")\n>       assert response.status_code == 405\nE       assert 200 == 405\nE        +  where 200 = <Response [200 OK]>.status_code\n\ntests/test_endpoints.py:62: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 3 passed in 0.05s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "764dab0dcfb9033d75442d7a359645c9f94648c6",
+   "parent": "19d08115ce56da8d4da2838ecdd9c5882cb2b365",
+   "commit_msg": "Ignore malformed `Host` header when constructing `request.url` (#3279)",
+   "test_files": [
+    "tests/test_datastructures.py"
+   ],
+   "code_files": [
+    "starlette/datastructures.py"
+   ],
+   "gold_patch": "diff --git a/starlette/datastructures.py b/starlette/datastructures.py\nindex 615874c..9e58e9a 100644\n--- a/starlette/datastructures.py\n+++ b/starlette/datastructures.py\n@@ -1,14 +1,9 @@\n from __future__ import annotations\n \n+import re\n from collections.abc import ItemsView, Iterable, Iterator, KeysView, Mapping, MutableMapping, Sequence, ValuesView\n from shlex import shlex\n-from typing import (\n-    Any,\n-    BinaryIO,\n-    NamedTuple,\n-    TypeVar,\n-    cast,\n-)\n+from typing import Any, BinaryIO, NamedTuple, TypeVar, cast\n from urllib.parse import SplitResult, parse_qsl, urlencode, urlsplit\n \n from starlette.concurrency import run_in_threadpool\n@@ -26,6 +21,9 @@ _KeyType = TypeVar(\"_KeyType\")\n # that is, you can't do `Mapping[str, Animal]()[\"fido\"] = Dog()`\n _CovariantValueType = TypeVar(\"_CovariantValueType\", covariant=True)\n \n+# Rejects Host header chars (/, ?, #, @, ...) that would let urlsplit produce a path differing from scope[\"path\"].\n+_HOST_RE = re.compile(r\"^([a-z0-9.-]+|\\[[a-f0-9]*:[a-f0-9.:]+\\])(?::[0-9]+)?$\", re.IGNORECASE)\n+\n \n class URL:\n     def __init__(\n@@ -48,7 +46,7 @@ class URL:\n                     host_header = value.decode(\"latin-1\")\n                     break\n \n-            if host_header is not None:\n+            if host_header is not None and _HOST_RE.fullmatch(host_header):\n                 url = f\"{scheme}://{host_header}{path}\"\n             elif server is None:\n                 url = path\n",
+   "seed_symbols": [
+    "./starlette/datastructures.py:URL.__init__"
+   ],
+   "added_symbols": [],
+   "fail_output": ".....F\n=================================== FAILURES ===================================\n_____________ test_url_from_scope_with_invalid_host[question-mark] _____________\n\nhost = b'foo/?x='\n\n    @pytest.mark.parametrize(\n        \"host\",\n        [\n            pytest.param(b\"foo/?x=\", id=\"question-mark\"),\n            pytest.param(b\"foo/#\", id=\"hash\"),\n            pytest.param(b\"foo/bar\", id=\"slash\"),\n            pytest.param(b\"user@foo\", id=\"at-sign\"),\n            pytest.param(b\"foo\\\\bar\", id=\"backslash\"),\n            pytest.param(b\"foo bar\", id=\"space\"),\n        ],\n    )\n    def test_url_from_scope_with_invalid_host(host: bytes) -> None:\n        \"\"\"An invalid Host header should be ignored, falling back to the server tuple.\"\"\"\n        u = URL(\n            scope={\n                \"scheme\": \"http\",\n                \"server\": (\"example.com\", 80),\n                \"path\": \"/admin\",\n                \"query_string\": b\"\",\n                \"headers\": [(b\"host\", host)],\n            }\n        )\n>       assert u.path == \"/admin\"\nE       AssertionError: assert '/' == '/admin'\nE         \nE         - /admin\nE         + /\n\ntests/test_datastructures.py:184: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 5 passed in 0.17s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "4647e532bbed7a5f60c9972ddba3f5fb4a79e1f9",
+   "parent": "fb49d243e2082f9bb30b59fd532e6062bbd676b7",
+   "commit_msg": "Track session access and modification in `SessionMiddleware` (#3166)",
+   "test_files": [
+    "tests/middleware/test_session.py"
+   ],
+   "code_files": [
+    "starlette/middleware/sessions.py",
+    "starlette/requests.py"
+   ],
+   "gold_patch": "diff --git a/starlette/middleware/sessions.py b/starlette/middleware/sessions.py\nindex 1b95db4..aa0383f 100644\n--- a/starlette/middleware/sessions.py\n+++ b/starlette/middleware/sessions.py\n@@ -1,6 +1,7 @@\n from __future__ import annotations\n \n import json\n+import typing\n from base64 import b64decode, b64encode\n from typing import Literal\n \n@@ -47,20 +48,23 @@ class SessionMiddleware:\n             data = connection.cookies[self.session_cookie].encode(\"utf-8\")\n             try:\n                 data = self.signer.unsign(data, max_age=self.max_age)\n-                scope[\"session\"] = json.loads(b64decode(data))\n+                scope[\"session\"] = Session(json.loads(b64decode(data)))\n                 initial_session_was_empty = False\n             except BadSignature:\n-                scope[\"session\"] = {}\n+                scope[\"session\"] = Session()\n         else:\n-            scope[\"session\"] = {}\n+            scope[\"session\"] = Session()\n \n         async def send_wrapper(message: Message) -> None:\n             if message[\"type\"] == \"http.response.start\":\n-                if scope[\"session\"]:\n+                session: Session = scope[\"session\"]\n+                headers = MutableHeaders(scope=message)\n+                if session.accessed:\n+                    headers.add_vary_header(\"Cookie\")\n+                if session.modified and session:\n                     # We have session data to persist.\n-                    data = b64encode(json.dumps(scope[\"session\"]).encode(\"utf-8\"))\n+                    data = b64encode(json.dumps(session).encode(\"utf-8\"))\n                     data = self.signer.sign(data)\n-                    headers = MutableHeaders(scope=message)\n                     header_value = \"{session_cookie}={data}; path={path}; {max_age}{security_flags}\".format(\n                         session_cookie=self.session_cookie,\n                         data=data.decode(\"utf-8\"),\n@@ -69,9 +73,8 @@ class SessionMiddleware:\n                         security_flags=self.security_flags,\n                     )\n                     headers.append(\"Set-Cookie\", header_value)\n-                elif not initial_session_was_empty:\n+                elif session.modified and not initial_session_was_empty:\n                     # The session has been cleared.\n-                    headers = MutableHeaders(scope=message)\n                     header_value = \"{session_cookie}={data}; path={path}; {expires}{security_flags}\".format(\n                         session_cookie=self.session_cookie,\n                         data=\"null\",\n@@ -83,3 +86,40 @@ class SessionMiddleware:\n             await send(message)\n \n         await self.app(scope, receive, send_wrapper)\n+\n+\n+class Session(dict[str, typing.Any]):\n+    accessed: bool = False\n+    modified: bool = False\n+\n+    def mark_accessed(self) -> None:\n+        self.accessed = True\n+\n+    def mark_modified(self) -> None:\n+        self.accessed = True\n+        self.modified = True\n+\n+    def __setitem__(self, key: str, value: typing.Any) -> None:\n+        self.mark_modified()\n+        super().__setitem__(key, value)\n+\n+    def __delitem__(self, key: str) -> None:\n+        self.mark_modified()\n+        super().__delitem__(key)\n+\n+    def clear(self) -> None:\n+        self.mark_modified()\n+        super().clear()\n+\n+    def pop(self, key: str, *args: typing.Any) -> typing.Any:\n+        self.modified = self.modified or key in self\n+        return super().pop(key, *args)\n+\n+    def setdefault(self, key: str, default: typing.Any = None) -> typing.Any:\n+        if key not in self:\n+            self.mark_modified()\n+        return super().setdefault(key, default)\n+\n+    def update(self, *args: typing.Any, **kwargs: typing.Any) -> None:\n+        self.mark_modified()\n+        super().update(*args, **kwargs)\ndiff --git a/starlette/requests.py b/starlette/requests.py\nindex 716f293..c57b4ae 100644\n--- a/starlette/requests.py\n+++ b/starlette/requests.py\n@@ -18,6 +18,7 @@ if TYPE_CHECKING:\n     from python_multipart.multipart import parse_options_header\n \n     from starlette.applications import Starlette\n+    from starlette.middleware.sessions import Session\n     from starlette.routing import Router\n else:\n     try:\n@@ -167,7 +168,11 @@ class HTTPConnection(Mapping[str, Any], Generic[StateT]):\n     @property\n     def session(self) -> dict[str, Any]:\n         assert \"session\" in self.scope, \"SessionMiddleware must be installed to access request.session\"\n-        return self.scope[\"session\"]  # type: ignore[no-any-return]\n+        session: Session = self.scope[\"session\"]\n+        # We keep the hasattr in case people actually use their own `SessionMiddleware` implementation.\n+        if hasattr(session, \"mark_accessed\"):  # pragma: no branch\n+            session.mark_accessed()\n+        return session\n \n     @property\n     def auth(self) -> Any:\n",
+   "seed_symbols": [
+    "./starlette/middleware/sessions.py:SessionMiddleware.__call__",
+    "./starlette/middleware/sessions.py:Session.mark_accessed",
+    "./starlette/middleware/sessions.py:Session.mark_modified",
+    "./starlette/middleware/sessions.py:Session.__setitem__",
+    "./starlette/middleware/sessions.py:Session.__delitem__",
+    "./starlette/middleware/sessions.py:Session.clear",
+    "./starlette/middleware/sessions.py:Session.pop",
+    "./starlette/middleware/sessions.py:Session.setdefault",
+    "./starlette/middleware/sessions.py:Session.update",
+    "./starlette/middleware/sessions.py:send_wrapper",
+    "./starlette/requests.py:HTTPConnection.session"
+   ],
+   "added_symbols": [],
+   "fail_output": "\n==================================== ERRORS ====================================\n______________ ERROR collecting tests/middleware/test_session.py _______________\nImportError while importing test module '/tmp/claude-1000/-home-trakshan-temporary-titanic-csv-diff-Diffcontext/02c1790e-81f2-48b6-a902-3c38c63d66c7/scratchpad/diffcontext-downstream-mine/wt/tests/middleware/test_session.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.14/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/middleware/test_session.py:5: in <module>\n    from starlette.middleware.sessions import Session, SessionMiddleware\nE   ImportError: cannot import name 'Session' from 'starlette.middleware.sessions' (/tmp/claude-1000/-home-trakshan-temporary-titanic-csv-diff-Diffcontext/02c1790e-81f2-48b6-a902-3c38c63d66c7/scratchpad/diffcontext-downstream-mine/wt/starlette/middleware/sessions.py)\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.12s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "496b7106a6223b1bb95785790766ec5e9b9f1c9d",
+   "parent": "41dfca28131c28020ceb78f2b9eb036627a022cd",
+   "commit_msg": "Enable `autoescape` by default in `Jinja2Templates` (#3148)",
+   "test_files": [
+    "tests/test_templates.py"
+   ],
+   "code_files": [
+    "starlette/templating.py"
+   ],
+   "gold_patch": "diff --git a/starlette/templating.py b/starlette/templating.py\nindex 70b12d8..67872b3 100644\n--- a/starlette/templating.py\n+++ b/starlette/templating.py\n@@ -92,7 +92,7 @@ class Jinja2Templates:\n         self.context_processors = context_processors or []\n         if directory is not None:\n             loader = jinja2.FileSystemLoader(directory)\n-            self.env = jinja2.Environment(loader=loader)\n+            self.env = jinja2.Environment(loader=loader, autoescape=jinja2.select_autoescape())\n         elif env is not None:  # pragma: no branch\n             self.env = env\n \n",
+   "seed_symbols": [
+    "./starlette/templating.py:Jinja2Templates.__init__"
+   ],
+   "added_symbols": [],
+   "fail_output": "..........F\n=================================== FAILURES ===================================\n__________________________ test_templates_autoescape ___________________________\n\ntmp_path = PosixPath('/tmp/pytest-of-trakshan/pytest-45/test_templates_autoescape0')\n\n    def test_templates_autoescape(tmp_path: Path) -> None:\n        path = tmp_path / \"index.html\"\n        path.write_text(\"Hello, {{ name }}\")\n    \n        templates = Jinja2Templates(directory=tmp_path)\n        template = templates.get_template(\"index.html\")\n>       assert (\n            template.render(name=\"<script>alert('XSS')</script>\")\n            == \"Hello, &lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;\"\n        )\nE       assert \"Hello, <scri...SS')</script>\" == 'Hello, &lt;s...t;/script&gt;'\nE         \nE         - Hello, &lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;\nE         + Hello, <script>alert('XSS')</script>\n\ntests/test_templates.py:43: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 10 passed in 0.10s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "90b805fda70db2316d79aa577f4c3eb670f9a8a1",
+   "parent": "c011d1fcb27ab8b4759288479208315695ef3ca3",
+   "commit_msg": "Set `Content-Type` instead of `Content-Range` on multi-range responses (#3142)",
+   "test_files": [
+    "tests/test_responses.py"
+   ],
+   "code_files": [
+    "starlette/responses.py"
+   ],
+   "gold_patch": "diff --git a/starlette/responses.py b/starlette/responses.py\nindex 61c914b..5f35fc4 100644\n--- a/starlette/responses.py\n+++ b/starlette/responses.py\n@@ -425,7 +425,7 @@ class FileResponse(Response):\n         content_length, header_generator = self.generate_multipart(\n             ranges, boundary, file_size, self.headers[\"content-type\"]\n         )\n-        self.headers[\"content-range\"] = f\"multipart/byteranges; boundary={boundary}\"\n+        self.headers[\"content-type\"] = f\"multipart/byteranges; boundary={boundary}\"\n         self.headers[\"content-length\"] = str(content_length)\n         await send({\"type\": \"http.response.start\", \"status\": 206, \"headers\": self.raw_headers})\n         if send_header_only:\n",
+   "seed_symbols": [
+    "./starlette/responses.py:FileResponse._handle_multiple_ranges"
+   ],
+   "added_symbols": [],
+   "fail_output": "......................s.......................F\n=================================== FAILURES ===================================\n___________________ test_file_response_range_multi[asyncio] ____________________\n\nfile_response_client = <starlette.testclient.TestClient object at 0x7d9b8189c380>\n\n    def test_file_response_range_multi(file_response_client: TestClient) -> None:\n        response = file_response_client.get(\"/\", headers={\"Range\": \"bytes=0-100, 200-300\"})\n        assert response.status_code == 206\n>       assert \"content-range\" not in response.headers\nE       assert 'content-range' not in Headers({'content-type': 'text/plain; charset=utf-8', 'accept-ranges': 'bytes', 'content-length': '439', 'last-modifie...': '\"7960ac187232a2db877663b7e3c4acfd\"', 'content-range': 'multipart/byteranges; boundary=73b151cf0dc9e2569bcb854af8'})\nE        +  where Headers({'content-type': 'text/plain; charset=utf-8', 'accept-ranges': 'bytes', 'content-length': '439', 'last-modifie...': '\"7960ac187232a2db877663b7e3c4acfd\"', 'content-range': 'multipart/byteranges; boundary=73b151cf0dc9e2569bcb854af8'}) = <Response [206 Partial Content]>.headers\n\ntests/test_responses.py:714: AssertionError\n=========================== short test summary info ============================\nSKIPPED [1] tests/test_responses.py:421: Only relevant for <3.14\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 45 passed, 1 skipped in 0.22s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "c011d1fcb27ab8b4759288479208315695ef3ca3",
+   "parent": "22864ff6a9c934bf7af6e444754bfd50c634a61d",
+   "commit_msg": "Include `bytes` unit in Content-Range header on 416 responses",
+   "test_files": [
+    "tests/test_responses.py"
+   ],
+   "code_files": [
+    "starlette/responses.py"
+   ],
+   "gold_patch": "diff --git a/starlette/responses.py b/starlette/responses.py\nindex 7b9fd8f..61c914b 100644\n--- a/starlette/responses.py\n+++ b/starlette/responses.py\n@@ -369,7 +369,7 @@ class FileResponse(Response):\n             except MalformedRangeHeader as exc:\n                 return await PlainTextResponse(exc.content, status_code=400)(scope, receive, send)\n             except RangeNotSatisfiable as exc:\n-                response = PlainTextResponse(status_code=416, headers={\"Content-Range\": f\"*/{exc.max_size}\"})\n+                response = PlainTextResponse(status_code=416, headers={\"Content-Range\": f\"bytes */{exc.max_size}\"})\n                 return await response(scope, receive, send)\n \n             if len(ranges) == 1:\n",
+   "seed_symbols": [
+    "./starlette/responses.py:FileResponse.__call__"
+   ],
+   "added_symbols": [],
+   "fail_output": "......................s...........................F\n=================================== FAILURES ===================================\n____________________ test_file_response_range_416[asyncio] _____________________\n\nfile_response_client = <starlette.testclient.TestClient object at 0x78101e91c6b0>\n\n    def test_file_response_range_416(file_response_client: TestClient) -> None:\n        response = file_response_client.head(\"/\", headers={\"Range\": f\"bytes={len(README.encode('utf8')) + 1}-\"})\n        assert response.status_code == 416\n>       assert response.headers[\"Content-Range\"] == f\"bytes */{len(README.encode('utf8'))}\"\nE       AssertionError: assert '*/526' == 'bytes */526'\nE         \nE         - bytes */526\nE         + */526\n\ntests/test_responses.py:749: AssertionError\n=========================== short test summary info ============================\nSKIPPED [1] tests/test_responses.py:421: Only relevant for <3.14\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 49 passed, 1 skipped in 0.23s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "51057d57449c35a9fa2814266cda60dc51bf3435",
+   "parent": "361dfb2573a7dd2d091f6b84ce38bd211ad7d699",
+   "commit_msg": "Handle null bytes in `StaticFiles` path (#3139)",
+   "test_files": [
+    "tests/test_staticfiles.py"
+   ],
+   "code_files": [
+    "starlette/staticfiles.py"
+   ],
+   "gold_patch": "diff --git a/starlette/staticfiles.py b/starlette/staticfiles.py\nindex a458fd7..883b0f7 100644\n--- a/starlette/staticfiles.py\n+++ b/starlette/staticfiles.py\n@@ -123,6 +123,9 @@ class StaticFiles:\n                 raise HTTPException(status_code=404)\n \n             raise exc\n+        except ValueError:\n+            # Null bytes or other invalid characters in the path.\n+            raise HTTPException(status_code=404)\n \n         if stat_result and stat.S_ISREG(stat_result.st_mode):\n             # We have a static file to serve.\n",
+   "seed_symbols": [
+    "./starlette/staticfiles.py:StaticFiles.get_response"
+   ],
+   "added_symbols": [],
+   "fail_output": "ponse = transport.handle_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/testclient.py:348: in handle_request\n    raise exc\nstarlette/testclient.py:345: in handle_request\n    portal.call(self.app, scope, receive, send)\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/from_thread.py:334: in call\n    return cast(T_Retval, self.start_task_soon(func, *args).result())\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.14/concurrent/futures/_base.py:450: in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.14/concurrent/futures/_base.py:395: in __get_result\n    raise self._exception\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/from_thread.py:259: in _call_func\n    retval = await retval_or_awaitable\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/applications.py:90: in __call__\n    await self.middleware_stack(scope, receive, send)\nstarlette/middleware/errors.py:186: in __call__\n    raise exc\nstarlette/middleware/errors.py:164: in __call__\n    await self.app(scope, receive, _send)\nstarlette/middleware/exceptions.py:63: in __call__\n    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)\nstarlette/_exception_handler.py:53: in wrapped_app\n    raise exc\nstarlette/_exception_handler.py:42: in wrapped_app\n    await app(scope, receive, sender)\nstarlette/routing.py:660: in __call__\n    await self.middleware_stack(scope, receive, send)\nstarlette/routing.py:680: in app\n    await route.handle(scope, receive, send)\nstarlette/routing.py:448: in handle\n    await self.app(scope, receive, send)\nstarlette/staticfiles.py:98: in __call__\n    response = await self.get_response(path, scope)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/staticfiles.py:117: in get_response\n    full_path, stat_result = await anyio.to_thread.run_sync(self.lookup_path, path)\n                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/to_thread.py:63: in run_sync\n    return await get_async_backend().run_sync_in_worker_thread(\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:2518: in run_sync_in_worker_thread\n    return await future\n           ^^^^^^^^^^^^\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/_backends/_asyncio.py:1002: in run\n    result = context.run(func, *args)\n             ^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/staticfiles.py:158: in lookup_path\n    full_path = os.path.realpath(joined_path)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nfilename = '/tmp/pytest-of-trakshan/pytest-51/test_staticfiles_null_byte_in_0/example\\x00.txt'\n\n>   ???\nE   ValueError: lstat: embedded null character in path\n\n<frozen posixpath>:457: ValueError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 23 passed in 0.39s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "02b6ed7b18c741c00795010e9d716b58006af2c3",
+   "parent": "2b73aecd8377e0c189943a5f30d3dbab134f6104",
+   "commit_msg": "Return explicit origin in CORS response when credentials are allowed (#3137)",
+   "test_files": [
+    "tests/middleware/test_cors.py"
+   ],
+   "code_files": [
+    "starlette/middleware/cors.py"
+   ],
+   "gold_patch": "diff --git a/starlette/middleware/cors.py b/starlette/middleware/cors.py\nindex 36ba9f9..b65fc15 100644\n--- a/starlette/middleware/cors.py\n+++ b/starlette/middleware/cors.py\n@@ -68,6 +68,7 @@ class CORSMiddleware:\n         self.allow_headers = [h.lower() for h in allow_headers]\n         self.allow_all_origins = allow_all_origins\n         self.allow_all_headers = allow_all_headers\n+        self.allow_credentials = allow_credentials\n         self.preflight_explicit_allow_origin = preflight_explicit_allow_origin\n         self.allow_origin_regex = compiled_allow_origin_regex\n         self.allow_private_network = allow_private_network\n@@ -161,15 +162,12 @@ class CORSMiddleware:\n         headers = MutableHeaders(scope=message)\n         headers.update(self.simple_headers)\n         origin = request_headers[\"Origin\"]\n-        has_cookie = \"cookie\" in request_headers\n \n-        # If request includes any cookie headers, then we must respond\n-        # with the specific origin instead of '*'.\n-        if self.allow_all_origins and has_cookie:\n+        # If credentials are allowed, then we must respond with the specific origin instead of '*'.\n+        if self.allow_all_origins and self.allow_credentials:\n             self.allow_explicit_origin(headers, origin)\n \n-        # If we only allow specific origins, then we have to mirror back\n-        # the Origin header in the response.\n+        # If we only allow specific origins, then we have to mirror back the Origin header in the response.\n         elif not self.allow_all_origins and self.is_allowed_origin(origin=origin):\n             self.allow_explicit_origin(headers, origin)\n \n",
+   "seed_symbols": [
+    "./starlette/middleware/cors.py:CORSMiddleware.__init__",
+    "./starlette/middleware/cors.py:CORSMiddleware.send"
+   ],
+   "added_symbols": [],
+   "fail_output": "F\n=================================== FAILURES ===================================\n_________________________ test_cors_allow_all[asyncio] _________________________\n\ntest_client_factory = functools.partial(<class 'starlette.testclient.TestClient'>, backend='asyncio', backend_options={})\n\n    def test_cors_allow_all(\n        test_client_factory: TestClientFactory,\n    ) -> None:\n        def homepage(request: Request) -> PlainTextResponse:\n            return PlainTextResponse(\"Homepage\", status_code=200)\n    \n        app = Starlette(\n            routes=[Route(\"/\", endpoint=homepage)],\n            middleware=[\n                Middleware(\n                    CORSMiddleware,\n                    allow_origins=[\"*\"],\n                    allow_headers=[\"*\"],\n                    allow_methods=[\"*\"],\n                    expose_headers=[\"X-Status\"],\n                    allow_credentials=True,\n                )\n            ],\n        )\n    \n        client = test_client_factory(app)\n    \n        # Test pre-flight response\n        headers = {\n            \"Origin\": \"https://example.org\",\n            \"Access-Control-Request-Method\": \"GET\",\n            \"Access-Control-Request-Headers\": \"X-Example\",\n        }\n        response = client.options(\"/\", headers=headers)\n        assert response.status_code == 200\n        assert response.text == \"OK\"\n        assert response.headers[\"access-control-allow-origin\"] == \"https://example.org\"\n        assert response.headers[\"access-control-allow-headers\"] == \"X-Example\"\n        assert response.headers[\"access-control-allow-credentials\"] == \"true\"\n        assert response.headers[\"vary\"] == \"Origin\"\n    \n        # Test standard response\n        headers = {\"Origin\": \"https://example.org\"}\n        response = client.get(\"/\", headers=headers)\n        assert response.status_code == 200\n        assert response.text == \"Homepage\"\n>       assert response.headers[\"access-control-allow-origin\"] == \"https://example.org\"\nE       AssertionError: assert '*' == 'https://example.org'\nE         \nE         - https://example.org\nE         + *\n\ntests/middleware/test_cors.py:51: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 0.11s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "49d4de92867cb38a781069701ad57cecab4a1a36",
+   "parent": "4941b4a04993d087dea66e9287fe9472babee879",
+   "commit_msg": "Add `allow_private_network` in `CORSMiddleware` (#3065)",
+   "test_files": [
+    "tests/middleware/test_cors.py"
+   ],
+   "code_files": [
+    "starlette/middleware/cors.py"
+   ],
+   "gold_patch": "diff --git a/starlette/middleware/cors.py b/starlette/middleware/cors.py\nindex ffd8aef..36ba9f9 100644\n--- a/starlette/middleware/cors.py\n+++ b/starlette/middleware/cors.py\n@@ -21,6 +21,7 @@ class CORSMiddleware:\n         allow_headers: Sequence[str] = (),\n         allow_credentials: bool = False,\n         allow_origin_regex: str | None = None,\n+        allow_private_network: bool = False,\n         expose_headers: Sequence[str] = (),\n         max_age: int = 600,\n     ) -> None:\n@@ -35,7 +36,7 @@ class CORSMiddleware:\n         allow_all_headers = \"*\" in allow_headers\n         preflight_explicit_allow_origin = not allow_all_origins or allow_credentials\n \n-        simple_headers = {}\n+        simple_headers: dict[str, str] = {}\n         if allow_all_origins:\n             simple_headers[\"Access-Control-Allow-Origin\"] = \"*\"\n         if allow_credentials:\n@@ -43,7 +44,7 @@ class CORSMiddleware:\n         if expose_headers:\n             simple_headers[\"Access-Control-Expose-Headers\"] = \", \".join(expose_headers)\n \n-        preflight_headers = {}\n+        preflight_headers: dict[str, str] = {}\n         if preflight_explicit_allow_origin:\n             # The origin value will be set in preflight_response() if it is allowed.\n             preflight_headers[\"Vary\"] = \"Origin\"\n@@ -69,6 +70,7 @@ class CORSMiddleware:\n         self.allow_all_headers = allow_all_headers\n         self.preflight_explicit_allow_origin = preflight_explicit_allow_origin\n         self.allow_origin_regex = compiled_allow_origin_regex\n+        self.allow_private_network = allow_private_network\n         self.simple_headers = simple_headers\n         self.preflight_headers = preflight_headers\n \n@@ -105,9 +107,10 @@ class CORSMiddleware:\n         requested_origin = request_headers[\"origin\"]\n         requested_method = request_headers[\"access-control-request-method\"]\n         requested_headers = request_headers.get(\"access-control-request-headers\")\n+        requested_private_network = request_headers.get(\"access-control-request-private-network\")\n \n         headers = dict(self.preflight_headers)\n-        failures = []\n+        failures: list[str] = []\n \n         if self.is_allowed_origin(origin=requested_origin):\n             if self.preflight_explicit_allow_origin:\n@@ -130,6 +133,12 @@ class CORSMiddleware:\n                     failures.append(\"headers\")\n                     break\n \n+        if requested_private_network is not None:\n+            if self.allow_private_network:\n+                headers[\"Access-Control-Allow-Private-Network\"] = \"true\"\n+            else:\n+                failures.append(\"private-network\")\n+\n         # We don't strictly need to use 400 responses here, since its up to\n         # the browser to enforce the CORS policy, but its more informative\n         # if we do.\n",
+   "seed_symbols": [
+    "./starlette/middleware/cors.py:CORSMiddleware.__init__",
+    "./starlette/middleware/cors.py:CORSMiddleware.preflight_response"
+   ],
+   "added_symbols": [],
+   "fail_output": "hon3.14/site-packages/httpx/_client.py:825: in request\n    return self.send(request, auth=auth, follow_redirects=follow_redirects)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/home/trakshan/.local/lib/python3.14/site-packages/httpx/_client.py:914: in send\n    response = self._send_handling_auth(\n/home/trakshan/.local/lib/python3.14/site-packages/httpx/_client.py:942: in _send_handling_auth\n    response = self._send_handling_redirects(\n/home/trakshan/.local/lib/python3.14/site-packages/httpx/_client.py:979: in _send_handling_redirects\n    response = self._send_single_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/home/trakshan/.local/lib/python3.14/site-packages/httpx/_client.py:1014: in _send_single_request\n    response = transport.handle_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/testclient.py:348: in handle_request\n    raise exc\nstarlette/testclient.py:345: in handle_request\n    portal.call(self.app, scope, receive, send)\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/from_thread.py:334: in call\n    return cast(T_Retval, self.start_task_soon(func, *args).result())\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.14/concurrent/futures/_base.py:450: in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.14/concurrent/futures/_base.py:395: in __get_result\n    raise self._exception\n/home/trakshan/.local/lib/python3.14/site-packages/anyio/from_thread.py:259: in _call_func\n    retval = await retval_or_awaitable\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\nstarlette/applications.py:106: in __call__\n    self.middleware_stack = self.build_middleware_stack()\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <starlette.applications.Starlette object at 0x727b9591d6d0>\n\n    def build_middleware_stack(self) -> ASGIApp:\n        debug = self.debug\n        error_handler = None\n        exception_handlers: dict[Any, ExceptionHandler] = {}\n    \n        for key, value in self.exception_handlers.items():\n            if key in (500, Exception):\n                error_handler = value\n            else:\n                exception_handlers[key] = value\n    \n        middleware = (\n            [Middleware(ServerErrorMiddleware, handler=error_handler, debug=debug)]\n            + self.user_middleware\n            + [Middleware(ExceptionMiddleware, handlers=exception_handlers, debug=debug)]\n        )\n    \n        app = self.router\n        for cls, args, kwargs in reversed(middleware):\n>           app = cls(app, *args, **kwargs)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^\nE           TypeError: CORSMiddleware.__init__() got an unexpected keyword argument 'allow_private_network'\n\nstarlette/applications.py:93: TypeError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 15 passed in 0.25s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "3d480dd7d5adf474d0736c67a2a3064e88226837",
+   "parent": "da0605243010715356be69693a524f2300011948",
+   "commit_msg": "Ignore `if-modified-since` if `if-none-match` is present (#3057)",
+   "test_files": [
+    "tests/test_staticfiles.py"
+   ],
+   "code_files": [
+    "starlette/staticfiles.py"
+   ],
+   "gold_patch": "diff --git a/starlette/staticfiles.py b/starlette/staticfiles.py\nindex 7fba9aa..a458fd7 100644\n--- a/starlette/staticfiles.py\n+++ b/starlette/staticfiles.py\n@@ -201,13 +201,10 @@ class StaticFiles:\n         Given the request and response headers, return `True` if an HTTP\n         \"Not Modified\" response could be returned instead.\n         \"\"\"\n-        try:\n-            if_none_match = request_headers[\"if-none-match\"]\n+        if if_none_match := request_headers.get(\"if-none-match\"):\n+            # The \"etag\" header is added by FileResponse, so it's always present.\n             etag = response_headers[\"etag\"]\n-            if etag in [tag.strip(\" W/\") for tag in if_none_match.split(\",\")]:\n-                return True\n-        except KeyError:\n-            pass\n+            return etag in [tag.strip(\" W/\") for tag in if_none_match.split(\",\")]\n \n         try:\n             if_modified_since = parsedate(request_headers[\"if-modified-since\"])\n",
+   "seed_symbols": [
+    "./starlette/staticfiles.py:StaticFiles.is_not_modified"
+   ],
+   "added_symbols": [],
+   "fail_output": ".............F\n=================================== FAILURES ===================================\n_____ test_staticfiles_200_with_etag_mismatch_and_timestamp_match[asyncio] _____\n\ntmpdir = local('/tmp/pytest-of-trakshan/pytest-60/test_staticfiles_200_with_etag1')\ntest_client_factory = functools.partial(<class 'starlette.testclient.TestClient'>, backend='asyncio', backend_options={})\n\n    def test_staticfiles_200_with_etag_mismatch_and_timestamp_match(\n        tmpdir: Path, test_client_factory: TestClientFactory\n    ) -> None:\n        path = tmpdir / \"example.txt\"\n        path.write_text(\"<file content>\", encoding=\"utf-8\")\n    \n        app = StaticFiles(directory=tmpdir)\n        client = test_client_factory(app)\n        first_resp = client.get(\"/example.txt\")\n        assert first_resp.status_code == 200\n        assert first_resp.headers[\"etag\"] != '\"123\"'\n        last_modified = first_resp.headers[\"last-modified\"]\n        # If `if-none-match` is present, `if-modified-since` is ignored.\n        second_resp = client.get(\"/example.txt\", headers={\"if-none-match\": '\"123\"', \"if-modified-since\": last_modified})\n>       assert second_resp.status_code == 200\nE       assert 304 == 200\nE        +  where 304 = <Response [304 Not Modified]>.status_code\n\ntests/test_staticfiles.py:248: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 13 passed in 0.14s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "26d66bbfb05c7bbecbbb57106c65f33682f8174e",
+   "parent": "a59397db889e3a96c4f34b1406957a3b92e1e8b5",
+   "commit_msg": "Do not pollute exception context in Middleware (#2976)",
+   "test_files": [
+    "tests/middleware/test_base.py"
+   ],
+   "code_files": [
+    "starlette/middleware/base.py"
+   ],
+   "gold_patch": "diff --git a/starlette/middleware/base.py b/starlette/middleware/base.py\nindex 577918e..dc353a2 100644\n--- a/starlette/middleware/base.py\n+++ b/starlette/middleware/base.py\n@@ -156,7 +156,16 @@ class BaseHTTPMiddleware:\n                 if app_exc is not None:\n                     nonlocal exception_already_raised\n                     exception_already_raised = True\n-                    raise app_exc\n+                    # Prevent `anyio.EndOfStream` from polluting app exception context.\n+                    # If both cause and context are None then the context is suppressed\n+                    # and `anyio.EndOfStream` is not present in the exception traceback.\n+                    # If exception cause is not None then it is propagated with\n+                    # reraising here.\n+                    # If exception has no cause but has context set then the context is\n+                    # propagated as a cause with the reraise. This is necessary in order\n+                    # to prevent `anyio.EndOfStream` from polluting the exception\n+                    # context.\n+                    raise app_exc from app_exc.__cause__ or app_exc.__context__\n                 raise RuntimeError(\"No response returned.\")\n \n             assert message[\"type\"] == \"http.response.start\"\n",
+   "seed_symbols": [
+    "./starlette/middleware/base.py:BaseHTTPMiddleware.__call__",
+    "./starlette/middleware/base.py:call_next"
+   ],
+   "added_symbols": [],
+   "fail_output": ".....x.......................F\n=================================== FAILURES ===================================\n___________________ test_error_context_propagation[asyncio] ____________________\n\ntest_client_factory = functools.partial(<class 'starlette.testclient.TestClient'>, backend='asyncio', backend_options={})\n\n    def test_error_context_propagation(test_client_factory: TestClientFactory) -> None:\n        class PassthroughMiddleware(BaseHTTPMiddleware):\n            async def dispatch(\n                self,\n                request: Request,\n                call_next: RequestResponseEndpoint,\n            ) -> Response:\n                return await call_next(request)\n    \n        def exception_without_context(request: Request) -> None:\n            raise Exception(\"Exception\")\n    \n        def exception_with_context(request: Request) -> None:\n            try:\n                raise Exception(\"Inner exception\")\n            except Exception:\n                raise Exception(\"Outer exception\")\n    \n        def exception_with_cause(request: Request) -> None:\n            try:\n                raise Exception(\"Inner exception\")\n            except Exception as e:\n                raise Exception(\"Outer exception\") from e\n    \n        app = Starlette(\n            routes=[\n                Route(\"/exception-without-context\", endpoint=exception_without_context),\n                Route(\"/exception-with-context\", endpoint=exception_with_context),\n                Route(\"/exception-with-cause\", endpoint=exception_with_cause),\n            ],\n            middleware=[Middleware(PassthroughMiddleware)],\n        )\n        client = test_client_factory(app)\n    \n        # For exceptions without context the context is filled with the `anyio.EndOfStream`\n        # but it is suppressed therefore not propagated to traceback.\n        with pytest.raises(Exception) as ctx:\n            client.get(\"/exception-without-context\")\n        assert str(ctx.value) == \"Exception\"\n        assert ctx.value.__cause__ is None\n        assert ctx.value.__context__ is not None\n>       assert ctx.value.__suppress_context__ is True\nE       AssertionError: assert False is True\nE        +  where False = Exception('Exception').__suppress_context__\nE        +    where Exception('Exception') = <ExceptionInfo Exception('Exception') tblen=40>.value\n\ntests/middleware/test_base.py:1289: AssertionError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 28 passed, 1 xfailed in 0.85s\n"
+  },
+  {
+   "repo": "starlette",
+   "commit": "a59397db889e3a96c4f34b1406957a3b92e1e8b5",
+   "parent": "3b7f0cbf598be305528a498a35089ce723060372",
+   "commit_msg": "Set encodings when reading config files (#2996)",
+   "test_files": [
+    "tests/test_config.py"
+   ],
+   "code_files": [
+    "starlette/config.py"
+   ],
+   "gold_patch": "diff --git a/starlette/config.py b/starlette/config.py\nindex 091f857..7f839ee 100644\n--- a/starlette/config.py\n+++ b/starlette/config.py\n@@ -52,6 +52,7 @@ class Config:\n         env_file: str | Path | None = None,\n         environ: Mapping[str, str] = environ,\n         env_prefix: str = \"\",\n+        encoding: str = \"utf-8\",\n     ) -> None:\n         self.environ = environ\n         self.env_prefix = env_prefix\n@@ -60,7 +61,7 @@ class Config:\n             if not os.path.isfile(env_file):\n                 warnings.warn(f\"Config file '{env_file}' not found.\")\n             else:\n-                self.file_values = self._read_file(env_file)\n+                self.file_values = self._read_file(env_file, encoding)\n \n     @overload\n     def __call__(self, key: str, *, default: None) -> str | None: ...\n@@ -107,9 +108,9 @@ class Config:\n             return self._perform_cast(key, default, cast)\n         raise KeyError(f\"Config '{key}' is missing, and has no default.\")\n \n-    def _read_file(self, file_name: str | Path) -> dict[str, str]:\n+    def _read_file(self, file_name: str | Path, encoding: str) -> dict[str, str]:\n         file_values: dict[str, str] = {}\n-        with open(file_name) as input_file:\n+        with open(file_name, encoding=encoding) as input_file:\n             for line in input_file.readlines():\n                 line = line.strip()\n                 if \"=\" in line and not line.startswith(\"#\"):\n",
+   "seed_symbols": [
+    "./starlette/config.py:Config.__init__",
+    "./starlette/config.py:Config._read_file"
+   ],
+   "added_symbols": [],
+   "fail_output": ".....F\n=================================== FAILURES ===================================\n__________________________ test_config_with_encoding ___________________________\n\ntmpdir = local('/tmp/pytest-of-trakshan/pytest-66/test_config_with_encoding0')\n\n    def test_config_with_encoding(tmpdir: Path) -> None:\n        path = tmpdir / \".env\"\n        path.write_text(\"MESSAGE=Hello \u4e16\u754c\\n\", encoding=\"utf-8\")\n>       config = Config(path, encoding=\"utf-8\")\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       TypeError: Config.__init__() got an unexpected keyword argument 'encoding'\n\ntests/test_config.py:148: TypeError\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 5 passed in 0.04s\n"
+  }
+ ]
+}
