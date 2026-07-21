@@ -180,8 +180,11 @@ def _http_post_json(url: str, headers: dict, body: dict) -> tuple:
         transient = (r.status_code in (500, 502, 503, 504)
                      or (r.status_code == 429 and not hard_daily))
         if transient and attempt < MAX_RETRIES:
-            m = re.search(r"retryDelay['\"]?:?\s*['\"]?(\d+)", text)
-            delay = min(int(m.group(1)) + 1, 60) if m else min(5 * 2 ** attempt, 60)
+            # honor a server-suggested delay in either dialect: Gemini
+            # "retryDelay: 6s", Groq/OpenAI "Please try again in 6.23s".
+            m = re.search(r"(?:retryDelay|retry in|try again in)['\":\s]*([\d.]+)",
+                          text, re.IGNORECASE)
+            delay = min(int(float(m.group(1))) + 1, 60) if m else min(5 * 2 ** attempt, 60)
             time.sleep(delay)
             continue
         return None, f"http_{r.status_code}" + (":per_day_quota" if hard_daily else "")
@@ -393,6 +396,8 @@ def is_transient_error(row: dict) -> bool:
 
 
 def run(args) -> None:
+    global MAX_OUTPUT_TOKENS
+    MAX_OUTPUT_TOKENS = args.max_output_tokens   # backends read this module global
     tasks = load_tasks(args.tasks)
     repo = os.path.abspath(args.repo)
     providers = args.providers.split(",")
@@ -405,8 +410,12 @@ def run(args) -> None:
     # (commit, provider, sample), so a shared `.mock.jsonl` would let an empty
     # run skip rows a gold run already wrote (and vice versa), silently mixing
     # the two self-tests.
+    # --tag keeps different models/runs in separate files (<repo>.<tag>.jsonl):
+    # results from two models must never share a file, since resume/report key
+    # on (commit, provider, sample) and would silently blend them.
+    tag = f".{args.tag}" if args.tag else ""
     suffix = f".mock.{args.mock}.jsonl" if args.mock else ".jsonl"
-    out_path = os.path.join(RESULTS_DIR, os.path.basename(repo) + suffix)
+    out_path = os.path.join(RESULTS_DIR, os.path.basename(repo) + tag + suffix)
     # un-judgeable tasks (gold patch fails in this env) are logged here, kept
     # out of the results file so they never enter the provider comparison.
     skip_path = out_path[:-len(".jsonl")] + ".skipped.jsonl"
@@ -659,7 +668,15 @@ def main() -> None:
     ap.add_argument("--sleep", type=float, default=0.0,
                     help="seconds to pause between generations — throttle to stay "
                          "under a free-tier per-minute request cap (default 0)")
+    ap.add_argument("--tag", default=None,
+                    help="suffix results as <repo>.<tag>.jsonl — use a per-model "
+                         "tag so different models never share a results file")
     ap.add_argument("--context-tokens", type=int, default=DEFAULT_CONTEXT_TOKENS)
+    ap.add_argument("--max-output-tokens", type=int, default=MAX_OUTPUT_TOKENS,
+                    help=f"cap on generated tokens (default {MAX_OUTPUT_TOKENS}). "
+                         "Lower it for providers that count max_tokens against a "
+                         "per-minute budget — Groq free tier rejects a request whose "
+                         "input+max_tokens exceeds its 12k TPM cap")
     ap.add_argument("--mock", choices=["gold", "empty"],
                     help="harness self-test instead of LLM calls")
     ap.add_argument("--skip-gold-gate", action="store_true",
