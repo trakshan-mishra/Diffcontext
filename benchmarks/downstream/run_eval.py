@@ -339,8 +339,14 @@ def run(args) -> None:
             sys.exit(f"unknown provider {p!r}; known: {PROVIDERS}")
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    out_path = os.path.join(
-        RESULTS_DIR, os.path.basename(repo) + (".mock.jsonl" if args.mock else ".jsonl"))
+    # --tag separates result files per model run. Resume is keyed by
+    # (commit, provider, sample) with no model field, so two models sharing one
+    # file would make the second skip every row as "already done" and the report
+    # would mix models across arms — a tag per model keeps each run self-contained.
+    suffix = ".mock.jsonl" if args.mock else ".jsonl"
+    if args.tag:
+        suffix = f".{args.tag}{suffix}"
+    out_path = os.path.join(RESULTS_DIR, os.path.basename(repo) + suffix)
     done = set()
     if os.path.exists(out_path):
         with open(out_path, encoding="utf-8") as f:
@@ -361,12 +367,18 @@ def run(args) -> None:
                 sys.exit("gemini backend needs GEMINI_API_KEY or GOOGLE_API_KEY "
                          "in the environment")
             client = genai.Client(api_key=api_key)
-        else:  # openrouter (OpenAI-compatible gateway)
+        else:  # openrouter / any OpenAI-compatible gateway (Groq, Cerebras, ...)
             from openai import OpenAI
-            api_key = os.environ.get("OPENROUTER_API_KEY")
+            # OPENAI_BASE_URL lets one backend target any OpenAI-compatible free
+            # tier without a code change (e.g. Groq: https://api.groq.com/openai/v1).
+            base_url = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+            api_key = (os.environ.get("OPENROUTER_API_KEY")
+                       or os.environ.get("OPENAI_API_KEY"))
             if not api_key:
-                sys.exit("openrouter backend needs OPENROUTER_API_KEY in the environment")
-            client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+                sys.exit("openrouter backend needs OPENROUTER_API_KEY or OPENAI_API_KEY "
+                         "in the environment (set OPENAI_BASE_URL to target "
+                         "Groq/Cerebras/another OpenAI-compatible free tier)")
+            client = OpenAI(base_url=base_url, api_key=api_key)
 
     scratch = os.path.join(args.scratch, "diffcontext-downstream")
     os.makedirs(scratch, exist_ok=True)
@@ -411,6 +423,11 @@ def run(args) -> None:
                         patch = None
                         row.update({"mock": "empty"})
                     else:
+                        # Proactive throttle: pause before each call to stay under
+                        # free-tier per-minute rate limits, so 429 backoff stays a
+                        # rare fallback rather than the common path.
+                        if args.sleep:
+                            time.sleep(args.sleep)
                         gen = generate_patch(
                             args.backend, client, args.model, task,
                             seed_sources, contexts[provider], test_diff)
@@ -485,6 +502,14 @@ def main() -> None:
                     help=f"model id; defaults per --backend: {DEFAULT_MODELS}")
     ap.add_argument("--samples", type=int, default=1,
                     help="generations per (task, provider)")
+    ap.add_argument("--sleep", type=float, default=0.0,
+                    help="seconds to pause before each LLM generation, to stay "
+                         "under free-tier per-minute rate limits (0 = no throttle)")
+    ap.add_argument("--tag", default=None,
+                    help="suffix for the results filename (e.g. the model name), so "
+                         "each model writes its own resumable file: "
+                         "<repo>.<tag>.jsonl. Keep one tag per model — mixing "
+                         "models in one file confounds the paired report.")
     ap.add_argument("--context-tokens", type=int, default=DEFAULT_CONTEXT_TOKENS)
     ap.add_argument("--mock", choices=["gold", "empty"],
                     help="harness self-test instead of LLM calls")
