@@ -24,6 +24,14 @@ tasks.json): dep/pytest drift can render a once-valid task un-judgeable,
 and such a task is skipped and logged to <repo>.skipped.jsonl rather than
 polluting every arm with all-fail noise. Disable with --skip-gold-gate.
 
+--sensitivity-gate additionally screens each task with the no-context arm and
+keeps only the tasks it FAILS. A task the model already solves blind cannot
+discriminate retrieval arms — every arm passes it — so including it only
+dilutes the comparison toward the ceiling. The screen spends the `none` arm
+(logged to <repo>.screen.jsonl, excluded from scoring since conditioning on it
+makes it 0-by-construction) and leaves an unconfounded head-to-head between the
+real retrieval arms. --report prints how many tasks actually separate the arms.
+
 Results append to benchmarks/downstream/results/<repo>.jsonl (resumable:
 already-recorded (task, provider, sample) rows are skipped). Mock self-
 tests write to <repo>.mock.gold.jsonl / <repo>.mock.empty.jsonl. Summarize
@@ -55,12 +63,16 @@ from diffcontext.pipeline import index_repository
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 DEFAULT_MODELS = {"anthropic": "claude-opus-4-8", "gemini": "gemini-flash-latest",
-                  "groq": "llama-3.3-70b-versatile", "openrouter": "deepseek/deepseek-chat"}
+                  "groq": "llama-3.3-70b-versatile", "openrouter": "deepseek/deepseek-chat",
+                  # Devstral 2 ids (GET /v1/models): devstral-2512 (small, open),
+                  # devstral-medium-latest (123B). Override with --model.
+                  "mistral": "devstral-2512"}
 # OpenAI-compatible REST gateways (chat/completions). The backend name selects
 # the base URL and the env var holding its key.
 OPENAI_COMPAT = {
     "groq":       ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1",   "OPENROUTER_API_KEY"),
+    "mistral":    ("https://api.mistral.ai/v1",      "MISTRAL_API_KEY"),
 }
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_CONTEXT_TOKENS = 8000
@@ -224,10 +236,16 @@ def _generate_gemini(api_key: str, model: str, task: Task,
     """
     fixed, context_block = _prompt_parts(task, seed_sources, context, test_diff)
     prompt = fixed + context_block + FINAL_INSTRUCTION
+    gen_config = {"maxOutputTokens": MAX_OUTPUT_TOKENS}
+    # 2.5-family flash models "think" by default (~10k+ tokens/call): slow, and
+    # the reasoning can starve the answer of output budget. This eval doesn't
+    # need the trace, so disable it where the model allows (pro can't set 0).
+    if "2.5" in model and "pro" not in model:
+        gen_config["thinkingConfig"] = {"thinkingBudget": 0}
     body = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS},
+        "generationConfig": gen_config,
     }
     j, err = _http_post_json(
         f"{GEMINI_API_BASE}/models/{model}:generateContent",
@@ -395,6 +413,38 @@ def is_transient_error(row: dict) -> bool:
     return str(row.get("gen_error") or "").startswith("api_error")
 
 
+# ---------------------------------------------------------------------------
+# Sensitivity gate — keep only tasks that can actually discriminate arms
+# ---------------------------------------------------------------------------
+# A task is informative only if the model FAILS it without context. If the
+# no-context arm already passes, the task says nothing about retrieval: every
+# arm passes and the comparison is diluted toward the ceiling. Screening those
+# out is what turns a null sweep into a powered one.
+#
+# Selection effect, stated plainly: conditioning on `none` failing makes the
+# `none` arm 0-by-construction on the retained set, so it is NOT a usable
+# baseline there. The gate therefore drops `none` from the measured arms and
+# writes its screening verdict to a separate <repo>.screen.jsonl. What remains
+# is an unconfounded head-to-head between the real retrieval arms (neither was
+# used for selection) — which is the comparison the eval exists to make.
+SCREEN_PROVIDER = "none"
+
+
+def load_screen(path: str) -> Dict[str, bool]:
+    """Prior screening verdicts -> {commit: passed_without_context}. Transient
+    rows are ignored so a 429 during screening is retried, never cached as a
+    verdict."""
+    verdicts: Dict[str, bool] = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for ln in f:
+                if ln.strip():
+                    r = json.loads(ln)
+                    if not is_transient_error(r):
+                        verdicts[r["commit"]] = bool(r["passed"])
+    return verdicts
+
+
 def run(args) -> None:
     global MAX_OUTPUT_TOKENS
     MAX_OUTPUT_TOKENS = args.max_output_tokens   # backends read this module global
@@ -404,6 +454,18 @@ def run(args) -> None:
     for p in providers:
         if p not in PROVIDERS:
             sys.exit(f"unknown provider {p!r}; known: {PROVIDERS}")
+
+    # The gate spends the `none` arm as the screen, so it stops being a measured
+    # arm (it would be 0-by-construction on the retained set — see SCREEN_PROVIDER).
+    context_providers = list(providers)
+    if args.sensitivity_gate:
+        if SCREEN_PROVIDER not in providers:
+            sys.exit(f"--sensitivity-gate screens with the {SCREEN_PROVIDER!r} arm; "
+                     f"add it to --providers")
+        providers = [p for p in providers if p != SCREEN_PROVIDER]
+        if len(providers) < 2:
+            sys.exit("--sensitivity-gate leaves fewer than 2 measured arms; "
+                     f"pass at least two providers besides {SCREEN_PROVIDER!r}")
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     # gold and empty self-tests must land in SEPARATE files: resume keys on
@@ -419,6 +481,11 @@ def run(args) -> None:
     # un-judgeable tasks (gold patch fails in this env) are logged here, kept
     # out of the results file so they never enter the provider comparison.
     skip_path = out_path[:-len(".jsonl")] + ".skipped.jsonl"
+    # Screening verdicts live outside the results file so the degenerate `none`
+    # rows can never be mistaken for a baseline arm, and so a resumed run does
+    # not re-pay for a screen it already made.
+    screen_path = out_path[:-len(".jsonl")] + ".screen.jsonl"
+    screened = load_screen(screen_path) if args.sensitivity_gate else {}
     # Resume set: a (commit, provider, sample) counts as done only if it's a
     # real measurement. Rows left behind by a transient infra failure (429/5xx/
     # network) are NOT counted, so a re-run retries them instead of baking in a
@@ -475,7 +542,7 @@ def run(args) -> None:
                                  "--", *task.test_files).stdout
                 contexts = {
                     p: compile_provider_context(index, p, seeds, args.context_tokens)
-                    for p in providers
+                    for p in context_providers
                 }
             finally:
                 wt.remove()
@@ -499,6 +566,50 @@ def run(args) -> None:
                             "ts": time.time()}) + "\n")
                     print(f"[{ti}] {task.commit[:10]} SKIP: gold patch fails in "
                           f"this env (un-judgeable) -> {os.path.basename(skip_path)}")
+                    continue
+
+            # Sensitivity gate: does this task need context at all?
+            if args.sensitivity_gate:
+                solved_blind = screened.get(task.commit)
+                if solved_blind is None:
+                    srow = {"commit": task.commit, "repo": task.repo,
+                            "provider": SCREEN_PROVIDER, "sample": 0,
+                            "screen": True,
+                            "backend": None if args.mock else args.backend,
+                            "model": None if args.mock else args.model,
+                            "context_tokens_budget": args.context_tokens,
+                            "n_seeds": len(seeds), "ts": time.time()}
+                    if args.mock:
+                        # Self-test: --mock gold must screen EVERY task out (the
+                        # patch passes without context), --mock empty must retain
+                        # every task. Either outcome failing means the gate is broken.
+                        screen_patch = task.gold_patch if args.mock == "gold" else None
+                        srow["mock"] = args.mock
+                    else:
+                        gen = generate_patch(args.backend, client, args.model, task,
+                                             seed_sources, contexts[SCREEN_PROVIDER],
+                                             test_diff)
+                        screen_patch = gen["patch"]
+                        srow.update({"stop_reason": gen["stop_reason"],
+                                     "gen_error": gen["error"], "usage": gen["usage"],
+                                     "patch": (gen["patch"] or "")[:4000]})
+                        if args.sleep:
+                            time.sleep(args.sleep)
+                    if is_transient_error(srow):
+                        # Unknown, not "informative" — leave the task unscreened
+                        # so a re-run retries it rather than admitting it blind.
+                        with open(screen_path, "a", encoding="utf-8") as sc:
+                            sc.write(json.dumps(srow) + "\n")
+                        print(f"[{ti}] {task.commit[:10]} screen  "
+                              f"{srow['gen_error']} — retry later")
+                        continue
+                    srow.update(apply_and_test(repo, task, screen_patch, scratch))
+                    with open(screen_path, "a", encoding="utf-8") as sc:
+                        sc.write(json.dumps(srow) + "\n")
+                    solved_blind = bool(srow["passed"])
+                if solved_blind:
+                    print(f"[{ti}] {task.commit[:10]} SKIP: solved without context "
+                          f"(uninformative) -> {os.path.basename(screen_path)}")
                     continue
 
             for provider in providers:
@@ -543,6 +654,15 @@ def run(args) -> None:
 # Reporting — paired per-task comparison, Wilcoxon + Holm
 # ---------------------------------------------------------------------------
 
+def is_measurement(row: dict) -> bool:
+    """True for a scoreable arm result. Excludes the two sidecar row shapes that
+    share the results directory and get swept up by a `results/*.jsonl` glob:
+    gold-gate skips (no `provider` at all) and sensitivity-gate screens (which
+    DO carry provider='none' and would otherwise be silently counted as a
+    baseline arm — the exact confound the gate exists to avoid)."""
+    return "provider" in row and not row.get("screen")
+
+
 def _load_measurements(path: str) -> tuple:
     """Load one results file → (rows, n_transient). Dedupe to one measurement
     per (commit, provider, sample) keeping the LAST (a retried task appends a
@@ -553,6 +673,8 @@ def _load_measurements(path: str) -> tuple:
     dedup: Dict[tuple, dict] = {}
     n_transient = 0
     for r in raw:
+        if not is_measurement(r):
+            continue
         if is_transient_error(r):
             n_transient += 1
             continue
@@ -608,6 +730,27 @@ def _report_rows(rows: List[dict], label: str, n_transient: int = 0) -> None:
         means[p] = sum(vals) / len(vals) if vals else 0.0
         print(f"{p:18s} {means[p]:9.3f}")
 
+    # Discrimination diagnostic. A paired test can only see tasks where the arms
+    # actually disagree: tasks every arm passes (ceiling) or every arm fails
+    # (floor) contribute a zero difference to every pair and carry no signal. If
+    # informative == 0 the null is a property of the TASK SET, not evidence that
+    # the arms are equivalent — the fix is task selection (--sensitivity-gate
+    # removes the ceiling half), not more samples.
+    if common and len(providers) >= 2:
+        ceiling = floor = 0
+        for c in common:
+            vals = [sum(by_pc[(p, c)]) / len(by_pc[(p, c)]) for p in providers]
+            if all(v == 1.0 for v in vals):
+                ceiling += 1
+            elif all(v == 0.0 for v in vals):
+                floor += 1
+        informative = len(common) - ceiling - floor
+        print(f"\ndiscrimination: {informative}/{len(common)} tasks separate the arms "
+              f"({ceiling} solved by all = ceiling, {floor} solved by none = floor)")
+        if not informative:
+            print("  !! no task distinguishes any arm — this result set cannot "
+                  "support ANY claim about retrieval, in either direction")
+
     if len(common) >= 6 and len(providers) >= 2:
         print("\nPaired Wilcoxon (two-sided) vs. top arm, Holm-corrected; "
               "delta = top−arm pass rate, rbc = rank-biserial effect size:")
@@ -657,10 +800,12 @@ def main() -> None:
     ap.add_argument("--tasks", help="tasks JSON from tasks.py")
     ap.add_argument("--repo", help="path to the benchmark repo clone")
     ap.add_argument("--providers", default=",".join(PROVIDERS))
-    ap.add_argument("--backend", choices=["anthropic", "gemini", "groq", "openrouter"],
+    ap.add_argument("--backend",
+                    choices=["anthropic", "gemini", "groq", "openrouter", "mistral"],
                     default="anthropic",
                     help="LLM provider for generation (mock modes ignore this). "
-                         "gemini/groq/openrouter go over REST (requests only, no SDK)")
+                         "gemini/groq/openrouter/mistral go over REST (requests only, "
+                         "no SDK)")
     ap.add_argument("--model", default=None,
                     help=f"model id; defaults per --backend: {DEFAULT_MODELS}")
     ap.add_argument("--samples", type=int, default=1,
@@ -683,6 +828,12 @@ def main() -> None:
                     help="do NOT re-verify gold->pass per task before scoring "
                          "(by default un-judgeable tasks are skipped and logged "
                          "to <repo>.skipped.jsonl)")
+    ap.add_argument("--sensitivity-gate", action="store_true",
+                    help="screen each task with the 'none' arm first and keep only "
+                         "the tasks it FAILS (a task the model solves blind cannot "
+                         "discriminate retrieval arms). Spends 'none' as the screen, "
+                         "logging it to <repo>.screen.jsonl, and measures the "
+                         "remaining arms head-to-head")
     ap.add_argument("--scratch", default=os.environ.get("TMPDIR", "/tmp"))
     ap.add_argument("--report", metavar="RESULTS_JSONL", nargs="+",
                     help="summarize one or more results files and exit; with "

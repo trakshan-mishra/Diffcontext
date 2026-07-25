@@ -1,3 +1,13 @@
+# Secrets — API keys belong in the environment or an untracked .env, never in
+# a tracked file (a pasted key gets committed and must then be rotated).
+.env
+.env.*
+*.key
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+
 # Python build artifacts
 __pycache__/
 *.pyc
