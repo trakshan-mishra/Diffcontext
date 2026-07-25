@@ -9,7 +9,12 @@ thesis of combining the two signals.
 import sys
 from pathlib import Path
 
-import numpy as np
+import pytest
+
+# numpy is a benchmark-only dependency (requirements-benchmark.txt), not a
+# runtime one — the core library ships with zero dependencies. Skip rather
+# than fail collection on the test matrix, which installs only .[dev].
+np = pytest.importorskip("numpy", reason="benchmark deps not installed")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

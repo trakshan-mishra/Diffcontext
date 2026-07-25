@@ -76,6 +76,8 @@ select = ["E4", "E7", "E9", "F"]  # pyflakes + core pycodestyle; enforced in CI
 "diffcontext/languages/typescript.py" = ["E402"]
 # pytest.importorskip must run before the imports it guards.
 "tests/test_typescript_adapter.py" = ["E402"]
+"tests/test_semantic_ablation.py" = ["E402"]
+"tests/test_semantic_mine.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.9"

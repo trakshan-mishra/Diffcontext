@@ -39,6 +39,24 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
+  semantic-harness-tests:
+    # The benchmark-harness tests (semantic mining, audit, gap set, ablation)
+    # import numpy and rank_bm25, which are benchmark-only dependencies — the
+    # matrix above installs .[dev] only, so they importorskip there. This job
+    # installs them so the harness tests actually execute somewhere. Pinned
+    # numpy in requirements-benchmark.txt does not support 3.9, which is why
+    # this is a single-version job rather than part of the matrix.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + benchmark deps
+        run: pip install -e .[dev] -r requirements-benchmark.txt
+      - name: Run harness tests
+        run: pytest tests/ -v
+
   retrieval-quality-gate:
     # Re-runs the hardened co-change benchmark on flask and fails if
     # retrieval quality drops below the frozen floors in
