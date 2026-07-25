@@ -468,13 +468,13 @@ def run(args) -> None:
                      f"pass at least two providers besides {SCREEN_PROVIDER!r}")
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    # gold and empty self-tests must land in SEPARATE files: resume keys on
-    # (commit, provider, sample), so a shared `.mock.jsonl` would let an empty
-    # run skip rows a gold run already wrote (and vice versa), silently mixing
-    # the two self-tests.
-    # --tag keeps different models/runs in separate files (<repo>.<tag>.jsonl):
-    # results from two models must never share a file, since resume/report key
-    # on (commit, provider, sample) and would silently blend them.
+    # --tag separates result files per model run. Resume is keyed by
+    # (commit, provider, sample) with no model field, so two models sharing one
+    # file would make the second skip every row as "already done" and the report
+    # would mix models across arms — a tag per model keeps each run self-contained.
+    # The same argument splits the gold and empty self-tests into SEPARATE files:
+    # with a shared `.mock.jsonl` an empty run would skip rows a gold run already
+    # wrote, silently blending the two.
     tag = f".{args.tag}" if args.tag else ""
     suffix = f".mock.{args.mock}.jsonl" if args.mock else ".jsonl"
     out_path = os.path.join(RESULTS_DIR, os.path.basename(repo) + tag + suffix)
@@ -516,11 +516,17 @@ def run(args) -> None:
             if not client:
                 sys.exit("gemini backend needs GEMINI_API_KEY or GOOGLE_API_KEY "
                          "in the environment")
-        else:  # groq / openrouter — OpenAI-compatible REST gateways
+        else:  # groq / openrouter / mistral — OpenAI-compatible REST gateways
             base_url, key_env = OPENAI_COMPAT[args.backend]
-            api_key = os.environ.get(key_env)
+            # OPENAI_BASE_URL points any of these backends at another
+            # OpenAI-compatible free tier (Cerebras, a local vLLM, ...) without a
+            # code change; OPENAI_API_KEY is the generic key fallback.
+            base_url = os.environ.get("OPENAI_BASE_URL", base_url)
+            api_key = os.environ.get(key_env) or os.environ.get("OPENAI_API_KEY")
             if not api_key:
-                sys.exit(f"{args.backend} backend needs {key_env} in the environment")
+                sys.exit(f"{args.backend} backend needs {key_env} or OPENAI_API_KEY "
+                         f"in the environment (set OPENAI_BASE_URL to target another "
+                         f"OpenAI-compatible gateway)")
             client = (base_url, api_key)
 
     scratch = os.path.join(args.scratch, "diffcontext-downstream")
@@ -631,6 +637,11 @@ def run(args) -> None:
                         patch = None
                         row.update({"mock": "empty"})
                     else:
+                        # Proactive throttle: pause before each call to stay under
+                        # free-tier per-minute rate limits, so 429 backoff stays a
+                        # rare fallback rather than the common path.
+                        if args.sleep:
+                            time.sleep(args.sleep)
                         gen = generate_patch(
                             args.backend, client, args.model, task,
                             seed_sources, contexts[provider], test_diff)
@@ -811,11 +822,13 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=1,
                     help="generations per (task, provider)")
     ap.add_argument("--sleep", type=float, default=0.0,
-                    help="seconds to pause between generations — throttle to stay "
-                         "under a free-tier per-minute request cap (default 0)")
+                    help="seconds to pause before each LLM generation, to stay "
+                         "under free-tier per-minute rate limits (0 = no throttle)")
     ap.add_argument("--tag", default=None,
-                    help="suffix results as <repo>.<tag>.jsonl — use a per-model "
-                         "tag so different models never share a results file")
+                    help="suffix for the results filename (e.g. the model name), so "
+                         "each model writes its own resumable file: "
+                         "<repo>.<tag>.jsonl. Keep one tag per model — mixing "
+                         "models in one file confounds the paired report.")
     ap.add_argument("--context-tokens", type=int, default=DEFAULT_CONTEXT_TOKENS)
     ap.add_argument("--max-output-tokens", type=int, default=MAX_OUTPUT_TOKENS,
                     help=f"cap on generated tokens (default {MAX_OUTPUT_TOKENS}). "
