@@ -191,11 +191,26 @@ def main() -> None:
             missing.append(name)
             continue
         index = index_repository(os.path.abspath(r))
-        pooled["general"].extend(run_repo(index, id2vec, load_general(
-            os.path.join(args.pairs_dir, name + ".jsonl")), args.k))
-        pooled["gap"].extend(run_repo(index, id2vec, load_gap(
-            os.path.join(args.gap_dir, name + ".jsonl")), args.k))
-        print(f"scored {name}: {meta.get('model', '?')} dim={meta.get('dim')}")
+        gen_q = load_general(os.path.join(args.pairs_dir, name + ".jsonl"))
+        gap_q = load_gap(os.path.join(args.gap_dir, name + ".jsonl"))
+        gen_recs = run_repo(index, id2vec, gen_q, args.k)
+        gap_recs = run_repo(index, id2vec, gap_q, args.k)
+        pooled["general"].extend(gen_recs)
+        pooled["gap"].extend(gap_recs)
+
+        # Embedding coverage is the tripwire for a drifted corpus: vectors
+        # are keyed by symbol id at a specific HEAD, so a repo checked out at the
+        # wrong commit joins partially and quietly shrinks the scored set instead
+        # of failing. Anything well under 100% means re-check the pins
+        # (benchmarks/semantic/pin_repos.py --check) before reading the metrics.
+        n_sym = len(index.symbols)
+        covered = sum(1 for s in index.symbols if s in id2vec)
+        cov = covered / n_sym if n_sym else 0.0
+        flag = "" if cov >= 0.99 else "   <-- PARTIAL JOIN, check pin_repos.py --check"
+        print(f"scored {name}: {meta.get('model', '?')} dim={meta.get('dim')} | "
+              f"symbols embedded {covered}/{n_sym} ({cov:.0%}){flag}")
+        print(f"    queries scored: general {len(gen_recs)}/{len(gen_q)}, "
+              f"gap {len(gap_recs)}/{len(gap_q)}")
     if missing:
         print(f"\n!! no embeddings for {', '.join(missing)} — run embed_symbols.py "
               f"for these (Colab/Kaggle GPU), then re-run.\n")
