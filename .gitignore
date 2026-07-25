@@ -26,3 +26,13 @@ benchmarks/results/
 benchmarks/downstream/results/
 benchmark_results.json
 DiffContext_Status_Summary.pdf
+sweep.log
+
+# Semantic eval corpora: bulk data is regenerable from the scripts, and each
+# directory's manifest (kept in git) records the params/seed that produced it.
+# embeddings/ is a multi-GB vector cache built on a GPU — never commit it.
+benchmarks/semantic/embeddings/
+benchmarks/semantic/results/
+benchmarks/semantic/pairs/*.jsonl
+benchmarks/semantic/gap/*.jsonl
+benchmarks/semantic/audit/*.csv
