@@ -9,6 +9,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+# mine_pairs imports eval_v2_hardened -> baselines -> rank_bm25, all
+# benchmark-only dependencies (requirements-benchmark.txt). Skip rather than
+# fail collection on the test matrix, which installs only .[dev].
+pytest.importorskip("rank_bm25", reason="benchmark deps not installed")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from benchmarks.semantic.mine_pairs import MinedPair, build_repo_pairs
