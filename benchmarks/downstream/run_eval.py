@@ -400,7 +400,13 @@ def load_tasks(path: str) -> List[Task]:
 
 
 def result_key(row: dict) -> tuple:
-    return (row["commit"], row["provider"], row["sample"])
+    """Identity of one measurement. The model is PART of the key: the same
+    (commit, provider, sample) measured by two models are two different
+    measurements, not a retry of one. Omitting it made a resumed run skip rows
+    another model had already written, and made last-wins dedup silently drop
+    the earlier model's result when two models landed in one file (which
+    --tag is supposed to prevent, but does not enforce)."""
+    return (row.get("model"), row["commit"], row["provider"], row["sample"])
 
 
 def is_transient_error(row: dict) -> bool:
@@ -469,9 +475,9 @@ def run(args) -> None:
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     # --tag separates result files per model run. Resume is keyed by
-    # (commit, provider, sample) with no model field, so two models sharing one
-    # file would make the second skip every row as "already done" and the report
-    # would mix models across arms — a tag per model keeps each run self-contained.
+    # (model, commit, provider, sample), so a shared file no longer makes the
+    # second model skip every row as "already done" — but keep one tag per model
+    # anyway: it keeps each run self-contained and retryable on its own.
     # The same argument splits the gold and empty self-tests into SEPARATE files:
     # with a shared `.mock.jsonl` an empty run would skip rows a gold run already
     # wrote, silently blending the two.
@@ -620,15 +626,17 @@ def run(args) -> None:
 
             for provider in providers:
                 for sample in range(args.samples):
-                    key = (task.commit, provider, sample)
-                    if key in done:
-                        continue
                     row = {"commit": task.commit, "repo": task.repo,
                            "provider": provider, "sample": sample,
                            "backend": None if args.mock else args.backend,
                            "model": None if args.mock else args.model,
                            "context_tokens_budget": args.context_tokens,
                            "n_seeds": len(seeds), "ts": time.time()}
+                    # Build the resume key from the row itself, through the same
+                    # function that read it back — the two sides cannot drift
+                    # apart, and a skipped row costs only this dict.
+                    if result_key(row) in done:
+                        continue
 
                     if args.mock == "gold":
                         patch = task.gold_patch
@@ -725,19 +733,33 @@ def _report_rows(rows: List[dict], label: str, n_transient: int = 0) -> None:
     if n_transient:
         print(f"note: dropped {n_transient} transient-error row(s) "
               f"(429/5xx/network — re-run to retry them)")
-    # per (provider, commit): mean pass over samples
+    # The paired unit is (model, commit) — NOT commit. The claim under test is
+    # "with the model fixed, changing the provider changes the outcome", so a
+    # pair is only valid within one model. Keying by commit alone averaged the
+    # SAME task across different models, which turned model disagreement into
+    # apparent arm discrimination: on the July corpus that printed a pooled
+    # `discrimination: 3/4` while every per-model file printed 0/N.
+    # Carrying the model in the unit is also what makes pooling legitimate —
+    # each pair stays model-pure, and pooling just adds more pairs.
     by_pc: Dict[tuple, List[float]] = {}
     for r in rows:
-        by_pc.setdefault((r["provider"], r["commit"]), []).append(1.0 if r["passed"] else 0.0)
+        unit = (r.get("model"), r["commit"])
+        by_pc.setdefault((r["provider"], unit), []).append(1.0 if r["passed"] else 0.0)
     providers = sorted({p for p, _ in by_pc})
-    commits = sorted({c for _, c in by_pc})
-    common = [c for c in commits if all((p, c) in by_pc for p in providers)]
+    # model may be None (mock rows) alongside real ids, so sort on a total order.
+    units = sorted({u for _, u in by_pc}, key=lambda u: (str(u[0]), str(u[1])))
+    common = [u for u in units if all((p, u) in by_pc for p in providers)]
 
-    print(f"{len(rows)} rows, {len(commits)} tasks, {len(common)} with every provider\n")
-    print(f"{'provider':18s} {'pass rate':>9s}   (paired over {len(common)} tasks)")
+    n_models = len({m for m, _ in units})
+    unit_name = "task-instances" if n_models > 1 else "tasks"
+    gloss = f" ({n_models} models x task)" if n_models > 1 else ""
+    print(f"{len(rows)} rows, {len(units)} {unit_name}{gloss}, "
+          f"{len(common)} with every provider\n")
+    print(f"{'provider':18s} {'pass rate':>9s}   "
+          f"(paired over {len(common)} {unit_name})")
     means = {}
     for p in providers:
-        vals = [sum(by_pc[(p, c)]) / len(by_pc[(p, c)]) for c in common]
+        vals = [sum(by_pc[(p, u)]) / len(by_pc[(p, u)]) for u in common]
         means[p] = sum(vals) / len(vals) if vals else 0.0
         print(f"{p:18s} {means[p]:9.3f}")
 
@@ -749,8 +771,8 @@ def _report_rows(rows: List[dict], label: str, n_transient: int = 0) -> None:
     # removes the ceiling half), not more samples.
     if common and len(providers) >= 2:
         ceiling = floor = 0
-        for c in common:
-            vals = [sum(by_pc[(p, c)]) / len(by_pc[(p, c)]) for p in providers]
+        for u in common:
+            vals = [sum(by_pc[(p, u)]) / len(by_pc[(p, u)]) for p in providers]
             if all(v == 1.0 for v in vals):
                 ceiling += 1
             elif all(v == 0.0 for v in vals):
@@ -767,10 +789,10 @@ def _report_rows(rows: List[dict], label: str, n_transient: int = 0) -> None:
               "delta = top−arm pass rate, rbc = rank-biserial effect size:")
         ordered = sorted(providers, key=lambda p: -means[p])
         primary = ordered[0]
-        x = [sum(by_pc[(primary, c)]) / len(by_pc[(primary, c)]) for c in common]
+        x = [sum(by_pc[(primary, u)]) / len(by_pc[(primary, u)]) for u in common]
         rows_out, ps = [], []
         for p in ordered[1:]:
-            y = [sum(by_pc[(p, c)]) / len(by_pc[(p, c)]) for c in common]
+            y = [sum(by_pc[(p, u)]) / len(by_pc[(p, u)]) for u in common]
             _, pval, n_eff = wilcoxon_signed_rank(x, y)
             rows_out.append((p, means[primary] - means[p], _rank_biserial(x, y), pval, n_eff))
             ps.append(pval)
@@ -785,9 +807,15 @@ def _report_rows(rows: List[dict], label: str, n_transient: int = 0) -> None:
 
 def report(paths: List[str]) -> None:
     """Summarize one or more results files. With several files, prints a
-    per-file section and then a POOLED section over all of them (commits are
-    distinct SHAs across repos, so pooling simply widens the paired sample —
-    the fix for the per-repo power problem)."""
+    per-file section and then a POOLED section over all of them.
+
+    Pooling widens the paired sample two ways — more repos and more models —
+    and BOTH are safe only because the paired unit is (model, commit): commits
+    are distinct SHAs across repos, and the model is carried explicitly, so no
+    pair ever straddles two models. It is not safe to pool on commit alone;
+    the same repo measured by several models reuses the same SHAs, and
+    averaging those together reads model disagreement as arm discrimination.
+    """
     all_rows: List[dict] = []
     any_rows = False
     for path in paths:
@@ -797,6 +825,15 @@ def report(paths: List[str]) -> None:
             print(f"no valid rows ({n_transient} transient-error rows dropped)\n")
             continue
         any_rows = True
+        # --tag is meant to give each model its own file; nothing enforces it.
+        # A mixed file still reports correctly (the unit carries the model), but
+        # it breaks resume-per-model, so say so rather than let it pass silently.
+        models = {r.get("model") for r in rows}
+        if len(models) > 1:
+            print(f"===== {os.path.basename(path)} =====")
+            print(f"warning: this file mixes {len(models)} models "
+                  f"({', '.join(sorted(str(m) for m in models))}) — "
+                  f"one --tag per model keeps resume and retries per-model\n")
         _report_rows(rows, os.path.basename(path), n_transient)
         all_rows.extend(rows)
     if not any_rows:

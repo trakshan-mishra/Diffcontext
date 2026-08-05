@@ -99,8 +99,10 @@ These are done and validated — do not rebuild them:
    stay under a per-minute request cap; default 0 preserves prior behavior.
 7. **Pooled cross-repo report.** `--report` accepts multiple JSONL paths and
    prints each per-repo section plus a POOLED section over all of them (the
-   fix for the per-repo power problem — commits are distinct SHAs so pooling
-   just widens the paired sample).
+   fix for the per-repo power problem). Pooling widens the paired sample across
+   both repos and models, and is safe because the paired unit is
+   `(model, commit)`: commits are distinct SHAs across repos, and the model is
+   carried explicitly so no pair ever straddles two models.
 8. **Effect size in the report.** Each pairwise line reports the paired
    pass-rate delta and matched-pairs rank-biserial alongside p / Holm-p, so a
    null reads "no effect, delta≈0," not just "p>0.05."

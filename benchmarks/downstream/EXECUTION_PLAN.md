@@ -309,20 +309,32 @@ python benchmarks/downstream/run_eval.py --mock gold --sensitivity-gate \
 python benchmarks/downstream/auto_free_sweep.py --sensitivity-gate --tag gated
 ```
 
-Use a fresh `--tag`: resume keys on `(commit, provider, sample)` and would
-otherwise blend two different task-selection regimes.
+Use a fresh `--tag`: it keeps the two task-selection regimes in separate files
+so a resumed run never blends them.
 
 **The `discrimination:` line** in `--report` states how many tasks actually
 separate the arms, splitting the rest into ceiling (solved by all) and floor
 (solved by none), and says outright when a result set can support no claim:
 
 ```
-discrimination: 3/4 tasks separate the arms (0 solved by all = ceiling, 1 solved by none = floor)
+discrimination: 0/9 tasks separate the arms (3 solved by all = ceiling, 6 solved by none = floor)
+  !! no task distinguishes any arm — this result set cannot support ANY claim
+     about retrieval, in either direction
 ```
+
+That is the real line from the current corpus (36 measurements, 4 models).
 
 **Read it before any pass-rate table.** At `0/N`, the pass rates are
 uninterpretable regardless of what they show, and the honest report is "the
 task set cannot answer this", not "the arms are equivalent".
+
+> **Pairing unit.** A pair is one `(model, commit)`, never a bare commit. An
+> earlier version of the reporter keyed on commit alone, which averaged the same
+> task across models: a task one model passed and another failed became a `0.5`
+> for *every* arm, counted as "separating the arms". That printed a pooled
+> `discrimination: 3/4` on a corpus whose per-model files were all `0/N` — model
+> disagreement misread as a retrieval effect. Fixed, with the tied-arms case
+> pinned in `tests/test_downstream_eval.py`.
 
 ---
 

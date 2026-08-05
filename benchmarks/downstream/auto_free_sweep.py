@@ -45,9 +45,15 @@ def _skip_path(repo: str, tag: str) -> str:
     return os.path.join(RESULTS_DIR, f"{repo}.{tag}.skipped.jsonl")
 
 
-def _real_done(repo: str, tag: str) -> set:
-    """(commit, provider, sample) keys with a genuine measurement — transient
-    infra rows (api_error:*) are NOT counted, exactly as run_eval's resume does."""
+def _real_done(repo: str, tag: str, model) -> set:
+    """(commit, provider, sample) keys THIS model has a genuine measurement for —
+    transient infra rows (api_error:*) are NOT counted, exactly as run_eval's
+    resume does.
+
+    Rows from another model are skipped rather than counted as done. A tag is
+    supposed to hold one model, but nothing enforces it, and counting a foreign
+    model's row would retire work this model still owes — the driver would then
+    declare ALL DONE with measurements missing."""
     path, keys = _result_path(repo, tag), set()
     if not os.path.exists(path):
         return keys
@@ -57,6 +63,8 @@ def _real_done(repo: str, tag: str) -> set:
                 continue
             r = json.loads(ln)
             if str(r.get("gen_error") or "").startswith("api_error"):
+                continue
+            if r.get("model") != model:
                 continue
             keys.add((r["commit"], r["provider"], r["sample"]))
     return keys
@@ -98,11 +106,11 @@ def _commits(repo: str) -> list:
         return [t["commit"] for t in json.load(f)["tasks"]]
 
 
-def remaining(repos, providers, samples, tag) -> int:
-    """How many real measurements are still missing across all repos."""
+def remaining(repos, providers, samples, tag, model) -> int:
+    """How many real measurements `model` is still missing across all repos."""
     total = 0
     for repo in repos:
-        done = _real_done(repo, tag)
+        done = _real_done(repo, tag, model)
         skip = _skipped_commits(repo, tag) | _screened_out_commits(repo, tag)
         for c in _commits(repo):
             if c in skip:
@@ -171,7 +179,7 @@ def main() -> None:
 
     passes = 0
     while True:
-        rem_before = remaining(repos, measured, args.samples, args.tag)
+        rem_before = remaining(repos, measured, args.samples, args.tag, args.model)
         if rem_before == 0:
             print("[driver] ALL DONE — every task/provider/sample measured.")
             print("[driver] report:\n  python benchmarks/downstream/run_eval.py "
@@ -181,7 +189,7 @@ def main() -> None:
         print(f"[driver] pass {passes}: {rem_before} measurements remaining", flush=True)
         run_pass(repos, providers, args.samples, args.sleep, args.tag,
                  args.backend, args.model, args.sensitivity_gate)
-        rem_after = remaining(repos, measured, args.samples, args.tag)
+        rem_after = remaining(repos, measured, args.samples, args.tag, args.model)
         made = rem_before - rem_after
         print(f"[driver] pass {passes} done: +{made} measured, {rem_after} left",
               flush=True)
