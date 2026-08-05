@@ -71,13 +71,40 @@ Latencies are from a **warm** process (measured off the OTLP wire, see
 first-call cost — `rank_bm25` import plus corpus construction — not steady-state
 ranking cost. Quote the warm number.
 
+**Caveat on that column: it mixes first-call and steady-state cost across arms.**
+Arms run in a fixed sequence and each family pays its import + corpus
+construction on its first call, so a single-pass run charges that to whichever
+arm happens to go first — which is `diffcontext`. Re-running with the order
+reversed and with repeats separates the two:
+
+```
+python observability/trace_arms.py --repo /tmp/reqrepo \
+  --providers bm25 samefile diffcontext_gap diffcontext bm25 diffcontext
+```
+
+`rank_symbols`, in execution order:
+
+| position | arm | ms |
+|---|---|---|
+| 1 | `bm25` | 83.6 |
+| 2 | `samefile` | 0.4 |
+| 3 | `diffcontext_gap` | 24.7 |
+| 4 | `diffcontext` | 4.7 |
+| 5 | `bm25` (repeat) | 40.1 |
+| 6 | `diffcontext` (repeat) | 4.9 |
+
+Whichever of `diffcontext`/`diffcontext_gap` runs first pays ~24 ms — they share
+`_hybrid_ranking`, so the second one is ~5 ms. `rank_bm25` rebuilds its corpus on
+every call, so its steady state is ~40 ms on top of ~45 ms of first-call import.
+
 Two things worth a second look:
 
-- **`bm25` is ~7× slower than `diffcontext`** (96 ms vs 14 ms) for a
-  near-identical token fill. The strongest single baseline is also the most
-  expensive one, and the head-to-head numbers in `docs/BENCHMARKS.md` don't
-  surface that. Ratio is run-dependent (6.1×–6.8× observed); treat it as
-  "roughly an order of magnitude", not a fixed constant.
+- **`bm25` is roughly an order of magnitude slower than `diffcontext`** for a
+  near-identical token fill. Steady-state that is ~40 ms vs ~4.8 ms (**~8×**);
+  single-pass runs read 4×–7× depending on which arm goes first. The strongest
+  single baseline is also the most expensive one, and the head-to-head numbers in
+  `docs/BENCHMARKS.md` don't surface that. Quote it as an order of magnitude, not
+  a fixed constant — and say which regime you measured.
 - **`diffcontext_gap` fills only 78.5% of the budget** — it stops at the
   precision cutoff instead of packing to the line. Whether that's a win depends
   entirely on downstream pass rate, which is precisely what `run_eval.py`

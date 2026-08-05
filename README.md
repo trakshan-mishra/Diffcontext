@@ -201,6 +201,19 @@ pip install fastapi uvicorn python-multipart aiofiles
 uvicorn diffcontext-service.backend.main:app --port 8000
 ```
 
+## Tracing the retrieval pipeline
+
+[observability/](observability/) runs the five context providers
+(`diffcontext`, `diffcontext_gap`, `bm25`, `samefile`, `none`) as five
+comparable traces — same task, same budget, same seeds, only the provider
+changes — with per-arm latency and token fill. It ships a local OTLP
+receiver so claims can be checked against the decoded wire payload
+instead of a dashboard. Benchmark tooling, not part of the package.
+
+```bash
+python observability/trace_arms.py --repo /tmp/reqrepo
+```
+
 ## Testing & contributing
 
 ```bash
