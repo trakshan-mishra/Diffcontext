@@ -24,9 +24,9 @@ This is the full design walkthrough. For the 30-second version, see the [Introdu
                  ┌───────────────────────▼─────────────────────────┐
                  │                 analyze_impact                   │
                  │  impact/blast_radius: callers/callees traversal  │
-                 │  impact/scoring:  graph decay scores      (0.50) │
-                 │  lexical.py:      BM25 over symbol source (0.35) │
-                 │  same-file co-location                    (0.15) │
+                 │  impact/scoring:  graph decay scores      (0.30) │
+                 │  lexical.py:      BM25 over symbol source (0.50) │
+                 │  same-file co-location                    (0.20) │
                  └───────────────────────┬─────────────────────────┘
                                          │  ranked candidates
                  ┌───────────────────────▼─────────────────────────┐
@@ -57,11 +57,11 @@ When a developer changes a function, the _other_ code they end up touching in th
 
 | Signal | Weight | What it finds | Blind spot |
 |--------|--------|---------------|------------|
-| **Call graph** | 0.50 | Callers and callees of the changed function | Related code that never calls yours |
-| **BM25 lexical** | 0.35 | Functions with similar rare tokens | Noise that merely _sounds_ similar |
-| **Same-file** | 0.15 | Code in the same file | Weak, but catches what the others miss |
+| **Call graph** | 0.30 | Callers and callees of the changed function | Related code that never calls yours |
+| **BM25 lexical** | 0.50 | Functions with similar rare tokens | Noise that merely _sounds_ similar |
+| **Same-file** | 0.20 | Code in the same file | Weak, but catches what the others miss |
 
-The hybrid — **graph 0.5 / BM25 0.35 / same-file 0.15** — beat all three in isolation in recall on 4 of 5 benchmark repos. Use `--graph-only` to turn the blend off when you want structural certainty only.
+The hybrid beats every signal in isolation on recall (0.705 vs 0.619 BM25, 0.558 graph, 0.506 same-file). The weights above — **graph 0.3 / BM25 0.5 / same-file 0.2**, `HYBRID_WEIGHTS` in `pipeline.py` — are the leave-one-repo-out-validated blend from the 2026-07 rigor pass; they beat the previously shipped graph-heavy `[0.5, 0.35, 0.15]` on 4 of 5 held-out folds (+1.2 to +2.4 recall points, individually not significant). The old weights were same-repo-tuned and are retracted; see [Benchmarks](/docs/benchmarks). Use `--graph-only` to turn the blend off when you want structural certainty only.
 
 ## Module Map
 
