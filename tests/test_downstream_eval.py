@@ -11,12 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from benchmarks.downstream.providers import _estimate_tokens, render_context
 from benchmarks.downstream.run_eval import (
     _load_measurements,
     _report_rows,
     is_measurement,
     is_transient_error,
     load_screen,
+    report,
     result_key,
 )
 
@@ -70,6 +72,44 @@ def test_result_key_separates_samples_and_arms():
     assert len(keys) == 3
 
 
+def test_result_key_separates_models():
+    """Two models answering the same (task, arm, sample) are two measurements,
+    not a retry. Without the model in the key the resume set skipped rows another
+    model had written, and dedup kept only the last model to touch the file."""
+    a = _row("c", "diffcontext", True, model="gemini-flash-latest")
+    b = _row("c", "diffcontext", False, model="llama-3.3-70b")
+    assert result_key(a) != result_key(b)
+
+
+def test_resume_key_matches_the_key_the_writer_builds():
+    """Resume compares a key built from an about-to-run row against keys read
+    back out of the results file. If those two constructions drift, nothing
+    crashes — resume just stops matching and every run re-measures everything,
+    which on a quota-bound free tier is the difference between finishing and
+    never finishing. Pin that both sides agree, including the mock shape where
+    model is None."""
+    read_back = _row("c1", "diffcontext", True, model="m", backend="gemini")
+    about_to_run = {"commit": "c1", "repo": "r", "provider": "diffcontext",
+                    "sample": 0, "backend": "gemini", "model": "m",
+                    "context_tokens_budget": 4000, "n_seeds": 3, "ts": 123.0}
+    assert result_key(about_to_run) == result_key(read_back)
+
+    mock_read_back = _row("c1", "diffcontext", True, model=None, backend=None)
+    mock_about_to_run = dict(about_to_run, model=None, backend=None)
+    assert result_key(mock_about_to_run) == result_key(mock_read_back)
+
+
+def test_two_models_in_one_file_are_not_collapsed(tmp_path):
+    """--tag is meant to give each model its own file but does not enforce it;
+    results/requests.gemini25.jsonl really does hold two. Both must survive."""
+    path = _write(tmp_path, "r.jsonl", [
+        _row("c1", "diffcontext", True, model="m1"),
+        _row("c1", "diffcontext", False, model="m2"),
+    ])
+    rows, _ = _load_measurements(path)
+    assert sorted((r["model"], r["passed"]) for r in rows) == [("m1", True), ("m2", False)]
+
+
 def test_sidecar_rows_are_not_measurements():
     """`results/*.jsonl` sweeps up gold-gate skips and gate screens. The skip
     shape has no provider (it used to crash --report); the screen shape has
@@ -88,6 +128,19 @@ def test_report_ignores_skipped_and_screen_sidecar_files(tmp_path):
     ])
     rows, _ = _load_measurements(path)
     assert [(r["commit"], r["provider"]) for r in rows] == [("c1", "diffcontext")]
+
+
+def test_report_warns_when_one_file_mixes_models(tmp_path, capsys):
+    """A mixed file still reports correctly, but it breaks per-model resume, so
+    the reader is told rather than left to find out from the row counts."""
+    path = _write(tmp_path, "r.jsonl", [
+        _row("c1", "diffcontext", True, model="m1"),
+        _row("c1", "bm25", False, model="m2"),
+    ])
+    report([path])
+    out = capsys.readouterr().out
+    assert "warning: this file mixes 2 models" in out
+    assert "m1" in out and "m2" in out
 
 
 # ---- sensitivity gate --------------------------------------------------------
@@ -138,14 +191,28 @@ def test_driver_stops_counting_screened_out_commits(tmp_path, monkeypatch):
         json.dumps(_row("hard", p, False)) + "\n" for p in ("diffcontext", "bm25")),
         encoding="utf-8")
     # 'hard' is fully measured, 'solved' is retired -> nothing left to do
-    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t") == 0
+    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t", None) == 0
 
 
 def test_driver_still_owes_work_for_unscreened_commits(tmp_path, monkeypatch):
     afs, results = _sweep_env(tmp_path, monkeypatch, ["solved", "hard"])
     (results / "demo.t.screen.jsonl").write_text(
         json.dumps(_row("solved", "none", True, screen=True)) + "\n", encoding="utf-8")
-    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t") == 2  # 'hard' x 2 arms
+    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t", None) == 2  # 'hard' x 2 arms
+
+
+def test_driver_does_not_retire_work_using_another_models_rows(tmp_path, monkeypatch):
+    """If a tag file picks up a second model, its rows must not count as this
+    model's progress — otherwise the driver prints ALL DONE with measurements
+    it never made."""
+    afs, results = _sweep_env(tmp_path, monkeypatch, ["c1"])
+    (results / "demo.t.jsonl").write_text("".join(
+        json.dumps(_row("c1", p, True, model="other-model")) + "\n"
+        for p in ("diffcontext", "bm25")), encoding="utf-8")
+    # 'mine' has measured nothing, so it still owes both arms
+    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t", "mine") == 2
+    # ...and the model that did the work owes nothing
+    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t", "other-model") == 0
 
 
 def test_driver_ignores_rate_limited_screens(tmp_path, monkeypatch):
@@ -154,7 +221,7 @@ def test_driver_ignores_rate_limited_screens(tmp_path, monkeypatch):
     (results / "demo.t.screen.jsonl").write_text(
         json.dumps(_row("c1", "none", False, screen=True,
                         gen_error="api_error:http_429")) + "\n", encoding="utf-8")
-    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t") == 2
+    assert afs.remaining(["demo"], ["diffcontext", "bm25"], 1, "t", None) == 2
 
 
 # ---- discrimination diagnostic ----------------------------------------------
@@ -177,6 +244,49 @@ def test_reports_zero_discrimination_when_every_arm_ties(capsys):
     assert "cannot support ANY claim" in out
 
 
+def test_pooling_across_models_cannot_invent_discrimination(capsys):
+    """Regression for the defect that made the pooled report unsafe to read.
+
+    Two models, same commits, arms tied within each model: a strong model passes
+    everything, a weak one fails everything. No arm ever separates from another,
+    so the honest answer is 0 informative tasks.
+
+    Keying the paired unit on commit alone averaged the two models into one cell
+    (1.0 and 0.0 -> 0.5 for EVERY arm), which is neither all-pass nor all-fail,
+    so every task counted as 'separating the arms'. That is how the July corpus
+    printed a pooled `discrimination: 3/4` while all four per-model files
+    printed 0/N. Pure model disagreement, reported as a retrieval effect.
+    """
+    rows = []
+    for commit in ("t1", "t2", "t3"):
+        for provider in ("diffcontext", "bm25"):
+            rows.append(_row(commit, provider, True, model="strong"))
+            rows.append(_row(commit, provider, False, model="weak"))
+    _report_rows(rows, "pooled")
+    out = capsys.readouterr().out
+    assert "discrimination: 0/6 tasks separate the arms" in out
+    assert "3 solved by all = ceiling" in out
+    assert "3 solved by none = floor" in out
+    assert "cannot support ANY claim" in out
+    # and the unit is named honestly once more than one model is in play
+    assert "task-instances (2 models x task)" in out
+
+
+def test_within_one_model_real_disagreement_still_counts(capsys):
+    """The fix must not over-correct: a genuine arm split inside one model is
+    still discrimination."""
+    rows = [
+        _row("real", "diffcontext", True, model="m"),
+        _row("real", "bm25", False, model="m"),
+        _row("floor", "diffcontext", False, model="m"),
+        _row("floor", "bm25", False, model="m"),
+    ]
+    _report_rows(rows, "one-model")
+    out = capsys.readouterr().out
+    assert "discrimination: 1/2 tasks separate the arms" in out
+    assert "task-instances" not in out          # single model -> plain "tasks"
+
+
 def test_counts_only_tasks_where_arms_actually_disagree(capsys):
     rows = [
         _row("ceil", "diffcontext", True),  _row("ceil", "bm25", True),
@@ -187,3 +297,40 @@ def test_counts_only_tasks_where_arms_actually_disagree(capsys):
     out = capsys.readouterr().out
     assert "discrimination: 1/3 tasks separate the arms" in out
     assert "cannot support ANY claim" not in out
+
+
+# ---- budget is hard ----------------------------------------------------------
+# The whole rung-5 design holds the context budget fixed and varies only the
+# provider. A renderer that overshoots gives some arms more real tokens than
+# their budget says, which is a fairness defect in the comparison itself.
+
+class _Sym:
+    def __init__(self, code):
+        self.code = code
+
+
+class _Index:
+    def __init__(self, symbols):
+        self.symbols = symbols
+
+
+def test_rendered_context_never_exceeds_the_budget():
+    # Many small blocks: the case where join separators and per-block
+    # flooring accumulate fastest.
+    index = _Index({f"./m.py:f{i}": _Sym("def f():\n    return 1\n") for i in range(200)})
+    ranked = list(index.symbols)
+    for budget in (50, 100, 250, 500, 1000, 2000):
+        text = render_context(index, ranked, budget)
+        assert _estimate_tokens(text) <= budget, (
+            f"budget={budget} produced {_estimate_tokens(text)} tokens"
+        )
+
+
+def test_budget_accounts_for_the_join_separators():
+    # Two blocks that fit individually and by per-block sum, but not once
+    # the joiner is counted, must not both be emitted.
+    block = "x" * 100
+    index = _Index({"./a.py:a": _Sym(block), "./b.py:b": _Sym(block)})
+    budget = _estimate_tokens(f"# ./a.py:a\n{block}\n" * 2)
+    text = render_context(index, ["./a.py:a", "./b.py:b"], budget)
+    assert _estimate_tokens(text) <= budget
