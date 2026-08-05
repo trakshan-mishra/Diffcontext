@@ -1,4 +1,4 @@
-# Roadmap (post-rigor-pass, 2026-07-20)
+# Roadmap (post-rigor-pass, 2026-07-20; rung-5 status updated 2026-08-05)
 
 Every item states its measured motivation. Items land in this order
 unless a measurement says otherwise; each rung must be validated on
@@ -13,10 +13,52 @@ Design, already agreed: fixed model + fixed token budget, swap only the
 context provider (hybrid / BM25 / dense / grep-packing / gap-cutoff),
 generate patches for real tasks, judge with the repo's own test suite
 (SWE-bench-Lite-style subset plus `verify` cases with `task` fields).
-Needs LLM API access + budget. This eval is three things at once:
-the headline result, the de-contamination prerequisite for using
-co-change as a *ranking* signal (it is currently the eval's ground
-truth), and the external validation of the co-change proxy itself.
+This eval is three things at once: the headline result, the
+de-contamination prerequisite for using co-change as a *ranking* signal
+(it is currently the eval's ground truth), and the external validation of
+the co-change proxy itself.
+
+**The harness exists and has run. The blocker is not API budget — it is a
+task set that can discriminate.** Audited 2026-07-25 on 168 raw rows: 78%
+were `http_429` quota errors rather than measurements, and of what
+survived, the model either solved a task in *every* arm (ceiling) or
+failed it in *every* arm (floor). Both regimes are blind to retrieval
+quality by construction — the paired difference is 0 for every pair
+regardless of context. Adding samples cannot fix that; only changing the
+task set can. A null from a task set that cannot discriminate reads
+identically to a null from a retriever that does not help, and without a
+discrimination statistic those are indistinguishable.
+
+Shipped against that finding:
+
+- ~~**`--sensitivity-gate`.**~~ **Shipped 2026-07-25.** Screens each task
+  with the `none` arm and keeps only the ones it *fails*, placing
+  difficulty in the band where the model fails without context and
+  succeeds with it. Conditioning on `none` failing makes `none`
+  0-by-construction, so the gate spends it as the screen (logged to
+  `<repo>.screen.jsonl`, excluded from scoring by `is_measurement()`) and
+  reports the remaining arms unconfounded.
+- ~~**`discrimination:` diagnostic.**~~ **Shipped 2026-07-25.** `--report`
+  prints `N/M tasks separate the arms (ceiling / floor)` and states
+  outright when a result set supports no claim. **Read that line before
+  any pass-rate table.**
+- ~~**Paired unit `(model, commit)`.**~~ **Shipped 2026-08-05.** The
+  reporter previously paired on the bare commit, so pooling averaged the
+  same task across different models: a task one model passed and another
+  failed became 0.5 for *every* arm, which counts as separating them.
+  That printed a pooled `discrimination: 3/4` while all four per-model
+  files printed `0/N` — model disagreement misread as a retrieval effect,
+  on the exact line that is supposed to catch this. **Any pooled number
+  recorded before 2026-08-05 is void.** Corrected read on the same
+  corpus: all three arms 0.333, `discrimination: 0/9`, n_eff=0 — the null
+  is real and is still a task-set property.
+
+Next, in order: **(a)** build a task set in the sensitivity band — this is
+a task-design problem, not an infra one; **(b)** model capability, which
+is the real cost constraint rather than price (`gemini-flash-latest` is
+free and emits applying diffs; `--backend gemini`). Only once
+`discrimination:` is non-zero does any pass-rate comparison here mean
+anything.
 
 ## 2. Ship the measured wins from the rigor pass
 
@@ -36,8 +78,11 @@ truth), and the external validation of the co-change proxy itself.
 
 ## 3. Graph coverage fixes (both have named, measured failure modes)
 
-- **Override edges** across class hierarchies — the backend_dispatch
-  bucket is 0/20 for the graph today.
+- ~~**Override edges** across class hierarchies — the backend_dispatch
+  bucket is 0/20 for the graph today.~~ **Shipped** as dispatch-sibling
+  override edges (`graph_builder._add_sibling_override_edges`, phase 1G),
+  including the duck-typed case where the base never defines the method.
+  Families larger than 6 are skipped for hub protection; dunders excluded.
 - **if/try/with collector gap** — `def`s under `if TYPE_CHECKING:` /
   `try-except ImportError` get zero edges
   (`graph_builder._collect_function_nodes`, documented in its docstring).
@@ -59,6 +104,12 @@ ground truth; needs the independent downstream eval or a strict temporal
 split first). The cross-subsystem bucket is the prize — history is the
 only signal family with a path to the 15/20 that nothing content-based
 reaches.
+
+The temporal-split route is now partially unblocked: the semantic miner
+records `commit_ts` per pair (`benchmarks/semantic/mine_pairs.py`), which
+is the key a strict split needs — features may only be built from commits
+strictly older than a pair's `commit_ts`, or GT and feature are circular
+and the win is fake. The key is mined; no fusion model consumes it yet.
 
 ## 6. TypeScript to parity
 
