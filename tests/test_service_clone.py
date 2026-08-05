@@ -16,6 +16,7 @@ The service is optional (FastAPI isn't a core dependency), so the whole
 module skips when fastapi isn't installed.
 """
 
+import importlib.util
 import os
 import socket
 import sys
@@ -23,6 +24,18 @@ import sys
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
+# The service also needs python-multipart: /upload takes an UploadFile, and
+# FastAPI raises at ROUTE-BUILD time (i.e. on `import main`) when it is absent,
+# which surfaces as a collection ERROR that aborts the whole run rather than a
+# skip. It belongs to the same optional stack as fastapi itself (see
+# diffcontext-service/README.md), so skip alongside it instead of breaking
+# `pytest tests/` for anyone without the service deps installed. FastAPI accepts
+# either distribution spelling, so only skip when neither is importable.
+if not (importlib.util.find_spec("python_multipart")
+        or importlib.util.find_spec("multipart")):
+    pytest.skip("python-multipart not installed (optional service dependency)",
+                allow_module_level=True)
+
 from fastapi.testclient import TestClient  # noqa: E402
 
 sys.path.insert(

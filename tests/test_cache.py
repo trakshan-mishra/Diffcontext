@@ -87,6 +87,50 @@ class TestSymbolCache:
             assert len(calls) == 2
             assert "./mod.py:beta" not in symbols
 
+    def test_stale_row_under_other_path_form_does_not_collide(self, tmp_path):
+        # Symbol rows are keyed on symbols.id but cleared via ON DELETE CASCADE
+        # from files.file_path. Those only agree while Symbol.file matches the
+        # filepath being indexed. If the same file is ever recorded under two
+        # path forms (an adapter reporting relative paths, an indexing pass from
+        # a different cwd), the cascade clears nothing and the stale row used to
+        # collide: "UNIQUE constraint failed: symbols.id".
+        f = tmp_path / "mod.py"
+        f.write_text("def alpha():\n    pass\n")
+
+        def parse_reporting(file_value):
+            def parse(filepath):
+                sym_id = "./mod.py:alpha"
+                return {sym_id: Symbol(id=sym_id, file=file_value, name="alpha",
+                                       code=open(filepath).read().rstrip(), lineno=1)}
+            return parse
+
+        # Two spellings of one file: both open fine, both are distinct strings,
+        # so they are distinct primary keys in `files`.
+        abs_p = str(f)
+        alt_p = os.path.join(str(tmp_path), ".", "mod.py")
+        assert abs_p != alt_p and os.path.exists(alt_p)
+
+        with SymbolCache(str(tmp_path / "cache.db")) as cache:
+            # Pass 1 keys the file under `alt_p`, leaving a symbol row whose
+            # file_path is alt_p.
+            cache.get_or_parse(alt_p, parse_reporting(alt_p))
+
+            # Pass 2 indexes under `abs_p` while the symbol still reports alt_p.
+            # DELETE FROM files WHERE file_path = abs_p cascades to nothing, so
+            # pass 1's row survives and the id collides on insert.
+            f.write_text("def alpha():\n    return 1\n")
+            symbols = cache.get_or_parse(abs_p, parse_reporting(alt_p))
+            assert "./mod.py:alpha" in symbols
+            assert "return 1" in symbols["./mod.py:alpha"].code
+
+            # One row, carrying the new content — not a stale survivor.
+            rows = cache._conn.execute(
+                "SELECT COUNT(*), MAX(code) FROM symbols WHERE id = ?",
+                ("./mod.py:alpha",),
+            ).fetchone()
+            assert rows[0] == 1
+            assert "return 1" in rows[1]
+
     def test_persistence_across_connections(self, tmp_path):
         f = tmp_path / "mod.py"
         f.write_text("def alpha():\n    pass\n")
