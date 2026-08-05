@@ -40,7 +40,8 @@ gates; partial completion is explicitly allowed and disclosed, never hidden.
 | A2 | ≥ 2 independent models | full provider sweep completed on ≥ 2 models (e.g. Gemini + Groq-hosted) |
 | A3 | Task count | ≥ 20 validated tasks total across repos (more = stronger; state the number) |
 | A4 | Statistical test reported | paired Wilcoxon + Holm correction, per §11, with effect size |
-| A5 | Ordering holds | `diffcontext ≥ bm25 ≥ none` on point estimates on **both** models |
+| A5 | Ordering holds | `diffcontext ≥ bm25 ≥ none` on point estimates on **both** models (ungated runs). Under `--sensitivity-gate` the criterion is `diffcontext ≥ bm25`: `none` is spent as the screen and is 0-by-construction — see §13a |
+| A8 | Task set discriminates | `--report`'s `discrimination:` line shows > 0 tasks separating the arms. **Check this before reading A5** — at 0, no ordering claim is admissible either way |
 | A6 | Threats disclosed | oracle-localization, contamination, single-ecosystem limits stated in prose |
 | A7 | Reproducible | one command sequence (this plan) reproduces the JSONL from pinned SHAs |
 
@@ -270,10 +271,70 @@ alongside.
 | Per-minute 429 | High (free tier) | Low | `--sleep`; built-in backoff honors `retryDelay` |
 | Per-day quota exhausted | High | Low | Resume next day (same command); run one provider at a time |
 | Small task count → underpowered | Med | High | Scale via Phase 4; report n honestly; descriptive if <6 |
-| Pretraining contamination (`none` passes) | Med | Med | Report `none` rate explicitly; rely on paired deltas; note as threat |
+| Pretraining contamination (`none` passes) | Med | Med | `--sensitivity-gate` retires tasks solved without context; report the `discrimination:` line |
 | Oracle localization inflates realism | Certain | Med | Disclose in prose; frame claim as "given correct localization" |
 | Model refuses / emits no diff | Low | Low | Recorded as `gen_error`; counts as fail; report rate |
-| Weak free model → floor effect | Med | Med | If pass≈0 everywhere, signal is lost — switch to a stronger free model |
+| Weak free model → floor effect | Med | Med | If pass≈0 everywhere, signal is lost — switch to a stronger free model; the `discrimination:` line names the floor explicitly |
+| **Task set cannot discriminate** | **Observed** | **High** | Ceiling+floor tasks tie every arm regardless of context, so the sweep returns a null that looks like a finding. `--sensitivity-gate` + the `discrimination:` diagnostic — see §13a |
+
+---
+
+## 13a. The discrimination problem (observed, not hypothetical)
+
+An audit of the first accumulated sweep found the null was **a property of the
+task set, not evidence about retrieval**. 78% of rows were 429 quota errors; of
+what survived, the model either solved a task in *every* arm or failed it in
+*every* arm. Both regimes contribute a zero paired difference to every
+comparison, so the arms tie no matter how many samples are added. Nothing in
+the harness said so — the pass-rate table looked like a finding.
+
+Two mechanisms close this:
+
+**`--sensitivity-gate`** screens each task with the no-context arm and keeps
+only the ones it *fails*. A task the model solves blind cannot separate
+retrieval arms; including it only pulls every arm toward the ceiling.
+
+Conditioning on `none` failing makes `none` 0-by-construction on the retained
+set, so it is deliberately **not** reported as a baseline there. The gate spends
+it as the screen, logs it to `<repo>.screen.jsonl` (excluded from scoring by
+`is_measurement()`), and measures the remaining arms head-to-head — neither of
+which was used for selection, so that comparison stays unconfounded.
+
+```bash
+# self-test first: with the gate on, --mock gold must retire EVERY task
+python benchmarks/downstream/run_eval.py --mock gold --sensitivity-gate \
+    --tasks benchmarks/downstream/tasks/requests.json \
+    --repo benchmark_repos/requests --providers diffcontext,bm25,none
+
+python benchmarks/downstream/auto_free_sweep.py --sensitivity-gate --tag gated
+```
+
+Use a fresh `--tag`: it keeps the two task-selection regimes in separate files
+so a resumed run never blends them.
+
+**The `discrimination:` line** in `--report` states how many tasks actually
+separate the arms, splitting the rest into ceiling (solved by all) and floor
+(solved by none), and says outright when a result set can support no claim:
+
+```
+discrimination: 0/9 tasks separate the arms (3 solved by all = ceiling, 6 solved by none = floor)
+  !! no task distinguishes any arm — this result set cannot support ANY claim
+     about retrieval, in either direction
+```
+
+That is the real line from the current corpus (36 measurements, 4 models).
+
+**Read it before any pass-rate table.** At `0/N`, the pass rates are
+uninterpretable regardless of what they show, and the honest report is "the
+task set cannot answer this", not "the arms are equivalent".
+
+> **Pairing unit.** A pair is one `(model, commit)`, never a bare commit. An
+> earlier version of the reporter keyed on commit alone, which averaged the same
+> task across models: a task one model passed and another failed became a `0.5`
+> for *every* arm, counted as "separating the arms". That printed a pooled
+> `discrimination: 3/4` on a corpus whose per-model files were all `0/N` — model
+> disagreement misread as a retrieval effect. Fixed, with the tied-arms case
+> pinned in `tests/test_downstream_eval.py`.
 
 ---
 

@@ -1,0 +1,118 @@
+{
+  "dataset_version": 2,
+  "generated_ts": 1784888455,
+  "miner": "benchmarks.eval_v2_hardened.extract_distinct_commits",
+  "params": {
+    "target_commits": 120,
+    "queries_per_commit": 2,
+    "min_alive": 2,
+    "keep_noisy": false,
+    "scan_limit": 2500,
+    "noisy_flag": ">=20 changed symbols or >=10 changed .py files",
+    "query": "code-query symbol->symbol",
+    "granularity": "symbol",
+    "corpus": "repo index at HEAD"
+  },
+  "repos": [
+    {
+      "repo": "black",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/black",
+      "head_sha": "51abf53080b09eab12143727641ff1e2cd39d8c9",
+      "n_symbols_head": 648,
+      "n_commits": 120,
+      "n_noisy_excluded": 8,
+      "n_pairs": 186,
+      "n_distinct_commits_used": 93,
+      "out": "benchmarks/semantic/pairs/black.jsonl"
+    },
+    {
+      "repo": "click",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/click",
+      "head_sha": "7df2f82305f20f1611a9668b38d26933b648d807",
+      "n_symbols_head": 517,
+      "n_commits": 120,
+      "n_noisy_excluded": 10,
+      "n_pairs": 208,
+      "n_distinct_commits_used": 104,
+      "out": "benchmarks/semantic/pairs/click.jsonl"
+    },
+    {
+      "repo": "django",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/django",
+      "head_sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb",
+      "n_symbols_head": 9164,
+      "n_commits": 120,
+      "n_noisy_excluded": 4,
+      "n_pairs": 202,
+      "n_distinct_commits_used": 101,
+      "out": "benchmarks/semantic/pairs/django.jsonl"
+    },
+    {
+      "repo": "flask",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/flask",
+      "head_sha": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "n_symbols_head": 354,
+      "n_commits": 120,
+      "n_noisy_excluded": 11,
+      "n_pairs": 154,
+      "n_distinct_commits_used": 77,
+      "out": "benchmarks/semantic/pairs/flask.jsonl"
+    },
+    {
+      "repo": "httpx",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/httpx",
+      "head_sha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "n_symbols_head": 434,
+      "n_commits": 120,
+      "n_noisy_excluded": 12,
+      "n_pairs": 170,
+      "n_distinct_commits_used": 85,
+      "out": "benchmarks/semantic/pairs/httpx.jsonl"
+    },
+    {
+      "repo": "pydantic",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/pydantic",
+      "head_sha": "859945e47311f884368378335cb487e9cbe7e66a",
+      "n_symbols_head": 1827,
+      "n_commits": 120,
+      "n_noisy_excluded": 4,
+      "n_pairs": 200,
+      "n_distinct_commits_used": 100,
+      "out": "benchmarks/semantic/pairs/pydantic.jsonl"
+    },
+    {
+      "repo": "requests",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests",
+      "head_sha": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+      "n_symbols_head": 248,
+      "n_commits": 120,
+      "n_noisy_excluded": 14,
+      "n_pairs": 28,
+      "n_distinct_commits_used": 14,
+      "out": "benchmarks/semantic/pairs/requests.jsonl"
+    },
+    {
+      "repo": "rich",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/rich",
+      "head_sha": "9d8f9a372cc5916fd4781fec207ced7ddac2f08f",
+      "n_symbols_head": 888,
+      "n_commits": 120,
+      "n_noisy_excluded": 4,
+      "n_pairs": 212,
+      "n_distinct_commits_used": 106,
+      "out": "benchmarks/semantic/pairs/rich.jsonl"
+    },
+    {
+      "repo": "starlette",
+      "path": "/home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/starlette",
+      "head_sha": "5174d4c8358a6f06aa8056bafd14c2272dab8dd1",
+      "n_symbols_head": 484,
+      "n_commits": 120,
+      "n_noisy_excluded": 6,
+      "n_pairs": 192,
+      "n_distinct_commits_used": 96,
+      "out": "benchmarks/semantic/pairs/starlette.jsonl"
+    }
+  ],
+  "total_pairs": 1552
+}

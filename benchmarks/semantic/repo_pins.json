@@ -1,0 +1,41 @@
+{
+  "_comment": "Exact commits the semantic eval corpus is built from. Embeddings are keyed by symbol id at these SHAs; cloning a newer HEAD yields different symbols and silently shrinks ablation coverage. Regenerate with benchmarks/semantic/pin_repos.py --write.",
+  "repos": {
+    "black": {
+      "url": "https://github.com/psf/black",
+      "sha": "51abf53080b09eab12143727641ff1e2cd39d8c9"
+    },
+    "click": {
+      "url": "https://github.com/pallets/click",
+      "sha": "7df2f82305f20f1611a9668b38d26933b648d807"
+    },
+    "django": {
+      "url": "https://github.com/django/django",
+      "sha": "274df4df0bca7fcfb5c1c1d49567f770df147eeb"
+    },
+    "flask": {
+      "url": "https://github.com/pallets/flask",
+      "sha": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81"
+    },
+    "httpx": {
+      "url": "https://github.com/encode/httpx",
+      "sha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"
+    },
+    "pydantic": {
+      "url": "https://github.com/pydantic/pydantic",
+      "sha": "859945e47311f884368378335cb487e9cbe7e66a"
+    },
+    "requests": {
+      "url": "https://github.com/psf/requests",
+      "sha": "f361ead047be5cb873174218582f7d8b9fcd9f49"
+    },
+    "rich": {
+      "url": "https://github.com/Textualize/rich",
+      "sha": "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+    },
+    "starlette": {
+      "url": "https://github.com/encode/starlette",
+      "sha": "5174d4c8358a6f06aa8056bafd14c2272dab8dd1"
+    }
+  }
+}

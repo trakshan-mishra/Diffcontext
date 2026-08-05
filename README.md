@@ -118,6 +118,29 @@ in CI and fails the build if retrieval quality drops.
 your repo. Finding that out *is* the feature. Case format and
 methodology: [docs/VERIFY.md](docs/VERIFY.md).
 
+## I audited my own benchmark, and three of my claims lost
+
+A 2026-07 pass attacked the *evaluation* instead of the tool. Three published
+numbers did not survive:
+
+- **Calibration** — the only citable number (r=0.274, n≈25) was measured on a
+  polluted index. Re-measured clean at n=1,080 the legacy score gets
+  **r=0.016 (p=0.60)**: no relationship at all. Components with zero evidence
+  behind them had defaulted to a perfect 1.0. Fixed by shrinking toward
+  "don't know" → **r=0.287 (p=0.0001)** — a ranking signal, not a probability.
+- **Blend weights** — the shipped [0.5, 0.35, 0.15] failed leave-one-repo-out;
+  every fold picked a less graph-heavy blend. Standalone, plain BM25 beats the
+  call graph (0.619 vs 0.558 recall). Now [0.3, 0.5, 0.2].
+- **Dense baseline** — a TF-IDF stand-in had overstated dense retrieval (0.664,
+  beating BM25 5/5). The real MiniLM encoder scores 0.597 and beats BM25 only
+  2/5. Two prior conclusions corrected on the record.
+
+Plus one null reported as the null it is: adaptive per-query blending changes
+held-out metrics by nothing (p=1.000).
+
+**Full write-up: [writing/auditing-my-own-benchmark.md](writing/auditing-my-own-benchmark.md)**
+· raw pass: [benchmarks/RIGOR_REPORT_2026-07.md](benchmarks/RIGOR_REPORT_2026-07.md).
+
 ## Use as a library
 
 ```python
@@ -176,6 +199,19 @@ index it, and query blast radius / search / context over HTTP. The
 ```bash
 pip install fastapi uvicorn python-multipart aiofiles
 uvicorn diffcontext-service.backend.main:app --port 8000
+```
+
+## Tracing the retrieval pipeline
+
+[observability/](observability/) runs the five context providers
+(`diffcontext`, `diffcontext_gap`, `bm25`, `samefile`, `none`) as five
+comparable traces — same task, same budget, same seeds, only the provider
+changes — with per-arm latency and token fill. It ships a local OTLP
+receiver so claims can be checked against the decoded wire payload
+instead of a dashboard. Benchmark tooling, not part of the package.
+
+```bash
+python observability/trace_arms.py --repo /tmp/reqrepo
 ```
 
 ## Testing & contributing

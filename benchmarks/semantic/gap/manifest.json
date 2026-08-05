@@ -1,0 +1,120 @@
+{
+  "generated_ts": 1784889863,
+  "relatedness": "real dependency-graph edge (call/reference)",
+  "adversarial_cut": "bottom 25.0% of edges by body-token Jaccard",
+  "params": {
+    "percentile": 25.0,
+    "min_tokens": 3
+  },
+  "repos": [
+    {
+      "repo": "black",
+      "n_symbols": 648,
+      "n_edge_pairs": 3540,
+      "n_gap": 896,
+      "jaccard_cut": 0.0571,
+      "jaccard_p50": 0.1034,
+      "jaccard_p90": 0.2609,
+      "n_gap_cross_file": 356,
+      "n_gap_co_changed": 24,
+      "out": "benchmarks/semantic/gap/black.jsonl"
+    },
+    {
+      "repo": "click",
+      "n_symbols": 517,
+      "n_edge_pairs": 2666,
+      "n_gap": 684,
+      "jaccard_cut": 0.0476,
+      "jaccard_p50": 0.1047,
+      "jaccard_p90": 0.3,
+      "n_gap_cross_file": 218,
+      "n_gap_co_changed": 22,
+      "out": "benchmarks/semantic/gap/click.jsonl"
+    },
+    {
+      "repo": "django",
+      "n_symbols": 9164,
+      "n_edge_pairs": 53072,
+      "n_gap": 13650,
+      "jaccard_cut": 0.0556,
+      "jaccard_p50": 0.1159,
+      "jaccard_p90": 0.4091,
+      "n_gap_cross_file": 4638,
+      "n_gap_co_changed": 24,
+      "out": "benchmarks/semantic/gap/django.jsonl"
+    },
+    {
+      "repo": "flask",
+      "n_symbols": 354,
+      "n_edge_pairs": 2498,
+      "n_gap": 630,
+      "jaccard_cut": 0.0606,
+      "jaccard_p50": 0.1143,
+      "jaccard_p90": 0.375,
+      "n_gap_cross_file": 238,
+      "n_gap_co_changed": 8,
+      "out": "benchmarks/semantic/gap/flask.jsonl"
+    },
+    {
+      "repo": "httpx",
+      "n_symbols": 434,
+      "n_edge_pairs": 2114,
+      "n_gap": 538,
+      "jaccard_cut": 0.0556,
+      "jaccard_p50": 0.1325,
+      "jaccard_p90": 0.4476,
+      "n_gap_cross_file": 242,
+      "n_gap_co_changed": 10,
+      "out": "benchmarks/semantic/gap/httpx.jsonl"
+    },
+    {
+      "repo": "pydantic",
+      "n_symbols": 1827,
+      "n_edge_pairs": 9592,
+      "n_gap": 2446,
+      "jaccard_cut": 0.0667,
+      "jaccard_p50": 0.125,
+      "jaccard_p90": 0.3936,
+      "n_gap_cross_file": 708,
+      "n_gap_co_changed": 18,
+      "out": "benchmarks/semantic/gap/pydantic.jsonl"
+    },
+    {
+      "repo": "requests",
+      "n_symbols": 248,
+      "n_edge_pairs": 1754,
+      "n_gap": 440,
+      "jaccard_cut": 0.0426,
+      "jaccard_p50": 0.0909,
+      "jaccard_p90": 0.3333,
+      "n_gap_cross_file": 160,
+      "n_gap_co_changed": 0,
+      "out": "benchmarks/semantic/gap/requests.jsonl"
+    },
+    {
+      "repo": "rich",
+      "n_symbols": 888,
+      "n_edge_pairs": 4114,
+      "n_gap": 1056,
+      "jaccard_cut": 0.0588,
+      "jaccard_p50": 0.12,
+      "jaccard_p90": 0.3394,
+      "n_gap_cross_file": 338,
+      "n_gap_co_changed": 6,
+      "out": "benchmarks/semantic/gap/rich.jsonl"
+    },
+    {
+      "repo": "starlette",
+      "n_symbols": 484,
+      "n_edge_pairs": 2346,
+      "n_gap": 588,
+      "jaccard_cut": 0.0556,
+      "jaccard_p50": 0.12,
+      "jaccard_p90": 0.4242,
+      "n_gap_cross_file": 82,
+      "n_gap_co_changed": 18,
+      "out": "benchmarks/semantic/gap/starlette.jsonl"
+    }
+  ],
+  "total_gap": 20928
+}

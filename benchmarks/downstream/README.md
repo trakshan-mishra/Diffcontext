@@ -46,33 +46,48 @@ gold mock 25/25 PASS across all five providers; empty mock 0/5.
 ## The real run
 
 Pick a backend with `--backend`. The generation model is held FIXED across
-every arm, so the only thing that varies is the provider context block.
+every arm, so the only thing that varies is the provider context block. The
+free-tier backends (gemini/groq/openrouter) go over plain HTTP and need only
+`requests` — no vendor SDK to install.
 
 ```bash
-# --- Anthropic (default) ---
-pip install anthropic                      # not a package dependency
-export ANTHROPIC_API_KEY=...               # or `ant auth login`
-python benchmarks/downstream/run_eval.py \
-    --tasks benchmarks/downstream/tasks/click.json \
-    --repo benchmark_repos/click --samples 3
-
-# --- Gemini ---
-pip install google-genai                   # not a package dependency
+# --- Gemini (free tier; flash is capable enough to produce applicable diffs) ---
 export GEMINI_API_KEY=...                  # or GOOGLE_API_KEY
 python benchmarks/downstream/run_eval.py \
     --tasks benchmarks/downstream/tasks/click.json \
     --repo benchmark_repos/click --backend gemini --samples 3
 
+# --- Groq (free tier; OpenAI-compatible) ---
+export GROQ_API_KEY=...
+python benchmarks/downstream/run_eval.py \
+    --tasks benchmarks/downstream/tasks/click.json \
+    --repo benchmark_repos/click --backend groq --samples 3
+
+# --- Anthropic (paid; SDK) ---
+pip install anthropic                      # only this backend needs an SDK
+export ANTHROPIC_API_KEY=...               # or `ant auth login`
+python benchmarks/downstream/run_eval.py \
+    --tasks benchmarks/downstream/tasks/click.json \
+    --repo benchmark_repos/click --samples 3
+
 python benchmarks/downstream/run_eval.py --report benchmarks/downstream/results/click.jsonl
 ```
 
 `--model` overrides the per-backend default (anthropic → `claude-opus-4-8`,
-gemini → `gemini-2.5-pro`). The runner reads the API key from the
+gemini → `gemini-flash-latest`, groq → `llama-3.3-70b-versatile`,
+openrouter → `deepseek/deepseek-chat`). The runner reads the API key from the
 environment only — never pass a key on the command line or commit one.
 
-Results append to a JSONL and runs are resumable. Cost: ~$0.10 per
-generation on opus-4-8 before cache savings; 20 tasks x 5 providers x
-3 samples ≈ $30 ceiling, substantially less with the cache.
+Before scoring any provider on a task, a real run re-verifies gold→PASS **in
+this environment** (dependency/pytest drift can make a once-valid task
+un-judgeable); such tasks are skipped and logged to `<repo>.skipped.jsonl`
+rather than adding all-fail noise to every arm. Disable with `--skip-gold-gate`.
+
+Results append to a JSONL and runs are resumable. Transient API failures
+(429/5xx/network) are retried within a call and, if they still fail, are NOT
+recorded as a fix failure — the row is re-attempted on the next run and
+excluded from `--report`. Cost: free-tier backends are $0 (rate-limited);
+opus-4-8 is ~$0.10 per generation before cache savings.
 
 ## Disclosed limitations (read before citing any number)
 
