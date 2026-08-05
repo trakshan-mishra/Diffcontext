@@ -166,7 +166,7 @@ which stages the two-path-form condition and asserts one row carrying the new
 content. Confirmed non-vacuous — reverting to plain `INSERT` fails it with
 `sqlite3.IntegrityError: UNIQUE constraint failed: symbols.id`, the reported
 error reproduced in a test. Cold/warm/modify/re-index on `requests`
-(248 → 249 symbols) stays clean; suite is 182 passed.
+(248 → 249 symbols) stays clean; suite is 189 passed, 2 skipped.
 
 Still **untested end-to-end**: the TypeScript extra is not installed in this
 venv, so `available_adapters()` returns `[]` and no adapter actually exercises

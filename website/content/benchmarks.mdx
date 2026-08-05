@@ -9,7 +9,7 @@ import { Callout } from 'nextra/components'
 
 > Measured, not claimed.
 
-Headline numbers and reproduction commands. Full methodology — distinct-commit sampling, four baselines, bootstrap confidence intervals, budget sweep, hand-audited failure taxonomy — in `benchmarks/EVAL_V2_REPORT.md`.
+Headline numbers and reproduction commands. Full methodology — distinct-commit sampling, four baselines, bootstrap confidence intervals, budget sweep, hand-audited failure taxonomy — in `benchmarks/EVAL_V2_REPORT.md`. The 2026-07 hardening pass — leave-one-repo-out weight validation, a true dense baseline, calibration at n=1080, ground-truth validity, paired significance tests — is in `benchmarks/RIGOR_REPORT_2026-07.md`; where this page and that report disagree, the report is newer and wins.
 
 ## Per-Signal Ablation
 
@@ -20,7 +20,9 @@ Each retrieval signal benchmarked alone against real commit history:
 | Call graph alone | 0.748 | 0.558 | Related code that never calls yours |
 | BM25 keywords alone | 0.822 | 0.619 | Structure; ranks lexical noise |
 | Same file alone | 0.693 | 0.506 | Anything cross-file |
-| **Hybrid (this product)** | **0.856** | **0.690** | See [known limitations](#known-limitations) |
+| **Hybrid (this product)** | **0.868** | **0.705** | See [known limitations](#known-limitations) |
+
+Hybrid numbers are at the shipped blend weights [0.3, 0.5, 0.2] — the leave-one-repo-out-validated choice from the 2026-07 rigor pass (the originally shipped [0.5, 0.35, 0.15] was mildly graph-overfit). Note that standalone, plain BM25 beats the call graph.
 
 ## Against Real Developer Behavior, Across Repos
 
@@ -28,15 +30,17 @@ The core benchmark asks: _a developer changed these functions together in one co
 
 | | django | click | flask | httpx | pydantic |
 |-|--------|-------|-------|-------|---------|
-| Hit | 0.887 | 0.877 | 0.831 | 0.934 | 0.753 |
-| Recall | 0.782 | 0.727 | 0.667 | 0.756 | 0.517 |
+| Hit | 0.894 | 0.889 | 0.863 | 0.935 | 0.758 |
+| Recall | 0.774 | 0.750 | 0.694 | 0.772 | 0.536 |
 
-Independent validation on repos **never used for tuning**:
-- **black**: hybrid hit 0.901 / recall 0.720
-- **requests**: hit 0.969 / recall 0.774
+Independent validation on repos **never used for tuning or weight selection** (frozen weights, `results/loro/loro_3leg.json`):
+- **black**: hybrid hit 0.897 / recall 0.712
+- **requests**: hit 0.953 / recall 0.762
+- **rich**: hit 0.844 / recall 0.760
+- **starlette**: hit 0.929 / recall 0.776
 
 <Callout type="warning">
-  The flip side of that recall: cross-repo mean **precision is 0.075 hybrid / 0.060 graph-only** — roughly 92–94% of retrieved symbols are not in the ground-truth co-change set. They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision is this product's real problem — and the benchmark report says so in exactly those words.
+  The flip side of that recall: cross-repo mean **precision is under 0.1** at the default top-k selection — roughly 90%+ of retrieved symbols are not in the ground-truth co-change set (and GT-adjusting for incomplete ground truth still leaves it under 0.15 everywhere). They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision — not recall — is this product's real problem. The measured lever is `--cutoff gap`: roughly **4× the precision of top-20 at 6–9 retrieved symbols**, costing ~30% relative recall.
 </Callout>
 
 ## Head-to-Head vs grep, at Identical Token Budgets
@@ -55,6 +59,18 @@ The question that actually matters for an agent loop: _given the same context wi
 Note the shape: grep **plateaus** — beyond ~4k tokens, more budget buys nothing, because name-matching cannot find co-change partners that don't mention the name. Graph+BM25 retrieval keeps climbing.
 
 **Honesty audit at the tight 2k budget** (128 ground-truth symbols): 34% made it into context, 66% were explicitly disclosed as dropped, **0% silently invisible**.
+
+## I Audited My Own Benchmark, and Three of My Claims Lost
+
+A 2026-07 pass attacked the _evaluation_ instead of the tool. Three published numbers did not survive:
+
+- **Calibration** — the only citable number (r=0.274, n≈25) was measured on a polluted index. Re-measured clean at n=1,080 the legacy score gets **r=0.016 (p=0.60)**: no relationship at all. Components with zero evidence behind them had defaulted to a perfect 1.0. Fixed by shrinking toward "don't know" → **r=0.287 (p=0.0001)** — a ranking signal, not a probability.
+- **Blend weights** — the shipped [0.5, 0.35, 0.15] failed leave-one-repo-out; every fold picked a less graph-heavy blend. Standalone, plain BM25 beats the call graph (0.619 vs 0.558 recall). Now [0.3, 0.5, 0.2].
+- **Dense baseline** — a TF-IDF stand-in had overstated dense retrieval (0.664, beating BM25 5/5). The real MiniLM encoder scores 0.597 and beats BM25 only 2/5. Two prior conclusions corrected on the record.
+
+Plus one null reported as the null it is: adaptive per-query blending changes held-out metrics by nothing (p=1.000).
+
+Raw pass: `benchmarks/RIGOR_REPORT_2026-07.md`.
 
 ## Quality Can't Silently Regress
 
@@ -82,9 +98,9 @@ See [Verify](/docs/verify) for the full methodology.
 
 From the failure taxonomy — 60 hand-audited Django co-change pairs with no call-graph connection:
 
-- **Thematic siblings** (same feature, no call between them): the graph is blind; the BM25 leg recovers these partially. _Fixable_ — an adaptive blend is the top roadmap item.
-- **Dispatch/override pairs** (same method name across a hierarchy): _partially fixable_ via synthetic override edges in the graph.
-- **Cross-subsystem conceptual links** (e.g. a settings flag and the security check that reads it): graph, BM25, and hybrid all score **0/20**. A structural ceiling for every static-analysis retriever — reachable only with signals like git co-change history (roadmap item 3).
+- **Thematic siblings** (same feature, no call between them): the graph is blind; the BM25 leg recovers these partially. Adaptive per-query blending shipped for this, but the rigor pass measured it as a **null** (p=1.000) — no significant recall change on any benchmark repo.
+- **Dispatch/override pairs** (same method name across a hierarchy): addressed by synthetic dispatch-sibling override edges, now shipped.
+- **Cross-subsystem conceptual links** (e.g. a settings flag and the security check that reads it): graph, BM25, and hybrid all score **0/20**. A structural ceiling for every static-analysis retriever — reachable only with signals like git co-change history, now shipped as an opt-in fourth signal (`--with-history`).
 - **Dynamic dispatch** (`getattr(obj, name)()` with runtime `name`) and metaclass-generated code are statically unresolvable — this is why pydantic is the weakest benchmark repo for every method tested.
 - **Absolute recall at starvation budgets is low for everyone.** At 1,000 tokens, grep manages 0.08 and DiffContext 0.12 — almost nothing fits in 1k tokens, and the meta header says so rather than pretending otherwise.
 

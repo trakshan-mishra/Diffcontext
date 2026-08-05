@@ -27,7 +27,7 @@ Optional extras:
 </Callout>
 
 **1. The core package has zero runtime dependencies.**  
-Everything under `diffcontext/` (except `languages/`) is stdlib-only, Python 3.8+. New dependencies belong in an optional extra or a separate tool, not in the core.
+Everything under `diffcontext/` (except `languages/`) is stdlib-only, Python 3.9+. New dependencies belong in an optional extra or a separate tool, not in the core.
 
 **2. Optional language adapters stay optional.**  
 `diffcontext/languages/` must import lazily; without the extra installed, behavior is identical to the Python-only tool.
