@@ -86,7 +86,8 @@ The exit code is `0` only for `SUFFICIENT`, so CI can gate on it:
 
 ```yaml
 # .github/workflows/context-gate.yml (sketch)
-- run: pip install diffcontext && diffcontext verify --ref origin/main --repo .
+- run: pip install git+https://github.com/trakshan-mishra/Diffcontext.git
+- run: diffcontext verify --ref origin/main --repo .
 ```
 
 Verdicts: `SUFFICIENT` (score ≥ 80), `DEGRADED` (≥ 55), `INSUFFICIENT` (< 55).
