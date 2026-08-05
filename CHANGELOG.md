@@ -44,11 +44,83 @@ covered by any stability expectation.
   CoCoMIC, …), the claim candidates the current evidence supports, and
   the explicit gap list for an ICSE/FSE/ASE-grade submission.
 
+### Added (rung-5 eval rigor and observability)
+- **`--sensitivity-gate` for the downstream eval.** Screens each task with
+  the `none` arm and retains only the ones it fails, so task difficulty
+  sits in the band where the model fails without context and succeeds with
+  it. Screen rows are written to `<repo>.screen.jsonl` and excluded from
+  scoring by `is_measurement()`; the remaining arms are reported
+  unconfounded, since neither was used for selection. Self-tests:
+  `--mock gold` must retire every task, `--mock empty` retain every one.
+- **`discrimination:` diagnostic on `--report`.** Prints
+  `N/M tasks separate the arms (ceiling / floor)` and states outright when
+  a result set supports no claim. Motivated by an audit showing the
+  accumulated corpus could not tell the arms apart at all: every usable
+  task was solved by all arms or none, which is blind to retrieval quality
+  by construction. Read this line before any pass-rate table.
+- **Semantic retrieval eval** (`benchmarks/semantic/`): symbol-level pair
+  mining from co-change, a stratified manual-audit sampler, an
+  adversarial-gap subset (structurally coupled but lexically distant), and
+  the three-way ablation harness. Pairs carry `commit_ts` as the
+  temporal-split key so features can be restricted to commits strictly
+  older than the pair, keeping GT and features non-circular. Corpus is
+  pinned and partial joins are surfaced rather than silently dropped.
+- **`observability/`**: runs the five context providers as five comparable
+  traces under Neatlogs — same task, same budget, same seeds, only the
+  provider changes. Includes a local OTLP receiver (`otlp_capture.py`) for
+  verifying claims against the decoded wire payload rather than a
+  dashboard, plus two standalone reproducers. `prove_generator_bug.py`
+  needs no API key or network and exits non-zero while the upstream bug
+  reproduces, so it doubles as a regression check against future SDK
+  releases. Benchmark-only; not part of the shipped package.
+
 ### Fixed
 - `benchmark_runner.py --clone` cloned with `--depth=100` while printing
   "full git history" — silently starving both ground-truth mining
   (24 vs 74 usable commits on flask) and the co-change signal. Clones
   are now full-history.
+- **Downstream report paired on the bare commit instead of
+  `(model, commit)`**, so pooling averaged the same task across different
+  models: a task one model passed and another failed became 0.5 for
+  *every* arm, which counts as separating the arms. That printed a pooled
+  `discrimination: 3/4` while all four per-model files printed `0/N` —
+  model disagreement misread as a retrieval effect, on the one line meant
+  to catch exactly this. `result_key` and the `auto_free_sweep.remaining()`
+  progress counter now carry the model. **Any pooled number recorded
+  before 2026-08-05 is void.** Related trap fixed in the same pass: the
+  resume key and the key built at the write site must both come from
+  `result_key()` — they are 4-tuples now, and a literal 3-tuple at the
+  write site silently matched nothing, degrading resume into re-measuring
+  everything (invisible except as burned quota).
+- **Benchmark harness could exceed its own token budget.**
+  `benchmarks/downstream/providers.py:render_context` accumulated
+  `used += _estimate_tokens(block)` per block but returned
+  `"\n".join(parts)`, undercounting twice: 7 tokens from uncounted join
+  separators and 10 from per-block `int()` flooring (24 blocks each
+  shedding up to a token, versus one floor over the whole string). The
+  `samefile` arm reported 8,011 tokens against an 8,000 budget. Now
+  budgets against the character count the final join will emit and floors
+  once; verified 0 over-budget cases across 5 arms × 6 budgets. This is an
+  **eval-fairness defect, not a product defect** — `render_context` is the
+  harness's own uniform renderer, and the shipped packer
+  (`diffcontext/context/compiler.py`) is a separate path that re-renders
+  and re-counts against the real output text, disclosing any overshoot at
+  the non-compressible floor.
+- **Cache symbol collision under mixed path forms.** `cache.py` cleared
+  stale rows with `DELETE FROM files` plus `ON DELETE CASCADE`, then
+  inserted symbols keyed on `symbols.id`. Those only line up while
+  `Symbol.file` is byte-identical to the `files.file_path` key being
+  deleted, so a file recorded under two path forms (e.g. an indexing pass
+  from a different cwd, or an adapter reporting relative paths) either hit
+  `FOREIGN KEY constraint failed` or left a stale row that collided on
+  re-index with `UNIQUE constraint failed: symbols.id`. The insert is now
+  `INSERT OR REPLACE`, which collapses the collision class regardless of
+  which adapter is loaded. Both this and the budget fix are locked in by
+  regression tests confirmed non-vacuous — reverting each fix makes its
+  test fail with the originally reported error.
+- Test collection: benchmark-only imports are guarded so the harness tests
+  skip cleanly where `numpy`/`rank_bm25` are absent, and a dedicated CI
+  job installs them so those tests actually execute somewhere.
 
 ## [0.3.0] — 2026-07-20
 

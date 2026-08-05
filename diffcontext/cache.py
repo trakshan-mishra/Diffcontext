@@ -201,8 +201,15 @@ class SymbolCache:
             )
 
             if symbols:
+                # REPLACE, not plain INSERT: rows are keyed by symbols.id but
+                # cleared via ON DELETE CASCADE from files.file_path, and those
+                # two only line up while Symbol.file is byte-identical to the
+                # filepath we just parsed. That holds for the Python parser
+                # (both absolute) but is not guaranteed for a language adapter
+                # that reports relative paths — stale rows would then survive
+                # the DELETE above and collide here on re-index.
                 self._conn.executemany(
-                    "INSERT INTO symbols (id, file_path, name, code, lineno) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO symbols (id, file_path, name, code, lineno) VALUES (?, ?, ?, ?, ?)",
                     [(s.id, s.file, s.name, s.code, s.lineno) for s in symbols.values()]
                 )
 
