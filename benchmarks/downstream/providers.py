@@ -34,6 +34,11 @@ def _estimate_tokens(text: str) -> int:
     return max(1, int(len(text) / 4 * 1.2))  # selector.py heuristic, kept identical
 
 
+def _estimate_tokens_from_chars(n_chars: int) -> int:
+    """_estimate_tokens() over a string of n_chars, without building it."""
+    return max(1, int(n_chars / 4 * 1.2))
+
+
 def _hybrid_ranking(index: RepositoryIndex, seeds: List[str]) -> List[Tuple[str, float]]:
     impact = analyze_impact(index, seeds)
     seed_set = set(seeds)
@@ -99,17 +104,22 @@ def render_context(index: RepositoryIndex, ranked: List[str], max_tokens: int) -
     """Pack ranked symbols into the budget. Identical rendering for every
     provider — headers + source, nothing provider-specific."""
     parts: List[str] = []
-    used = 0
+    used_chars = 0
     for sid in ranked:
         sym = index.symbols.get(sid)
         if sym is None:
             continue
         block = f"# {sid}\n{sym.code}\n"
-        cost = _estimate_tokens(block)
-        if used + cost > max_tokens:
+        # Budget against the characters the final "\n".join() will actually
+        # emit — including the separator this block brings with it. Summing
+        # per-block _estimate_tokens() instead undercounts twice: it misses
+        # the join separators, and it floors once per block rather than once
+        # over the whole text, so the assembled string can exceed max_tokens.
+        cand_chars = used_chars + len(block) + (1 if parts else 0)
+        if _estimate_tokens_from_chars(cand_chars) > max_tokens:
             continue
         parts.append(block)
-        used += cost
+        used_chars = cand_chars
     return "\n".join(parts)
 
 
