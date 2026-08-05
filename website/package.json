@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "llms": "node scripts/build-llms.mjs",
+    "prebuild": "node scripts/build-llms.mjs",
     "build": "next build",
     "start": "next start",
     "postinstall": "patch-package"

@@ -13,7 +13,7 @@ import { Callout } from 'nextra/components'
 git clone https://github.com/trakshan-mishra/Diffcontext.git
 cd Diffcontext
 pip install -e .[dev]
-python3 -m pytest tests/ -q      # 157 tests, self-contained, <3s
+python3 -m pytest tests/ -q      # 189 tests, self-contained, <3s
 ```
 
 Optional extras:
@@ -43,17 +43,21 @@ This project's convention is to state limitations as plainly as strengths. If yo
 | Directory | Contents |
 |-----------|---------|
 | `diffcontext/` | The package; module map in [Architecture](/docs/architecture) |
-| `tests/` | Fast, self-contained; run on every push across Python 3.8–3.13 |
+| `tests/` | Fast, self-contained; run on every push across Python 3.9–3.13 |
 | `benchmarks/` | Retrieval-quality evaluation; heavy runs are manual, but `check_regression.py` runs in CI |
 | `docs/` | Architecture, benchmarks, verify methodology, language adapters, planning notes |
 | `diffcontext-service/` | Optional FastAPI service + web UI; excluded from the wheel |
 
 ## CI Gates Your PR Must Pass
 
-**1. Tests** on Python 3.8, 3.10, 3.12, 3.13:
+**1. Tests** on Python 3.9, 3.11, 3.12, 3.13:
 ```bash
 pytest tests/
 ```
+Two modules skip unless their optional extras are installed (`[typescript]`, and
+`python-multipart` for the service tests); CI installs them in a separate job so
+they execute somewhere. Ruff and mypy run over `diffcontext/` in the same
+workflow.
 
 **2. Retrieval quality gate:**  
 `benchmarks/check_regression.py` re-runs the co-change benchmark on flask and fails if hit/recall drop below frozen floors. If your change trades quality away on purpose, say so in the PR and adjust the floors in the same commit with the new measured numbers.

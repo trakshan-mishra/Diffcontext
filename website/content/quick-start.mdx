@@ -11,12 +11,7 @@ Get DiffContext running on your repo in under a minute.
 
 ## Installation
 
-<Tabs items={['pip', 'pip editable', 'with TypeScript support']}>
-  <Tabs.Tab>
-  ```bash
-  pip install diffcontext
-  ```
-  </Tabs.Tab>
+<Tabs items={['from source', 'with TypeScript support']}>
   <Tabs.Tab>
   ```bash
   git clone https://github.com/trakshan-mishra/Diffcontext.git
@@ -31,6 +26,11 @@ Get DiffContext running on your repo in under a minute.
   Adds tree-sitter for TypeScript/JavaScript (ESM) support.
   </Tabs.Tab>
 </Tabs>
+
+<Callout type="info">
+  Not on PyPI yet — `pip install diffcontext` will not resolve. Publishing is
+  wired up (trusted publishing on `v*` tags); until it runs, install from source.
+</Callout>
 
 **Requirements:** Python 3.9+, zero runtime dependencies in the core package.
 
