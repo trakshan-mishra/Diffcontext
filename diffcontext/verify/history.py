@@ -50,6 +50,18 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
 
+# Mechanical-refactor thresholds. A commit at or above either of these is a
+# rename/reformat/API sweep rather than a unit of related work: its "co-change
+# set" is an artifact of the sweep, and it can hold more symbols than any
+# retriever is allowed to return, so recall on it is capped below 1.0 by
+# construction. These MUST match benchmarks/eval_v2_hardened.py
+# (NOISY_SYMBOLS / NOISY_FILES) — the published per-repo numbers exclude these
+# commits, so mining them here would make a user's own measurement
+# systematically worse than the table they are comparing it against.
+NOISY_SYMBOLS = 20                    # >= this many changed symbols
+NOISY_FILES = 10                      # >= this many changed source files
+
+
 @dataclass
 class CoChangeCase:
     """A single ground truth test case from git history."""
@@ -60,6 +72,14 @@ class CoChangeCase:
     # For testing: one symbol is the query, the rest are ground truth
     query_symbol: str = ""
     ground_truth_symbols: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SkippedCommit:
+    """A commit excluded from mining, and why — so the drop is never silent."""
+    commit_hash: str
+    commit_msg: str
+    reason: str
 
 
 def _get_changed_line_ranges(
@@ -209,6 +229,9 @@ def extract_cochange_cases(
     repo_path: str,
     max_cases: int = 50,
     min_symbols_per_commit: int = 2,
+    noisy_symbols: Optional[int] = NOISY_SYMBOLS,
+    noisy_files: Optional[int] = NOISY_FILES,
+    skipped_out: Optional[List[SkippedCommit]] = None,
 ) -> List[CoChangeCase]:
     """
     Extract real co-change test cases from git history.
@@ -217,6 +240,15 @@ def extract_cochange_cases(
     One case is generated PER CHANGED SYMBOL (not per commit) to avoid
     "first symbol always = query" selection bias; duplicate queries across
     commits are skipped.
+
+    Mechanical refactors are excluded: a commit touching >= noisy_symbols
+    symbols or >= noisy_files files is a sweep, not a unit of related work.
+    Pass None to either to keep them. Excluded commits are appended to
+    skipped_out (as SkippedCommit) when a list is supplied, so a caller can
+    report the drop rather than hiding it.
+
+    NOTE: results recorded before this filter existed (eval_v1 and
+    benchmark_runner runs) mined unfiltered and are not comparable.
     """
     repo_path = os.path.abspath(repo_path)
 
@@ -283,6 +315,17 @@ def extract_cochange_cases(
         if not py_files:
             continue
 
+        # Sweeping change: cheap to detect, so check before parsing anything.
+        if noisy_files is not None and len(py_files) >= noisy_files:
+            if skipped_out is not None:
+                skipped_out.append(SkippedCommit(
+                    commit_hash=commit_hash[:8],
+                    commit_msg=commit_msg[:80],
+                    reason="{} files changed (likely sweeping change)".format(
+                        len(py_files)),
+                ))
+            continue
+
         # For each changed file, find which functions were actually modified
         all_changed_symbols: List[str] = []
         for filepath in py_files:
@@ -298,6 +341,18 @@ def extract_cochange_cases(
         all_changed_symbols = list(dict.fromkeys(all_changed_symbols))
 
         if len(all_changed_symbols) < min_symbols_per_commit:
+            continue
+
+        # Mechanical refactor: the co-change set is an artifact of the sweep,
+        # and it can exceed the number of symbols any retriever may return.
+        if noisy_symbols is not None and len(all_changed_symbols) >= noisy_symbols:
+            if skipped_out is not None:
+                skipped_out.append(SkippedCommit(
+                    commit_hash=commit_hash[:8],
+                    commit_msg=commit_msg[:80],
+                    reason="{} symbols changed (likely mechanical refactor)".format(
+                        len(all_changed_symbols)),
+                ))
             continue
 
         # Generate one case per changed symbol, not just one per commit.
