@@ -294,3 +294,75 @@ class TestHistoryCases:
         assert all(r.recall == 1.0 for r in results), (
             "alpha/beta are direct call-graph neighbors; both must be retrieved"
         )
+
+    def test_mechanical_refactor_commit_is_excluded_and_disclosed(self, tmp_path):
+        """A sweep touching NOISY_SYMBOLS+ functions must not become cases.
+
+        Its co-change set is an artifact of the sweep and can be larger than
+        the retriever is allowed to return, so mining it makes a user's own
+        `verify` number systematically worse than the published table — which
+        excludes these commits (benchmarks/eval_v2_hardened.py).
+        """
+        from diffcontext.verify.history import (
+            NOISY_SYMBOLS, extract_cochange_cases,
+        )
+
+        repo = str(tmp_path / "repo")
+        os.makedirs(repo)
+        self._git(repo, "init")
+        self._git(repo, "config", "user.email", "t@example.com")
+        self._git(repo, "config", "user.name", "t")
+
+        n = NOISY_SYMBOLS + 2
+        src = os.path.join(repo, "app.py")
+        with open(src, "w") as f:
+            f.write("".join(f"def f{i}():\n    return {i}\n\n" for i in range(n)))
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-m", "initial")
+
+        # One commit rewriting every function: a mechanical refactor.
+        with open(src, "w") as f:
+            f.write("".join(f"def f{i}():\n    return {i} + 1\n\n" for i in range(n)))
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-m", "reformat everything")
+
+        skipped = []
+        cases = extract_cochange_cases(repo, max_cases=50, skipped_out=skipped)
+        assert cases == [], f"mechanical refactor must yield no cases, got {len(cases)}"
+        assert len(skipped) == 1, "the drop must be reported, not silent"
+        assert "mechanical refactor" in skipped[0].reason
+        assert str(n) in skipped[0].reason
+
+        # Opt out and the same commit comes back — the filter is the only
+        # thing standing between it and the case set.
+        kept = extract_cochange_cases(repo, max_cases=50, noisy_symbols=None)
+        assert len(kept) == n, f"expected {n} cases without the filter, got {len(kept)}"
+
+    def test_sweeping_file_change_is_excluded(self, tmp_path):
+        """Same rule on the file axis, checked before any parsing happens."""
+        from diffcontext.verify.history import NOISY_FILES, extract_cochange_cases
+
+        repo = str(tmp_path / "repo")
+        os.makedirs(repo)
+        self._git(repo, "init")
+        self._git(repo, "config", "user.email", "t@example.com")
+        self._git(repo, "config", "user.name", "t")
+
+        n = NOISY_FILES + 1
+        for i in range(n):
+            with open(os.path.join(repo, f"m{i}.py"), "w") as f:
+                f.write(f"def f{i}():\n    return {i}\n")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-m", "initial")
+
+        for i in range(n):
+            with open(os.path.join(repo, f"m{i}.py"), "w") as f:
+                f.write(f"def f{i}():\n    return {i} + 1\n")
+        self._git(repo, "add", ".")
+        self._git(repo, "commit", "-m", "bump every module")
+
+        skipped = []
+        cases = extract_cochange_cases(repo, max_cases=50, skipped_out=skipped)
+        assert cases == []
+        assert len(skipped) == 1
+        assert "sweeping change" in skipped[0].reason
