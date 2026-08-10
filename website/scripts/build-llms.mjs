@@ -14,6 +14,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { MEASURED_LIMITS, MEASURED_LIMITS_INTRO } from '../lib/measured-limits.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const WEBSITE = path.resolve(HERE, '..')
@@ -25,10 +26,48 @@ const OUT_MD = path.join(PUBLIC, 'llms')
 const SITE = 'https://diffcontext-docs.pages.dev'
 const GITHUB = 'https://github.com/trakshan-mishra/Diffcontext'
 
+/**
+ * Hard-wrap `text` for the plain-text mirror.
+ *
+ * `first` prefixes the opening line, `rest` every continuation line, so a
+ * bullet wraps under its own text rather than under the marker.
+ */
+function wrap(text, { width = 78, first = '', rest = '' } = {}) {
+  const lines = []
+  let line = first
+  let started = false
+
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (!started) {
+      line += word
+      started = true
+    } else if (`${line} ${word}`.length > width) {
+      lines.push(line)
+      line = rest + word
+    } else {
+      line += ` ${word}`
+    }
+  }
+  if (started) lines.push(line)
+
+  return lines
+}
+
+/** The measured-limits block as markdown lines, from lib/measured-limits.mjs. */
+function measuredLimitLines() {
+  return [
+    ...wrap(MEASURED_LIMITS_INTRO),
+    '',
+    ...MEASURED_LIMITS.flatMap((limit) => wrap(limit.text, { first: '- ', rest: '  ' })),
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // JSX components have no text in the MDX source, so their rendered content is
 // spelled out here. Each entry is transcribed from the component that renders
-// it on the page — keep them in sync by hand; there are four.
+// it on the page — keep them in sync by hand; there are four. The fifth,
+// MeasuredLimits, is generated from the same module the component renders, so
+// the limits published here and on the page cannot disagree.
 // ---------------------------------------------------------------------------
 const COMPONENT_TEXT = {
   // components/Hero.jsx
@@ -71,6 +110,9 @@ const COMPONENT_TEXT = {
     '',
     `Full table, methodology and caveats: ${SITE}/docs/benchmarks`,
   ].join('\n'),
+
+  // components/MeasuredLimits.jsx — generated, not transcribed.
+  MeasuredLimits: measuredLimitLines().join('\n'),
 }
 
 // ---------------------------------------------------------------------------
@@ -259,19 +301,7 @@ const index = [
   '',
   provenance(),
   '',
-  'Claims on this site are measured against real commit history, and the measured',
-  'limits are published alongside the wins. Four that a summary should not omit:',
-  '',
-  '- Recall is the strength (hybrid ~0.70 mean vs 0.56 call-graph-only); **precision',
-  '  is under 0.1** at the default top-k, so retrieved context is a wide net of',
-  '  supporting code, not a curated shortlist. `--cutoff gap` trades ~30% relative',
-  '  recall for roughly 4× precision.',
-  "- The `verify` sufficiency score is a **structural proxy, not a probability**, and",
-  '  it has **zero discriminating power on TypeScript** today.',
-  '- Calibration is a ranking signal (r≈0.29 measured), not a confidence guarantee.',
-  '- The downstream "does better context improve LLM task outcomes?" evaluation is',
-  '  **not yet answered** — the current result is a null produced by a task set that',
-  '  cannot discriminate between arms. See the roadmap.',
+  ...measuredLimitLines(),
   '',
   '## Documentation',
   '',
