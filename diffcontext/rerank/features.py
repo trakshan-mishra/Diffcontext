@@ -30,7 +30,7 @@ import math
 import os
 import re
 from collections import deque
-from typing import Dict, Iterable, List, Optional, Sequence, Set
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 from ..lexical import tokenize
 
@@ -126,14 +126,16 @@ def _dir_distance(file_a: str, file_b: str) -> float:
 
 def _bfs_hops(
     sources: Iterable[str],
-    adjacency: Dict[str, object],
+    adjacency: Mapping[str, Iterable[str]],
     max_hops: int = MAX_HOPS,
     node_cap: int = BFS_NODE_CAP,
 ) -> Dict[str, int]:
     """Multi-source BFS returning ``node -> min hops from any source``.
 
     Sources themselves are recorded at hop 0. ``adjacency`` may map to any
-    iterable of ids (``graph`` uses lists, ``reverse_graph`` uses sets).
+    iterable of ids (``graph`` uses lists, ``reverse_graph`` uses sets), so
+    it is typed as a ``Mapping`` -- covariant in its value type, unlike
+    ``Dict`` -- to accept both without a cast at each call site.
     """
     dist: Dict[str, int] = {s: 0 for s in sources}
     frontier = deque(dist)
