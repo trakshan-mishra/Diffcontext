@@ -219,13 +219,23 @@ def save_cases(cases: List[Case], path: str) -> None:
 # History-derived cases
 # ---------------------------------------------------------------------------
 
-def cases_from_history(repo_path: str, max_cases: int = 30) -> List[Case]:
+def cases_from_history(
+    repo_path: str,
+    max_cases: int = 30,
+    skipped_out: Optional[List] = None,
+) -> List[Case]:
     """
     Auto-generate cases from git co-change history: functions modified in
     the same commit are external evidence of relatedness (human behavior,
     not our graph). One case per query symbol.
+
+    Mechanical refactors are excluded on the same thresholds the published
+    benchmark uses, so a number measured here is comparable to the one in
+    docs/BENCHMARKS.md. Pass a list as skipped_out to see what was dropped.
     """
-    cochange = extract_cochange_cases(repo_path, max_cases=max_cases)
+    cochange = extract_cochange_cases(
+        repo_path, max_cases=max_cases, skipped_out=skipped_out,
+    )
     cases = []
     for cc in cochange:
         cases.append(Case(
