@@ -22,29 +22,56 @@ logger = logging.getLogger(__name__)
 _STMT_BLOCK_FIELDS = ("body", "handlers", "orelse", "finalbody", "cases")
 
 
-def _collect_functions(tree: "ast.Module") -> "List[tuple]":
+def collect_functions(tree: "ast.Module") -> "List[tuple]":
     """
     Collect (qualified_name, node) for every function/method definition,
     including nested functions, methods of classes defined inside
     functions, and definitions under conditional blocks (`if
     TYPE_CHECKING:`, `try/except ImportError`, `match`).
+
+    Names follow PEP 3155 (`__qualname__`), which is what the language
+    itself calls these:
+
+        Resource._add_nested_resources
+        Resource._add_nested_resources.<locals>.createResourceMethod
+
+    The `<locals>` segment is not decoration — without it a function
+    nested inside a method is named for its CLASS only, so every nested
+    `decorator` in a class collapses onto one id and all but the last is
+    silently dropped from the index (measured: flask's
+    `Blueprint.decorator` claimed by 4 distinct definitions, click's
+    `Group.decorator` by 3; 48 definitions lost across 10 repos).
+
+    This is the ONE place symbol names are constructed. graph_builder and
+    the co-change miner both call it; when they each had their own copy
+    they disagreed about nested functions, and the miner then produced
+    ground-truth ids the index could not match (an automatic 0% recall
+    that looked like a retrieval failure).
+
+    Note the remaining known ambiguity, which qualnames do NOT resolve:
+    `@property`/`@x.setter` pairs and `@typing.overload` stubs share a
+    qualname with their sibling. Overload stubs collapsing onto the real
+    implementation is desirable (last write wins, and the implementation
+    is emitted last); property/setter pairs are a genuine gap.
     """
     collected: "List[tuple]" = []
-    class_stack: "List[str]" = []
+    scope: "List[str]" = []
 
     def _walk(stmts):
         for node in stmts:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if class_stack:
-                    name = ".".join(class_stack) + "." + node.name
-                else:
-                    name = node.name
+                name = ".".join(scope + [node.name]) if scope else node.name
                 collected.append((name, node))
+                # Anything defined inside a function body lives in its
+                # <locals> namespace — PEP 3155's rule, and the reason two
+                # same-named closures in one class stay distinct.
+                scope.append(node.name + ".<locals>")
                 _walk(node.body)
+                scope.pop()
             elif isinstance(node, ast.ClassDef):
-                class_stack.append(node.name)
+                scope.append(node.name)
                 _walk(node.body)
-                class_stack.pop()
+                scope.pop()
             else:
                 for field in _STMT_BLOCK_FIELDS:
                     block = getattr(node, field, None)
@@ -53,6 +80,10 @@ def _collect_functions(tree: "ast.Module") -> "List[tuple]":
 
     _walk(tree.body)
     return collected
+
+
+# Back-compat alias: this was private before it acquired three callers.
+_collect_functions = collect_functions
 
 
 def _segment_lines(source: str) -> "Optional[List[str]]":

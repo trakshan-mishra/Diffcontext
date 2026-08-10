@@ -22,7 +22,7 @@ from diffcontext.verify.history import (  # noqa: F401
     extract_cochange_cases,
     _get_changed_line_ranges,
     _get_source_at_commit,
-    _find_parent_class,
+    _drop_nested,
     _find_functions_at_lines,
 )
 
