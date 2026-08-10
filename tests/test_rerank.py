@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from diffcontext.models import RepositoryIndex, Symbol
+from diffcontext.models import Symbol
 from diffcontext.rerank.features import (
     FEATURE_NAMES,
     N_FEATURES,
