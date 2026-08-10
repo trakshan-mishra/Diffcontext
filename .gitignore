@@ -46,3 +46,10 @@ benchmarks/semantic/results/
 benchmarks/semantic/pairs/*.jsonl
 benchmarks/semantic/gap/*.jsonl
 benchmarks/semantic/audit/*.csv
+
+# Private working notes — call prep, positioning, application drafts.
+# Never publish these.
+writing/
+
+# Local editor/agent configuration.
+.claude/
