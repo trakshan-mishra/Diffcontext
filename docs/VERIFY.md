@@ -213,6 +213,24 @@ query, a good context should retrieve `beta`. This is the same methodology
 as the eval_v2 benchmark, shipped inside the tool. History cases default to
 `min_recall: 0.5` because commits are noisy — they touch unrelated code too.
 
+**Mechanical refactors are excluded**, on the same thresholds the published
+benchmark uses (≥20 changed symbols or ≥10 changed files —
+`NOISY_SYMBOLS`/`NOISY_FILES`). A reformat sweep's "co-change set" is an
+artifact of the sweep, and it is often larger than the number of symbols the
+tool is allowed to return, so recall on it is capped below 1.0 no matter how
+good retrieval is. The count of skipped commits is printed, never silent.
+
+**Comparing your number to ours:** `verify` selects ~15–20 symbols per case, so
+the right column to compare against in
+[BENCHMARKS.md](BENCHMARKS.md) is **`r@20`** (click 0.690, django 0.731, flask
+0.634, httpx 0.655, pydantic 0.526), *not* the headline `recall`, which is
+measured at a larger budget. Expect your own repo to differ from both: the
+benchmark samples ~100 distinct commits from up to 6,000 of history, while
+`--from-history N` takes the most recent qualifying ones, and a small recent
+window is high-variance. If the two disagree sharply on a repo, the mined case
+set is the first thing to inspect — `--out cases.json` shows you exactly what
+was graded.
+
 `--calibrate` then answers the meta-question: **does the structural
 sufficiency score track measured recall on this repo?**
 

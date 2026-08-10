@@ -106,6 +106,10 @@ symbols, costing ~30% relative recall. Top-k stays the recall-first
 default; measure the tradeoff on your own repo with
 `diffcontext verify --from-history 20 --cutoff gap`.
 
+**The one-page summary — repository size, tokens before and after,
+precision, recall, runtime, and a worked before/after example across all
+nine repos: [benchmarks/README.md](benchmarks/README.md).**
+
 All tables, the per-signal ablation, the failure taxonomy, and
 reproduction commands: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 A quality gate (`benchmarks/check_regression.py`) re-runs the benchmark
@@ -115,7 +119,11 @@ in CI and fails the build if retrieval quality drops.
 `diffcontext verify --from-history 20 --calibrate` mines test cases from
 *your* repo's git history and grades retrieval against them — and prints
 **NULL RESULT** rather than a decorative number when the tool doesn't fit
-your repo. Finding that out *is* the feature. Case format and
+your repo. Finding that out *is* the feature. It mines on the same terms
+as the table above (mechanical refactors excluded, and it says how many
+it skipped); compare what you get to the **`r@20`** column in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md), not to the headline recall —
+`verify` selects ~15–20 symbols, the headline is at a larger budget. Case format and
 methodology: [docs/VERIFY.md](docs/VERIFY.md).
 
 ## I audited my own benchmark, and three of my claims lost

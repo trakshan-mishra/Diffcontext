@@ -413,7 +413,17 @@ def _cmd_verify(args):
                 print(f"Error: {e}", file=sys.stderr)
                 sys.exit(1)
         else:
-            cases = cases_from_history(args.repo, max_cases=args.from_history)
+            skipped = []
+            cases = cases_from_history(
+                args.repo, max_cases=args.from_history, skipped_out=skipped,
+            )
+            if skipped:
+                print(
+                    f"Skipped {len(skipped)} mechanical-refactor commit(s) "
+                    f"(e.g. {skipped[0].commit_hash}: {skipped[0].reason}). "
+                    "The published benchmark excludes these too — see "
+                    "docs/BENCHMARKS.md."
+                )
             if not cases:
                 print(
                     "No co-change cases found in git history. Need commits that "
