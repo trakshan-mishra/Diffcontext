@@ -152,20 +152,6 @@ def _get_source_at_commit(
         return None
 
 
-def _find_parent_class(tree: ast.AST, target_node: ast.AST) -> Optional[str]:
-    """Find the (possibly nested) class name that directly contains target_node."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            for child in node.body:
-                if child is target_node:
-                    return node.name
-                if isinstance(child, ast.ClassDef):
-                    for grandchild in child.body:
-                        if grandchild is target_node:
-                            return f"{node.name}.{child.name}"
-    return None
-
-
 def _find_functions_at_lines(
     filepath: str,
     changed_lines: Set[int],
@@ -210,19 +196,46 @@ def _find_functions_at_lines(
     relative_file = "./" + filepath
     results = []
 
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            class_name = _find_parent_class(tree, node)
-            name = f"{class_name}.{node.name}" if class_name else node.name
-            func_id = f"{relative_file}:{name}"
+    # Same walker the indexer uses. When this module had its own copy the two
+    # disagreed about functions nested inside methods, so the miner emitted
+    # ground-truth ids that could not exist in the index — scored as a
+    # retrieval miss when nothing had been retrieved wrongly at all.
+    from ..parser import collect_functions
 
-            end_lineno = getattr(node, "end_lineno", node.lineno + 10)
-            func_lines = set(range(node.lineno, end_lineno + 1))
+    for name, node in collect_functions(tree):
+        end_lineno = getattr(node, "end_lineno", node.lineno + 10)
+        func_lines = set(range(node.lineno, end_lineno + 1))
 
-            if func_lines & changed_lines:
-                results.append(func_id)
+        if func_lines & changed_lines:
+            results.append(f"{relative_file}:{name}")
 
     return results
+
+
+def _drop_nested(query_symbol: str, gt_symbols: List[str]) -> List[str]:
+    """
+    Remove ground-truth symbols that are lexically inside the query symbol
+    (or that contain it).
+
+    A nested function's source range lies within its parent's, so ONE edit
+    inside a closure marks the closure and every enclosing function as
+    "changed" in the same commit. Keeping those pairs asks the retriever to
+    find a function that is physically part of the one it was handed —
+    containment, not the call/co-change relationship being measured, and
+    free recall for any system that returns its own input.
+
+    Qualnames make this a prefix test: "A.f" contains "A.f.<locals>.g".
+    """
+    kept = []
+    for gt in gt_symbols:
+        if gt == query_symbol:
+            continue
+        if gt.startswith(query_symbol + ".<locals>."):
+            continue
+        if query_symbol.startswith(gt + ".<locals>."):
+            continue
+        kept.append(gt)
+    return kept
 
 
 def extract_cochange_cases(
@@ -362,6 +375,7 @@ def extract_cochange_cases(
                 break
 
             gt_syms = [s for j, s in enumerate(all_changed_symbols) if j != i]
+            gt_syms = _drop_nested(query_sym, gt_syms)
             if not gt_syms:
                 continue
 

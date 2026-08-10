@@ -11,18 +11,36 @@ from typing import Dict, Callable, List, Optional, Tuple
 from .models import Symbol
 
 
+# Bump when a change to extraction alters the symbols or ids produced from
+# UNCHANGED source. Cache entries are content-addressed, so without this a
+# naming/extraction change is invisible to the cache: every file still hashes
+# the same, every stale row is still served, and the new code silently never
+# runs. (Observed: adopting PEP 3155 qualnames changed nothing at all until
+# this existed.) It is mixed into the file hash, so a bump invalidates every
+# symbol row and every cached graph at once.
+#
+#   1 — class-stack-only naming ("A.f" for a function nested in method A.f)
+#   2 — PEP 3155 qualnames ("A.f.<locals>.g")
+EXTRACTION_VERSION = 2
+
+
+def _versioned(digest: str) -> str:
+    """Bind a content digest to the extraction scheme that produced it."""
+    return f"v{EXTRACTION_VERSION}:{digest}"
+
+
 def get_file_hash(filepath: str) -> str:
     """Compute SHA-256 hash of a file."""
     hasher = hashlib.sha256()
     with open(filepath, "rb") as f:
         # Python files are small enough to read into memory safely
         hasher.update(f.read())
-    return hasher.hexdigest()
+    return _versioned(hasher.hexdigest())
 
 
 def hash_source(source_bytes: bytes) -> str:
     """SHA-256 of already-read file contents (avoids a second disk read)."""
-    return hashlib.sha256(source_bytes).hexdigest()
+    return _versioned(hashlib.sha256(source_bytes).hexdigest())
 
 
 def repo_state_hash(file_hashes: Dict[str, str]) -> str:

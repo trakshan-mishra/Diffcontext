@@ -22,7 +22,7 @@ import os
 from typing import Dict, List, Optional, Tuple
 
 from .scanner import find_python_files
-from .parser import extract_all_symbols
+from .parser import collect_functions, extract_all_symbols
 from .resolver import build_import_map
 from .symbols import (
     extract_attribute_ownerships,
@@ -323,9 +323,9 @@ def _build_call_edges(
     for relative_file, tree in file_trees.items():
         import_map = import_maps[relative_file]
         local_name_to_id = ids_by_file.get(relative_file, {})
-        for fn_node, is_method, class_name in _collect_function_nodes(tree):
+        for fn_node, is_method, class_name, qualname in _collect_function_nodes(tree):
             _add_function_call_edges(
-                graph, fn_node, is_method, class_name, relative_file,
+                graph, fn_node, is_method, class_name, qualname, relative_file,
                 local_name_to_id, import_map, functions, function_ids,
                 repo_path, attribute_owners, inheritance, class_registry,
                 factory_returns, import_maps, classes_by_file, cached_resolve,
@@ -333,15 +333,14 @@ def _build_call_edges(
 
 
 def _add_function_call_edges(
-    graph, fn_node, is_method, class_name, relative_file,
+    graph, fn_node, is_method, class_name, qualname, relative_file,
     local_name_to_id, import_map, functions, function_ids,
     repo_path, attribute_owners, inheritance, class_registry,
     factory_returns, import_maps, classes_by_file, cached_resolve,
 ):
     """Edges out of one function: every call it makes, plus function
     references it passes as arguments."""
-    function_name = f"{class_name}.{fn_node.name}" if class_name else fn_node.name
-    function_id   = f"{relative_file}:{function_name}"
+    function_id   = f"{relative_file}:{qualname}"
 
     graph.setdefault(function_id, [])
 
@@ -492,7 +491,7 @@ def _add_decorator_edges(
     callsites likely change too."""
     for relative_file, tree in file_trees.items():
         import_map = import_maps[relative_file]
-        for fn_node, _is_method, _class_name in _collect_function_nodes(tree):
+        for fn_node, _is_method, _class_name, qualname in _collect_function_nodes(tree):
             added = 0
             for deco in fn_node.decorator_list:
                 if added >= _DECORATOR_EDGE_MAX:
@@ -503,11 +502,7 @@ def _add_decorator_edges(
                 )
                 if not dep:
                     continue
-                fn_name_local = (
-                    f"{_class_name}.{fn_node.name}"
-                    if _class_name else fn_node.name
-                )
-                fid = f"{relative_file}:{fn_name_local}"
+                fid = f"{relative_file}:{qualname}"
                 if fid in function_ids and dep != fid and dep not in graph.get(fid, []):
                     graph.setdefault(fid, []).append(dep)
                     added += 1
@@ -659,37 +654,50 @@ def _add_sibling_override_edges(graph, dispatch_groups):
 
 def _collect_function_nodes(tree):
     """
-    Return list of (function_node, is_method, class_name) for EVERY function
-    in the file, including nested functions and closures.
+    Return list of (function_node, is_method, class_name, qualname) for EVERY
+    function in the file, including nested functions and closures.
 
-    Mirrors what parser.py's _collect_functions does so that the graph covers
-    every symbol the parser emits (previously missed ~30-40% of nodes) —
-    with one known gap: this collector does not descend into if/try/with
-    blocks, so a `def` under `if TYPE_CHECKING:` or `try/except ImportError`
-    is parsed as a symbol but gets no graph edges.
+    Delegates the walk to parser.collect_functions so the graph is keyed by
+    exactly the ids the parser emits. It used to keep its own copy of the
+    traversal, which drifted: the copy did not descend into if/try/with
+    blocks, so a `def` under `if TYPE_CHECKING:` was indexed as a symbol but
+    got no graph edges at all.
+
+    `qualname` names the symbol (PEP 3155, may contain `<locals>`);
+    `class_name` is separate because it answers a different question — what
+    type `self` refers to — and must stay the bare enclosing class for
+    attribute resolution to work.
     """
     result = []
-    _collect_recursive(tree.body, class_stack=[], result=result)
+    for qualname, node in collect_functions(tree):
+        class_name = _enclosing_class(qualname)
+        result.append((node, class_name is not None, class_name, qualname))
     return result
 
 
-def _collect_recursive(stmts, class_stack, result):
-    """Recursively collect function nodes from a list of statements."""
-    for node in stmts:
-        if isinstance(node, ast.ClassDef):
-            class_stack.append(node.name)
-            _collect_recursive(node.body, class_stack, result)
-            class_stack.pop()
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if class_stack:
-                class_name = ".".join(class_stack)
-                is_method = True
-            else:
-                class_name = None
-                is_method = False
-            result.append((node, is_method, class_name))
-            # Also recurse into the function body to catch closures/nested funcs
-            _collect_recursive(node.body, class_stack, result)
+def _enclosing_class(qualname):
+    """
+    Nearest enclosing class in a PEP 3155 qualname, or None.
+
+        "A.f"                  -> "A"
+        "A.B.f"                -> "A.B"
+        "A.f.<locals>.g"       -> "A"     (g can close over the enclosing self)
+        "f.<locals>.g"         -> None
+
+    In a qualname, a segment is a FUNCTION exactly when the next segment is
+    "<locals>"; everything else on the path is a class. A nested function
+    keeps its enclosing class because closing over `self` is legal and
+    common, and dropping it would lose those attribute edges.
+    """
+    parts = qualname.split(".")
+    classes = []
+    for i, part in enumerate(parts[:-1]):
+        if part == "<locals>":
+            continue
+        if i + 1 < len(parts) and parts[i + 1] == "<locals>":
+            continue          # this segment is a function, not a class
+        classes.append(part)
+    return ".".join(classes) if classes else None
 
 
 def _find_return_type(node):
