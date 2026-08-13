@@ -40,6 +40,10 @@ class RepositoryIndex:
     # without re-running unchanged language adapters. None on a
     # graph-cache warm start (recomputed on first update that needs it).
     _lang_graphs: Optional[Dict[str, Dict[str, List[str]]]] = field(default=None, repr=False, compare=False)
+    # Reranker query caches. They are derived solely from symbol code and must
+    # be invalidated whenever update() replaces symbols.
+    _rerank_file_counts: Optional[Dict[str, int]] = field(default=None, repr=False, compare=False)
+    _rerank_token_cache: Optional[Dict[str, frozenset]] = field(default=None, repr=False, compare=False)
 
     def update(self, changed_files: List[str]) -> "RepositoryIndex":
         """

@@ -207,21 +207,28 @@ Test suite: **214 passed, 3 skipped, 1.71 s** (was 191/2 before this work).
 
 ---
 
-## 8. What is NOT done
+## 8. Product integration and remaining work
 
-- **Integration** (brief §1G): `analyze_impact(..., rerank=False)`, the
-  `--rerank` flag on `compile`/`verify`, `select_context(cutoff="prob")`, and
-  meta-header disclosure are **not yet wired**. The model and its loader exist
-  and are tested; nothing in the product calls them yet, so current behavior is
-  byte-identical to before by construction.
-- **`cutoff="prob"`** — blocked on §5. Do not enable.
+- **Integration:** `analyze_impact(..., rerank=True)` and the opt-in
+  `diffcontext compile --rerank` / `diffcontext verify --rerank` paths now
+  invoke the model. The reranker receives only the top 100 candidates from the
+  existing stage-1 hybrid order — exactly its measured universe — and leaves
+  all later candidates in their stage-1 order.
+- **Score-curve preservation:** the reranker transfers the existing stage-1
+  score curve to its learned order instead of exposing model probabilities as
+  generic impact scores. This changes ranking identity without changing the
+  semantics of the separately-benchmarked `--cutoff gap` policy.
+- **Default:** remains off. `--rerank` is a precision-first option; run
+  `diffcontext verify --from-history 50` both with and without it on the target
+  repository before changing an integration's default.
+- **`cutoff="prob"`** — still blocked on §5. Do not enable.
 - **Phase 2** (downstream eval: `oracle` arm, ~200 tasks) — untouched.
 - **Phase 3** (TYPE_CHECKING parser fix, score-aware fusion) — untouched.
 
 ## 9. Recommendation
 
-Ship as **opt-in, default off**, disclosed in the meta-header. The effect is
-real and survives both cross-repo and forward-in-time validation, but it is
+Ship as **opt-in, default off**. The effect is real and survives both
+cross-repo and forward-in-time validation, but it is
 ~1.5–2.7 precision points, not the 3× the oracle suggests is available. Before
 investing further in this feature set, the ablation in §4 argues the next move
 is a genuinely independent signal, not more features of the same kind — which

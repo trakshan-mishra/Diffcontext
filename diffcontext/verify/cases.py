@@ -223,6 +223,7 @@ def cases_from_history(
     repo_path: str,
     max_cases: int = 30,
     skipped_out: Optional[List] = None,
+    known_symbols: Optional[set] = None,
 ) -> List[Case]:
     """
     Auto-generate cases from git co-change history: functions modified in
@@ -232,17 +233,37 @@ def cases_from_history(
     Mechanical refactors are excluded on the same thresholds the published
     benchmark uses, so a number measured here is comparable to the one in
     docs/BENCHMARKS.md. Pass a list as skipped_out to see what was dropped.
+
+    known_symbols: ids present in the CURRENT index. Cases are mined from
+    history but scored against HEAD, so a symbol can be legitimately absent
+    today — flask's RequestContext methods, for instance, were merged into
+    AppContext upstream. Those ids are unretrievable by construction, and
+    counting them as misses measures repo churn, not retrieval. Ground truth
+    is filtered to what still exists and a case whose query symbol is gone is
+    dropped entirely (it would compile nothing at all).
+
+    Unlike a hand-written case file, a name here was produced by the miner,
+    not typed by a user — so there is no typo to surface, and the strict
+    unknown-symbol accounting run_cases applies to authored cases would only
+    deflate the measurement. Pass None to keep the unfiltered behavior.
     """
     cochange = extract_cochange_cases(
         repo_path, max_cases=max_cases, skipped_out=skipped_out,
     )
     cases = []
     for cc in cochange:
+        if known_symbols is not None and cc.query_symbol not in known_symbols:
+            continue
+        gt = list(cc.ground_truth_symbols)
+        if known_symbols is not None:
+            gt = [s for s in gt if s in known_symbols]
+        if not gt:
+            continue
         cases.append(Case(
             name=f"history-{cc.commit_hash}-{cc.query_symbol.split(':')[-1]}",
             task=f"co-change from commit {cc.commit_hash}: {cc.commit_msg}",
             changed=[cc.query_symbol],
-            must_include=list(cc.ground_truth_symbols),
+            must_include=gt,
             # History cases are noisy (a commit can touch unrelated code),
             # so demand majority recall rather than perfection.
             min_recall=0.5,
@@ -267,6 +288,7 @@ def run_cases(
     cases: List[Case],
     index: Optional[RepositoryIndex] = None,
     cutoff: Optional[str] = None,
+    rerank: bool = False,
 ) -> List[CaseResult]:
     """
     Run every case against the real pipeline (index once, reuse).
@@ -278,6 +300,8 @@ def run_cases(
     cutoff: selection policy forwarded to compile ("gap" = the measured
     precision operating point) so users can measure the recall/precision
     tradeoff on their own repo's cases before adopting it.
+    rerank: apply the shipped stage-2 learned ranker before selection.  This
+        keeps the same candidate pool while testing a precision-first order.
     """
     repo_path = os.path.abspath(repo_path)
     idx = index or index_repository(repo_path)
@@ -290,7 +314,9 @@ def run_cases(
             if sym not in idx.symbols and sym not in idx.graph:
                 unknown[sym] = _suggest(sym, known_ids)
 
-        impact = analyze_impact(idx, case.changed, max_depth=case.depth)
+        impact = analyze_impact(
+            idx, case.changed, max_depth=case.depth, rerank=rerank,
+        )
         max_tokens = case.budget if case.budget > 0 else None
         top_k = case.top_k * len(case.changed) if case.top_k > 0 else None
         package = compile_pipeline(

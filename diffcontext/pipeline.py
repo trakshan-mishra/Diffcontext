@@ -453,6 +453,8 @@ def update_index(index: RepositoryIndex, changed_files: List[str]) -> Repository
 
         # Symbols changed: the cached BM25 index no longer matches them.
         index._lexical = None
+        index._rerank_file_counts = None
+        index._rerank_token_cache = None
 
         # Rebuild graph from in-memory state (no file I/O, no parsing);
         # the cached reverse graph goes stale with it.
@@ -514,6 +516,11 @@ def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
 # staying within ±1.1 points on four repos never used for any selection.
 # Change only with benchmark evidence.
 HYBRID_WEIGHTS = (0.3, 0.5, 0.2)
+
+# The stage-2 model was trained and validated on the first 100 stage-1
+# candidates (benchmarks/rerank/mine.py).  Ranking a larger universe would be
+# extrapolation, not the measured product behavior.
+RERANK_CANDIDATE_LIMIT = 100
 
 # Number of graph-scored candidates at which graph confidence saturates
 # to 1.0 for the adaptive blend. Below it, graph weight is scaled down
@@ -620,6 +627,95 @@ def _blend_hybrid(
     return blended
 
 
+def _rerank_scores(
+    index: RepositoryIndex,
+    changed_symbols: List[str],
+    scores: Dict[str, float],
+    history_scores: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """Reorder the stage-1 hybrid pool with the shipped precision model.
+
+    The stage-1 blend deliberately has broad recall: graph neighbors, BM25
+    hits, and same-file symbols all enter its candidate pool.  It is therefore
+    the right source of candidates but not a sufficiently selective final
+    order on large, multi-package repositories.  The learned model consumes
+    that exact pool and only changes its order; it never manufactures a new
+    candidate or drops a changed symbol.
+
+    Scores returned from this helper are rank scores rather than calibrated
+    probabilities.  ``select_context`` and existing callers only require a
+    deterministic descending order, and using a descending ordinal preserves
+    the product's score-ranking contract without pretending a model trained
+    for within-query ranking yields cross-query-comparable probabilities.
+    """
+    from .lexical import get_lexical_index
+    from .rerank.features import QueryContext
+    from .rerank.model import get_model
+
+    changed_set = set(changed_symbols)
+    candidates = [
+        sid for sid, _score in sorted(
+            scores.items(), key=lambda item: (-item[1], item[0])
+        )
+        if sid not in changed_set and sid in index.symbols
+    ]
+    if not candidates:
+        return scores
+
+    # The candidate model was trained on the raw BM25 scores and import maps
+    # used by this product path.  A cache-warm index has no AST/import maps;
+    # materialize them once rather than silently feeding a constant-zero
+    # feature that the model was not meant to see in normal production use.
+    if index._import_maps is None and index._repo_path is not None:
+        _ensure_trees(index)
+    lexical_index = get_lexical_index(index)
+    bm25_scores: Dict[str, float] = {}
+    for sym_id in changed_symbols:
+        symbol = index.symbols.get(sym_id)
+        if symbol is None:
+            continue
+        for sid, score in lexical_index.scores_for(symbol.code).items():
+            if sid not in changed_set and score > bm25_scores.get(sid, 0.0):
+                bm25_scores[sid] = score
+
+    file_counts = index._rerank_file_counts
+    if file_counts is None:
+        file_counts = {}
+        for sid in index.symbols:
+            filename = sid.split(":", 1)[0]
+            file_counts[filename] = file_counts.get(filename, 0) + 1
+        index._rerank_file_counts = file_counts
+    token_cache = index._rerank_token_cache
+    if token_cache is None:
+        token_cache = {}
+        index._rerank_token_cache = token_cache
+
+    model = get_model()
+    context = QueryContext(
+        index.symbols,
+        index.graph,
+        index.reverse_graph,
+        changed_symbols,
+        bm25_scores=bm25_scores,
+        import_maps=index._import_maps,
+        cochange=history_scores,
+        file_counts=file_counts,
+        token_cache=token_cache,
+    )
+    head = candidates[:RERANK_CANDIDATE_LIMIT]
+    ranked = model.rerank(context, head) + candidates[RERANK_CANDIDATE_LIMIT:]
+
+    # Transfer the *existing* score curve to the model's new order.  That
+    # changes identity ordering only: top-k and budget packing see the learned
+    # rank, while the pre-existing ``gap`` policy sees the same score-drop
+    # shape it was benchmarked against.  Returning probabilities here would
+    # silently change that policy to an unmeasured distributional cutoff.
+    reranked = dict(scores)
+    stage1_score_curve = [scores[sid] for sid in candidates]
+    reranked.update(zip(ranked, stage1_score_curve))
+    return reranked
+
+
 def analyze_impact(
     index: RepositoryIndex,
     changed_symbols: List[str],
@@ -628,6 +724,7 @@ def analyze_impact(
     hybrid: bool = True,
     adaptive: bool = True,
     history: Optional[object] = None,
+    rerank: bool = False,
 ) -> ImpactResult:
     """
     Phase 2: Given changed symbols, compute blast radius and impact scores.
@@ -645,6 +742,9 @@ def analyze_impact(
         co-change association is blended as a fourth signal — the only
         signal that can reach co-change partners with no structural or
         lexical connection (the measured cross-subsystem ceiling).
+    rerank:   apply the shipped learned stage-2 ranker to the stage-1 hybrid
+        candidate pool.  This is opt-in because it prioritizes precision;
+        leave it false for the existing recall-first behavior.
 
     Fix: expanded_deps is now passed into compute_impact_scores so those
     nodes are actually scored. Previously they were computed and discarded.
@@ -682,14 +782,20 @@ def analyze_impact(
     )
 
     # ── Hybrid blend (graph + BM25 + same-file [+ history]) ──────────────
+    history_scores = (
+        history.scores_for_symbols(changed_symbols)
+        if history is not None else None
+    )
     if hybrid:
-        history_scores = (
-            history.scores_for_symbols(changed_symbols)
-            if history is not None else None
-        )
         scores = _blend_hybrid(
             index, changed_symbols, scores,
             adaptive=adaptive, history_scores=history_scores,
+        )
+    if rerank:
+        if not hybrid:
+            raise ValueError("rerank requires hybrid=True so it receives the trained stage-1 pool")
+        scores = _rerank_scores(
+            index, changed_symbols, scores, history_scores=history_scores,
         )
 
     return ImpactResult(
@@ -763,11 +869,14 @@ def run_pipeline(
     max_depth: Optional[int] = 2,
     max_tokens: Optional[int] = 10000,
     cutoff: Optional[str] = None,
+    rerank: bool = False,
 ) -> ContextPackage:
     """
     Full pipeline in one call:
         repo_path + changed_symbols -> ContextPackage
     """
     index = index_repository(repo_path)
-    impact = analyze_impact(index, changed_symbols, max_depth=max_depth)
+    impact = analyze_impact(
+        index, changed_symbols, max_depth=max_depth, rerank=rerank,
+    )
     return compile(index, impact, max_tokens=max_tokens, cutoff=cutoff)
