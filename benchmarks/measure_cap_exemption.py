@@ -104,7 +104,9 @@ def measure(targets, n_cases, budget):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cases", type=int, default=20)
+    # 20/repo (the old default) is underpowered enough to flip this effect's
+    # sign at tight budgets. 150 is ~1,100 cases and ~5 min for two budgets.
+    ap.add_argument("--cases", type=int, default=150)
     ap.add_argument("--repos", nargs="*", default=None)
     ap.add_argument("--budget", nargs="*", type=int, default=[vcases.DEFAULT_BUDGET],
                     help="token budgets to sweep; a cap only binds under pressure")

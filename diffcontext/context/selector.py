@@ -54,27 +54,30 @@ MAX_SINGLE_SYMBOL_FRACTION = 0.25
 # retrieval matters. On google-api-python-client the unexempted cap evicted
 # symbols this ranker had placed 2nd, 2nd, 4th, 6th, 7th, 11th and 15th of 347.
 #
-# What the exemption actually buys, over 9 repos / 172 co-change cases
-# (benchmarks/measure_cap_exemption.py --budget 1500 3000 6000 10000):
+# What the exemption actually buys, over 9 repos / 1,102 co-change cases
+# (benchmarks/measure_cap_exemption.py --cases 150 --budget 1500 10000):
 #
 #     budget   recall (on -> top-10)   prec_lb (on -> top-10)
-#      1,500     11.2% -> 11.1%          21.7% -> 42.2%
-#      3,000     24.3% -> 26.4%          29.2% -> 40.4%
-#      6,000     41.9% -> 42.5%          24.1% -> 25.5%
-#     10,000     51.7% -> 51.8%          20.0% -> 20.3%
+#      1,500     15.3% -> 16.7%          26.0% -> 40.3%
+#     10,000     58.2% -> 58.3%          16.0% -> 16.2%
 #
-# Read that honestly: the win is PRECISION UNDER BUDGET PRESSURE, not recall.
-# At 1,500 precision nearly doubles for a 0.1pt recall LOSS — it trades several
-# small marginal symbols for one large highly-ranked one, and spends 1,349
-# tokens rather than 1,442. At the 10k default the policy barely matters: the
-# same 91/172 cases pass either way, because the cap seldom binds when the
-# budget is roomy and the loop below already skips an oversized symbol and
-# keeps scanning, so smaller candidates never lost their chance.
+# The win is PRECISION UNDER BUDGET PRESSURE. At 1,500 precision gains ~14
+# points while spending FEWER tokens (1,440 -> 1,367): it trades several small
+# marginal symbols for one large highly-ranked one. At the 10k default the
+# policy is nearly irrelevant — 679 vs 682 of 1,102 cases pass — because the
+# cap seldom binds when the budget is roomy, and the loop below already skips
+# an oversized symbol and keeps scanning, so smaller candidates never lost
+# their chance.
+#
+# Measure at --cases 150, never the old default of 20. At 20/repo this effect
+# estimate was noise-inflated: it showed a 1,500-budget recall LOSS that more
+# data reversed. The same underpowering flattered the reranker A/B by ~4x, so
+# treat any 20-case number in this repo's history as provisional.
 #
 # N=10 is a conservative floor, NOT a measured optimum: top-5, top-20 and
-# cap-off are indistinguishable from it at every budget above. The cap is kept
-# below rank 10 as a guard against a pathological low-ranked symbol, but this
-# corpus never exercises it — do not cite that backstop as a measured benefit.
+# cap-off are indistinguishable from it at both budgets. The cap is kept below
+# rank 10 as a guard against a pathological low-ranked symbol, but this corpus
+# never exercises it — do not cite that backstop as a measured benefit.
 CAP_EXEMPT_TOP_N = 10
 
 # Largest-gap cutoff ("gap50" in the benchmarks): the relative-drop search
