@@ -125,7 +125,9 @@ class EmbeddingBaseline:
 
     ST_MODEL = "all-MiniLM-L6-v2"
 
-    def __init__(self, symbols: Dict[str, Symbol], prefer_dense: bool = True):
+    def __init__(self, symbols: Dict[str, Symbol], prefer_dense: bool = True,
+                 cache: Optional[Dict[str, object]] = None,
+                 model: Optional[object] = None):
         self.symbol_ids = list(symbols.keys())
         self.symbols = symbols
         self._st_model = None
@@ -135,8 +137,11 @@ class EmbeddingBaseline:
 
         if prefer_dense:
             try:
-                from sentence_transformers import SentenceTransformer
-                self._st_model = SentenceTransformer(self.ST_MODEL)
+                if model is not None:
+                    self._st_model = model
+                else:
+                    from sentence_transformers import SentenceTransformer
+                    self._st_model = SentenceTransformer(self.ST_MODEL)
                 self.encoder = f"sentence-transformers/{self.ST_MODEL}"
             except Exception as e:  # noqa: BLE001 — ImportError, or model
                 # download failure (offline / network-policy environments).
@@ -148,12 +153,35 @@ class EmbeddingBaseline:
 
         if self._st_model is not None:
             import numpy as np
+            # Encode only what `cache` has never seen. The caller owns the
+            # cache, so a sweep that re-indexes the same repo at 15 successive
+            # commits embeds each distinct function body once instead of once
+            # per commit — adjacent commits share nearly every symbol. Keyed by
+            # a hash of the SOURCE, not the symbol id, so a function that moves
+            # file or is renamed still hits, and one whose body changed misses
+            # (which is correct — its vector must be recomputed).
             texts = [symbols[sid].code for sid in self.symbol_ids]
-            emb = self._st_model.encode(
-                texts, batch_size=64, show_progress_bar=False,
-                convert_to_numpy=True, normalize_embeddings=True,
-            )
-            self._matrix = np.asarray(emb)
+            if cache is None:
+                emb = self._st_model.encode(
+                    texts, batch_size=64, show_progress_bar=False,
+                    convert_to_numpy=True, normalize_embeddings=True,
+                )
+                self._matrix = np.asarray(emb)
+            else:
+                keys = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+                todo = {k: t for k, t in zip(keys, texts) if k not in cache}
+                if todo:
+                    new_keys = list(todo)
+                    fresh = self._st_model.encode(
+                        [todo[k] for k in new_keys], batch_size=64,
+                        show_progress_bar=False, convert_to_numpy=True,
+                        normalize_embeddings=True,
+                    )
+                    for k, v in zip(new_keys, np.asarray(fresh)):
+                        cache[k] = v
+                self.cache_hits = len(keys) - len(todo)
+                self.cache_misses = len(todo)
+                self._matrix = np.vstack([cache[k] for k in keys])
         else:
             self.encoder = "tfidf-cosine-approx"
             n = len(self.symbol_ids)

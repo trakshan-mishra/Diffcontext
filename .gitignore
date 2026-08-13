@@ -21,6 +21,7 @@ build/
 # Virtual environments
 .venv/
 venv/
+.venv-*/
 node_modules/
 
 # DiffContext runtime caches (content-addressed, regenerated on demand)

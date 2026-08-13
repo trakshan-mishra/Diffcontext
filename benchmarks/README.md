@@ -260,6 +260,8 @@ above is per-commit.** Both aggregations are recorded in the JSON.
 
 | Document | What's in it |
 |---|---|
+| [AGENT_EVAL.md](AGENT_EVAL.md) | The agent evaluation layer: all seven metrics on one task unit, comparing full-repo vs. semantic retrieval vs. DiffContext |
+| [downstream/README.md](downstream/README.md) | Rung-5 downstream eval — does better context change whether an LLM's patch passes the repo's own tests |
 | [EVAL_V2_REPORT.md](EVAL_V2_REPORT.md) | Full methodology, four baselines, bootstrap CIs, budget sweep, failure taxonomy |
 | [RIGOR_REPORT_2026-07.md](RIGOR_REPORT_2026-07.md) | Leave-one-repo-out weight validation, true dense baseline, calibration at n=1080, paired significance tests |
 | [docs/BENCHMARKS.md](../docs/BENCHMARKS.md) | Per-signal ablation, blend variants |
