@@ -49,6 +49,10 @@ diffcontext blast --changed ./src/auth.py:validate_jwt
 # 3. Compile LLM-ready context for the change, capped at 8k tokens
 diffcontext compile --changed ./src/auth.py:validate_jwt --max-tokens 8000
 
+# 3a. Precision-first ordering for large or multi-package repositories
+# (the same hybrid candidate pool, reranked before top-k and packing)
+diffcontext compile --changed ./src/auth.py:validate_jwt --rerank --top-k 20
+
 # 4. Or start from an actual git diff instead of naming a symbol
 diffcontext compile --ref HEAD~1
 
@@ -105,6 +109,11 @@ drop instead of a fixed top-k — measured ~4× the precision at 6–9
 symbols, costing ~30% relative recall. Top-k stays the recall-first
 default; measure the tradeoff on your own repo with
 `diffcontext verify --from-history 20 --cutoff gap`.
+
+For a tighter ordering of the same hybrid candidate pool, use **`--rerank`**.
+The learned stage-2 model reorders only the top 100 stage-1 candidates, so it
+does not enlarge the retrieval universe. Measure it against the default on your
+own history before adopting it: `diffcontext verify --from-history 50 --rerank`.
 
 **The one-page summary — repository size, tokens before and after,
 precision, recall, runtime, and a worked before/after example across all

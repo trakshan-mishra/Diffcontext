@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from diffcontext.models import Symbol
+from diffcontext.models import RepositoryIndex, Symbol
 from diffcontext.rerank.features import (
     FEATURE_NAMES,
     N_FEATURES,
@@ -259,6 +259,41 @@ def test_rerank_orders_by_probability(tiny):
     ctx = _ctx(tiny)
     pool = ["./b.py:unrelated", "./a.py:parse_body"]
     assert m.rerank(ctx, pool)[0] == "./a.py:parse_body"
+
+
+def test_analyze_impact_applies_opt_in_reranker(tiny, monkeypatch):
+    """The shipped pipeline, not just ``RerankModel``, must use --rerank.
+
+    This catches the integration gap where a trained model could be loaded and
+    unit-tested but no product entry point ever invoked it.  Prefer the direct
+    caller here so the model must actively reverse the stage-1 order.
+    """
+    from diffcontext.pipeline import analyze_impact
+    import diffcontext.rerank.model as rerank_model
+
+    symbols, graph, _reverse = tiny
+    index = RepositoryIndex(symbols=symbols, graph=graph)
+    caller_feature = list(FEATURE_NAMES).index("is_direct_caller")
+    coef = [0.0] * N_FEATURES
+    coef[caller_feature] = 10.0
+    model = RerankModel(
+        FEATURE_NAMES, [0.0] * N_FEATURES, [1.0] * N_FEATURES, coef, 0.0,
+    )
+    monkeypatch.setattr(rerank_model, "get_model", lambda: model)
+
+    query = "./a.py:handler"
+    callee = "./a.py:parse_body"
+    caller = "./a.py:Router.dispatch"
+    stage1 = analyze_impact(index, [query])
+    reranked = analyze_impact(index, [query], rerank=True)
+
+    assert stage1.scores[callee] > stage1.scores[caller]
+    assert reranked.scores[caller] > reranked.scores[callee]
+    assert reranked.scores[query] == stage1.scores[query]
+    assert set(reranked.scores) == set(stage1.scores)
+    assert sorted(
+        v for sid, v in reranked.scores.items() if sid != query
+    ) == sorted(v for sid, v in stage1.scores.items() if sid != query)
 
 
 def test_wrong_width_vector_is_rejected():

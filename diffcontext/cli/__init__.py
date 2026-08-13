@@ -89,6 +89,11 @@ def main():
         help="Blend git co-change history as a fourth signal (mines git log once; "
              "reaches related files with no call or lexical connection)",
     )
+    p_compile.add_argument(
+        "--rerank", action="store_true",
+        help="Apply the shipped learned stage-2 reranker to prioritize a tighter, "
+             "higher-precision ordering of the hybrid candidate pool",
+    )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -126,6 +131,10 @@ def main():
             "--from-history once with each to measure the recall/precision "
             "tradeoff on YOUR repo before adopting 'gap'."
         ),
+    )
+    p_verify.add_argument(
+        "--rerank", action="store_true",
+        help="Apply the learned stage-2 reranker while measuring precision/recall",
     )
     p_verify.add_argument(
         "--cases", default=None, metavar="FILE",
@@ -292,7 +301,7 @@ def _cmd_compile(args):
 
     impact = analyze_impact(
         idx, changed, max_depth=args.depth, hybrid=not args.graph_only,
-        history=history,
+        history=history, rerank=args.rerank,
     )
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
@@ -406,6 +415,7 @@ def _cmd_verify(args):
 
     # ── Mode 1/2: test cases (from file or from git history) ─────────────
     if args.cases or args.from_history is not None:
+        history_index = None      # set only when mining, then reused below
         if args.cases:
             try:
                 cases = load_cases(args.cases)
@@ -414,8 +424,13 @@ def _cmd_verify(args):
                 sys.exit(1)
         else:
             skipped = []
+            # Index first so mined ground truth can be filtered to symbols
+            # that still exist at HEAD, then reuse it for the run itself.
+            from ..pipeline import index_repository
+            history_index = index_repository(os.path.abspath(args.repo))
             cases = cases_from_history(
                 args.repo, max_cases=args.from_history, skipped_out=skipped,
+                known_symbols=set(history_index.symbols),
             )
             if skipped:
                 print(
@@ -439,7 +454,10 @@ def _cmd_verify(args):
                 return
 
         cutoff = args.cutoff if args.cutoff != "topk" else None
-        results = run_cases(args.repo, cases, cutoff=cutoff)
+        results = run_cases(
+            args.repo, cases, index=history_index, cutoff=cutoff,
+            rerank=args.rerank,
+        )
 
         cal = calibrate(results) if args.calibrate else None
         if cal is not None and args.save_calibration:
@@ -486,7 +504,7 @@ def _cmd_verify(args):
         return
 
     warn_unknown_symbols(idx, changed)
-    impact = analyze_impact(idx, changed, max_depth=args.depth)
+    impact = analyze_impact(idx, changed, max_depth=args.depth, rerank=args.rerank)
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
     cutoff = args.cutoff if args.cutoff != "topk" else None
