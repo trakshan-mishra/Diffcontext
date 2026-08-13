@@ -142,8 +142,19 @@ def test_budget_actually_binds_and_drops_are_disclosed(tmp_path):
 
     assert tight.dropped_symbols, "tight budget dropped nothing — not binding"
     assert tight.symbol_count < loose.symbol_count
-    for d in tight.dropped_symbols:
+
+    # Disclosure is capped by design: under a tight budget the manifest itself
+    # would cost more than the budget, so the compiler lists the top few and
+    # reports an honest total (compiler._render_meta, drop_cap). The contract
+    # is therefore "the count is truthful and the listed ones are real", not
+    # "every id appears" — asserting the latter only held while the drop count
+    # happened to stay under the display cap.
+    drop_cap = 5   # budgets < 2000
+    assert f"DROPPED SYMBOLS ({len(tight.dropped_symbols)})" in tight.text
+    for d in tight.dropped_symbols[:drop_cap]:
         assert d in tight.text, f"dropped symbol {d} not disclosed in output"
+    if len(tight.dropped_symbols) > drop_cap:
+        assert f"and {len(tight.dropped_symbols) - drop_cap} more" in tight.text
 
 
 def test_unlimited_budget_unchanged(tmp_path):

@@ -42,8 +42,47 @@ from .compiler import build_reverse_graph, relationship_cap, render_symbol_block
 
 
 # A single symbol can burn at most this fraction of the total budget.
-# Prevents one huge function from crowding out ten relevant small ones.
+# Prevents one huge LOW-RANKED function from crowding out ten relevant small
+# ones. See CAP_EXEMPT_TOP_N for why "low-ranked" is load-bearing.
 MAX_SINGLE_SYMBOL_FRACTION = 0.25
+
+# The top N ranked candidates are exempt from the size cap (they remain
+# subject to the token budget like everything else).
+#
+# Why an exemption exists at all: size is not independent of relevance. The
+# function everything calls tends to BE the big orchestrator, so a
+# score-blind size ceiling cuts hardest exactly where retrieval matters. On
+# google-api-python-client the unexempted cap evicted symbols this ranker had
+# placed 2nd, 2nd, 4th, 6th, 7th, 11th and 15th of 347 — including
+# build_from_document, which is the function the changed symbol calls to do
+# its work. That was 10 of 29 ground-truth misses; the token budget itself
+# accounted for zero, because the loop below already skips an oversized
+# symbol and keeps scanning, so smaller candidates never lost their chance.
+#
+# Value measured, not guessed (benchmarks/measure_cap_exemption.py), over 10
+# repos / 192 co-change cases at the default 10k budget:
+#
+#     cap always on   48.6% recall  18.4% prec_lb   8,608 tok
+#     top-5 exempt    49.5%         18.8%          8,612
+#     top-10 exempt   50.0%         19.0%          8,619
+#     top-20 exempt   50.0%         19.0%          8,621
+#     cap off         50.0%         19.0%          8,621
+#
+# 10 captures the whole available gain, so the cap is kept as a backstop for
+# everything below it rather than deleted. Swept again across budgets, since
+# a cap only matters under budget pressure and 10k is roomy — the exemption
+# wins at every budget, by the most at tight ones, and on both metrics:
+#
+#     budget   recall (on -> exempt)   prec_lb (on -> exempt)
+#      1,500      9.4% -> 10.0%          15.3% -> 23.7%
+#      3,000     21.4% -> 25.2%          25.8% -> 36.1%
+#      6,000     39.9% -> 40.6%          22.3% -> 23.8%
+#     10,000     48.6% -> 50.0%          18.4% -> 19.0%
+#
+# Note it retrieves FEWER symbols (17.4 -> 17.0 at 10k; 2.9 -> 2.1 at 1.5k):
+# it trades several small marginal symbols for one large highly-ranked one,
+# which is why precision climbs rather than being spent to buy recall.
+CAP_EXEMPT_TOP_N = 10
 
 # Largest-gap cutoff ("gap50" in the benchmarks): the relative-drop search
 # window and the score floor below which a candidate is not retrievable at
@@ -189,9 +228,11 @@ def select_context(
         gap_kept = {sid for sid, _ in candidates[:keep_n]}
 
     included_non_changed = 0
+    rank = 0
     for sym_id, score in scored:
         if sym_id not in symbols:
             continue
+        rank += 1
 
         if gap_kept is not None and sym_id not in gap_kept:
             dropped.append(sym_id)
@@ -203,12 +244,16 @@ def select_context(
 
         sym_tokens = rendered_size(sym_id)
 
-        # FIX: if the symbol exceeds the per-symbol cap, skip it entirely.
-        # Previous code counted the capped amount toward the budget but
-        # still included the full symbol, silently overrunning the budget
-        # and then continuing to include more symbols as if there were room.
-        # Skipping is correct: the budget should gate what's actually included.
-        if per_sym_cap is not None and sym_tokens > per_sym_cap:
+        # If the symbol exceeds the per-symbol cap, skip it entirely rather
+        # than counting a capped amount toward the budget while emitting it
+        # in full (which silently overran --max-tokens).
+        #
+        # The cap is deliberately NOT applied to the highest-ranked
+        # candidates: it is a guard against a large irrelevant symbol, and
+        # applying it score-blind made it a guard against the single most
+        # relevant one. Those still have to fit the budget below.
+        capped = per_sym_cap is not None and sym_tokens > per_sym_cap
+        if capped and rank > CAP_EXEMPT_TOP_N:
             dropped.append(sym_id)
             continue
 
