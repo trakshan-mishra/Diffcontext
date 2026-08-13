@@ -57,7 +57,9 @@ from typing import Dict, List, Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from benchmarks.downstream.tasks import Task, Worktree, _git, _run_tests
-from benchmarks.downstream.providers import PROVIDERS, compile_provider_context
+from benchmarks.downstream.providers import (
+    DEFAULT_PROVIDERS, PROVIDERS, compile_provider_context,
+)
 from benchmarks.significance import holm_bonferroni, wilcoxon_signed_rank
 from diffcontext.pipeline import index_repository
 
@@ -847,7 +849,9 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tasks", help="tasks JSON from tasks.py")
     ap.add_argument("--repo", help="path to the benchmark repo clone")
-    ap.add_argument("--providers", default=",".join(PROVIDERS))
+    ap.add_argument("--providers", default=",".join(DEFAULT_PROVIDERS),
+                    help=f"comma-separated arms; known: {','.join(PROVIDERS)} "
+                         f"(default: {','.join(DEFAULT_PROVIDERS)})")
     ap.add_argument("--backend",
                     choices=["anthropic", "gemini", "groq", "openrouter", "mistral"],
                     default="anthropic",
