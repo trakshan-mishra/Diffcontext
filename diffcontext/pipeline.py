@@ -31,7 +31,7 @@ from ._warn_once import warn_syntax_error_once, check_and_warn_encoding, WarnSta
 from .impact.blast_radius import get_blast_radius
 from .impact.scoring import compute_impact_scores
 from .impact.traversal import expand_dependencies
-from .context.selector import select_context
+from .context.selector import DEFAULT_NEIGHBOUR_CAP, select_context
 from .context.compiler import compile_context
 
 logger = logging.getLogger(__name__)
@@ -815,6 +815,7 @@ def compile(
     scoring_config: Optional["ScoringConfig"] = None,
     top_k: Optional[int] = None,
     cutoff: Optional[str] = None,
+    neighbour_cap: int = DEFAULT_NEIGHBOUR_CAP,
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
@@ -834,6 +835,9 @@ def compile(
                         symbols, ~30% relative recall cost; see
                         benchmarks/RIGOR_REPORT_2026-07.md §7). Default
                         None keeps recall-first top-k selection.
+        neighbour_cap:  How many cross-file direct call-graph neighbours get
+                        front-of-queue slots regardless of score (see
+                        selector.DEFAULT_NEIGHBOUR_CAP). 0 disables.
     """
     selected, dropped = select_context(
         index.symbols,
@@ -845,6 +849,7 @@ def compile(
         graph=index.graph,
         reverse=index.reverse_graph,
         cutoff=cutoff,
+        neighbour_cap=neighbour_cap,
     )
 
     return compile_context(
