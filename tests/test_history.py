@@ -83,6 +83,26 @@ class TestCoChangeIndex:
         )
         assert cci.scores_for_files(["./a.py"]) == {}
 
+    @pytest.mark.parametrize("width", [7, 8, 10, 12, 40])
+    def test_exclude_commits_accepts_abbreviated_hashes(self, cochange_repo, width):
+        """An abbreviated hash must exclude exactly like the full one.
+
+        Regression: exclusion compared full_hash[:10] against the caller's
+        set, so the 8-char hashes extract_cochange_cases produces never
+        matched. Every eval that reported "evaluated commits excluded" was
+        silently scoring co-change on the commits it was tested against.
+        """
+        log = subprocess.run(
+            ["git", "log", "--format=%H"], cwd=cochange_repo,
+            capture_output=True, text=True,
+        ).stdout.split()
+        cci = CoChangeIndex(
+            cochange_repo, min_cochanges=1,
+            exclude_commits={h[:width] for h in log},
+        )
+        assert cci.excluded_commits == len(log)
+        assert cci.scores_for_files(["./a.py"]) == {}
+
     def test_non_git_directory_degrades_gracefully(self, tmp_path):
         (tmp_path / "x.py").write_text("def f():\n    return 1\n")
         cci = CoChangeIndex(str(tmp_path))

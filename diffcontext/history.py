@@ -70,13 +70,24 @@ class CoChangeIndex:
         self.file_counts: Counter = Counter()       # "./a.py" -> n commits touching it
         self.mined_commits = 0
 
-        # Excluded hashes matched on their first 10 chars so both full and
-        # abbreviated hashes (as eval harnesses store them) work.
-        excluded = {h[:10] for h in (exclude_commits or set())}
+        # An abbreviated hash is a PREFIX of the full one, and callers
+        # abbreviate to whatever width they store (extract_cochange_cases
+        # uses 8). Truncating both sides to a fixed width only works when
+        # that width happens to match: comparing full[:10] against an
+        # 8-char hash never matched, so exclusion silently did nothing and
+        # every "evaluated commits excluded" run was leaking. Bucket the
+        # excluded prefixes by length and test each length separately.
+        self.excluded_prefixes: Dict[int, Set[str]] = {}
+        for h in (exclude_commits or set()):
+            h = h.strip()
+            if h:
+                self.excluded_prefixes.setdefault(len(h), set()).add(h)
+        self.excluded_commits = 0
 
         commits = self._read_history(max_commits)
         for commit_hash, files in commits:
-            if commit_hash[:10] in excluded:
+            if self._is_excluded(commit_hash):
+                self.excluded_commits += 1
                 continue
             files = [f for f in files if f.endswith(".py")]
             if len(files) < 2 or len(files) > max_files_per_commit:
@@ -95,6 +106,13 @@ class CoChangeIndex:
                 for b in rels[i + 1:]:
                     counter_a[b] += 1
                     self.pair_counts.setdefault(b, Counter())[a] += 1
+
+    def _is_excluded(self, commit_hash: str) -> bool:
+        """True if `commit_hash` starts with any excluded prefix."""
+        return any(
+            commit_hash[:n] in prefixes
+            for n, prefixes in self.excluded_prefixes.items()
+        )
 
     def _read_history(self, max_commits: int):
         """[(full_hash, [file, ...]), ...] — empty list on any failure."""
