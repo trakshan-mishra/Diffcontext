@@ -78,8 +78,9 @@ class TestPluggableTokenizer:
             symbols, scores, changed=[], max_tokens=2500, token_counter=counter,
         )
         assert calls, "custom counter was never invoked"
-        # per-symbol cap = 25% of 2500 = 625 < 1000 → everything dropped
-        assert selected == [] and len(dropped) == 5
+        # The counter's verdict, not the symbols' real size, decides the fit:
+        # at 1000 claimed tokens each only two fit a 2500 budget.
+        assert len(selected) == 2 and len(dropped) == 3
 
         # Same corpus under the default heuristic (~120 tokens each) fits all
         selected2, dropped2 = select_context(symbols, scores, changed=[], max_tokens=2500)
