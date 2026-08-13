@@ -54,3 +54,6 @@ writing/
 
 # Local editor/agent configuration.
 .claude/
+
+# Local working notes / call prep — not part of the package
+notes/

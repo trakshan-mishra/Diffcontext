@@ -49,39 +49,32 @@ MAX_SINGLE_SYMBOL_FRACTION = 0.25
 # The top N ranked candidates are exempt from the size cap (they remain
 # subject to the token budget like everything else).
 #
-# Why an exemption exists at all: size is not independent of relevance. The
-# function everything calls tends to BE the big orchestrator, so a
-# score-blind size ceiling cuts hardest exactly where retrieval matters. On
-# google-api-python-client the unexempted cap evicted symbols this ranker had
-# placed 2nd, 2nd, 4th, 6th, 7th, 11th and 15th of 347 — including
-# build_from_document, which is the function the changed symbol calls to do
-# its work. That was 10 of 29 ground-truth misses; the token budget itself
-# accounted for zero, because the loop below already skips an oversized
-# symbol and keeps scanning, so smaller candidates never lost their chance.
+# Size is not independent of relevance: the function everything calls tends to
+# BE the big orchestrator, so a score-blind ceiling cuts hardest exactly where
+# retrieval matters. On google-api-python-client the unexempted cap evicted
+# symbols this ranker had placed 2nd, 2nd, 4th, 6th, 7th, 11th and 15th of 347.
 #
-# Value measured, not guessed (benchmarks/measure_cap_exemption.py), over 10
-# repos / 192 co-change cases at the default 10k budget:
+# What the exemption actually buys, over 9 repos / 172 co-change cases
+# (benchmarks/measure_cap_exemption.py --budget 1500 3000 6000 10000):
 #
-#     cap always on   48.6% recall  18.4% prec_lb   8,608 tok
-#     top-5 exempt    49.5%         18.8%          8,612
-#     top-10 exempt   50.0%         19.0%          8,619
-#     top-20 exempt   50.0%         19.0%          8,621
-#     cap off         50.0%         19.0%          8,621
+#     budget   recall (on -> top-10)   prec_lb (on -> top-10)
+#      1,500     11.2% -> 11.1%          21.7% -> 42.2%
+#      3,000     24.3% -> 26.4%          29.2% -> 40.4%
+#      6,000     41.9% -> 42.5%          24.1% -> 25.5%
+#     10,000     51.7% -> 51.8%          20.0% -> 20.3%
 #
-# 10 captures the whole available gain, so the cap is kept as a backstop for
-# everything below it rather than deleted. Swept again across budgets, since
-# a cap only matters under budget pressure and 10k is roomy — the exemption
-# wins at every budget, by the most at tight ones, and on both metrics:
+# Read that honestly: the win is PRECISION UNDER BUDGET PRESSURE, not recall.
+# At 1,500 precision nearly doubles for a 0.1pt recall LOSS — it trades several
+# small marginal symbols for one large highly-ranked one, and spends 1,349
+# tokens rather than 1,442. At the 10k default the policy barely matters: the
+# same 91/172 cases pass either way, because the cap seldom binds when the
+# budget is roomy and the loop below already skips an oversized symbol and
+# keeps scanning, so smaller candidates never lost their chance.
 #
-#     budget   recall (on -> exempt)   prec_lb (on -> exempt)
-#      1,500      9.4% -> 10.0%          15.3% -> 23.7%
-#      3,000     21.4% -> 25.2%          25.8% -> 36.1%
-#      6,000     39.9% -> 40.6%          22.3% -> 23.8%
-#     10,000     48.6% -> 50.0%          18.4% -> 19.0%
-#
-# Note it retrieves FEWER symbols (17.4 -> 17.0 at 10k; 2.9 -> 2.1 at 1.5k):
-# it trades several small marginal symbols for one large highly-ranked one,
-# which is why precision climbs rather than being spent to buy recall.
+# N=10 is a conservative floor, NOT a measured optimum: top-5, top-20 and
+# cap-off are indistinguishable from it at every budget above. The cap is kept
+# below rank 10 as a guard against a pathological low-ranked symbol, but this
+# corpus never exercises it — do not cite that backstop as a measured benefit.
 CAP_EXEMPT_TOP_N = 10
 
 # Largest-gap cutoff ("gap50" in the benchmarks): the relative-drop search
