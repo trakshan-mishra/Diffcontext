@@ -8,6 +8,40 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+### Changed (cross-file neighbour bypass — on by default)
+- **Direct cross-file call-graph neighbours now get capped front-of-queue
+  slots in selection** (`select_context(..., neighbour_cap=5)`, plumbed
+  through `compile`; `0` disables). A symbol with a real call edge to a
+  changed symbol, in another file, is the one candidate whose relevance is
+  structural rather than inferred, and the blend routinely buried it:
+  requests' `has_read` is a direct callee of `_encode_files` that ranked
+  26 of 247 while the package held 16.
+
+  Over 9 repos / 1,102 mined cases at the 10k budget, cap 5 vs off:
+
+      cross-file neighbour recall  52.7% -> 90.7%   (n=182)
+      overall recall               58.3% -> 58.9%   (+0.55pp)
+      precision_lb                 16.2% -> 16.3%
+      package size / tokens        unchanged (18.2 symbols, +18 tokens)
+
+  Scope honestly: the targeted population is ~3% of ground truth, the
+  bypass fires on ~1.1 symbols per case, and only 87/1,102 cases change at
+  all. The overall-recall effect is real but thin — paired bootstrap 95% CI
+  [+0.02, +1.09]pp — so this is a fix for a specific egregious failure
+  mode, not a headline recall improvement. Same-file recall pays 0.5pp and
+  cross-file-other 0.8pp for it.
+
+  Caps 3/5/7 were all measured: neighbour recall rises monotonically
+  (86.3/90.7/94.0) while the net keeps shrinking, and at cap 7 the mean
+  effect no longer excludes zero. 3 and 5 are statistically
+  indistinguishable; 5 ships on the better point estimate.
+
+  This is deliberately NOT a budget bypass — promoted symbols pay tokens and
+  count against `top_k`. An earlier rule let any score>=80 candidate skip
+  the budget and direct callees ate it whole; see `selector.py`'s header.
+  Same-file neighbours are excluded since co-location already retrieves
+  them at ~78%.
+
 ### Added (retrieval-quality bottleneck pass — roadmap items 1–3 shipped)
 - **Dispatch-sibling override edges** (graph phase 1G): subclasses of the
   same resolved base that define the same method name are now connected
@@ -75,6 +109,22 @@ covered by any stability expectation.
   releases. Benchmark-only; not part of the shipped package.
 
 ### Fixed
+- **`CoChangeIndex(exclude_commits=...)` silently excluded nothing for
+  abbreviated hashes.** Exclusion compared `full_hash[:10]` against the
+  caller's set, but `extract_cochange_cases` stores 8-char hashes, so a
+  10-char prefix never matched. Every harness passing mined case hashes —
+  `eval_v2_hardened.py` (both `evaluate_repo` and the bucket analysis) and
+  `benchmarks/rerank/mine.py` — dropped **zero** commits while printing
+  "evaluated commits excluded". That is train-on-test leakage in the worst
+  direction, since the excluded commit's own co-change pairs are the ground
+  truth being scored. Hashes are now matched as prefixes bucketed by length
+  (any abbreviation width works) and `excluded_commits` is exposed so a
+  harness can assert the control engaged rather than trust a log line.
+  **This invalidates the leakage claim made in the "Benchmark:
+  leakage-controlled evaluation of the history signal" entry above for any
+  run predating this fix.** Measured impact turned out small (~0.8pp on the
+  frozen-repo co-change arms) because file-level co-change is a weak ranking
+  signal either way — but the guarantee was not being provided.
 - `benchmark_runner.py --clone` cloned with `--depth=100` while printing
   "full git history" — silently starving both ground-truth mining
   (24 vs 74 usable commits on flask) and the co-change signal. Clones

@@ -80,6 +80,30 @@ MAX_SINGLE_SYMBOL_FRACTION = 0.25
 # never exercises it — do not cite that backstop as a measured benefit.
 CAP_EXEMPT_TOP_N = 10
 
+# Cross-file direct-neighbour bypass: how many call-graph neighbours of the
+# changed symbols get front-of-queue slots regardless of their blended score.
+#
+# A symbol with a real call edge to a changed symbol, in a DIFFERENT file, is
+# the one candidate whose relevance is structural rather than inferred, and the
+# blend routinely buries it under same-file and lexical noise: requests'
+# `has_read` is a direct callee of `_encode_files` that ranked 26 of 247 while
+# the package held 16.
+#
+# Two things this is NOT, both of which this module has been burned by:
+#   * It is not a budget bypass. An earlier rule let any score>=80 candidate
+#     skip the budget; direct callees scored ~90 after the structural bonus and
+#     ate the whole budget before cheaper co-change siblings were evaluated
+#     (see the header). Promoted neighbours are ordered first and pay tokens
+#     like everyone else.
+#   * It is not a weight change. Raising the graph weight globally lifts this
+#     population too, but costs same-file recall, because the two have opposite
+#     optima (benchmarks/history_signal_sweep.py). A capped structural
+#     reservation buys the same neighbours without paying that.
+#
+# Same-file neighbours are excluded: co-location already retrieves them at
+# ~80%, so spending the cap there would buy nothing.
+DEFAULT_NEIGHBOUR_CAP = 5
+
 # Largest-gap cutoff ("gap50" in the benchmarks): the relative-drop search
 # window and the score floor below which a candidate is not retrievable at
 # all. Both values are the exact ones measured in blend_loro.py
@@ -113,6 +137,31 @@ def gap_cut_count(ranked_scores: List[float]) -> int:
     return best_i
 
 
+def cross_file_neighbours(
+    changed: List[str],
+    symbols: Dict[str, Symbol],
+    graph: Dict[str, List[str]],
+    reverse: Dict[str, Set[str]],
+) -> Set[str]:
+    """Direct call-graph neighbours of `changed` that live in another file.
+
+    Both directions count: a callee of the changed symbol may need updating,
+    and a caller may break. Neither is more certain than the other, so the
+    edge is treated as undirected here even though the graph is not.
+    """
+    changed_set = set(changed)
+    changed_files = {symbols[c].file for c in changed if c in symbols}
+    adjacent: Set[str] = set()
+    for c in changed:
+        adjacent.update(graph.get(c, ()))
+        adjacent.update(reverse.get(c, ()))
+    return {
+        s for s in adjacent
+        if s in symbols and s not in changed_set
+        and symbols[s].file not in changed_files
+    }
+
+
 def select_context(
     symbols: Dict[str, Symbol],
     scores: Dict[str, float],
@@ -124,6 +173,7 @@ def select_context(
     reverse: Optional[Dict[str, Set[str]]] = None,
     rel_cap: Optional[int] = None,
     cutoff: Optional[str] = None,
+    neighbour_cap: int = DEFAULT_NEIGHBOUR_CAP,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -153,6 +203,11 @@ def select_context(
         rel_cap: Relationship-block entry cap used for size measurement;
             defaults to compiler.relationship_cap(max_tokens) so selector
             and compiler always measure the same rendering.
+        neighbour_cap: How many cross-file direct call-graph neighbours are
+            moved to the front of the ranking regardless of score (see
+            DEFAULT_NEIGHBOUR_CAP). Requires `graph`; 0 disables. Promoted
+            symbols still pay the token budget and still count against
+            top_k — the promotion is an ordering guarantee, not an exemption.
         cutoff: Optional dynamic cutoff policy applied to the score ranking
             BEFORE top_k and the token budget (the order the benchmark
             measured). "gap" cuts at the largest relative score drop
@@ -214,6 +269,21 @@ def select_context(
         reverse=True,
     )
 
+    # ── Cross-file neighbour promotion ───────────────────────────────────
+    # Reorder only: the highest-scored `neighbour_cap` cross-file neighbours
+    # move to the head of the queue, keeping their relative order. Everything
+    # downstream (top_k, per-symbol cap, budget) applies unchanged, so the
+    # worst case is that the cap's worth of slots go to structurally certain
+    # candidates instead of higher-scored inferred ones.
+    promoted_set: Set[str] = set()
+    if graph is not None and neighbour_cap > 0:
+        assert reverse is not None  # derived from graph above when absent
+        neighbours = cross_file_neighbours(changed, symbols, graph, reverse)
+        if neighbours:
+            promoted = [x for x in scored if x[0] in neighbours][:neighbour_cap]
+            promoted_set = {sid for sid, _ in promoted}
+            scored = promoted + [x for x in scored if x[0] not in promoted_set]
+
     gap_kept: Optional[Set[str]] = None
     if cutoff == "gap":
         candidates = [
@@ -230,7 +300,11 @@ def select_context(
             continue
         rank += 1
 
-        if gap_kept is not None and sym_id not in gap_kept:
+        # A promoted neighbour outranks the gap heuristic: the gap reads the
+        # score distribution to guess where relevance stops, and here the
+        # call edge already answers that question.
+        if (gap_kept is not None and sym_id not in gap_kept
+                and sym_id not in promoted_set):
             dropped.append(sym_id)
             continue
 
