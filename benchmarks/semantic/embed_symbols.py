@@ -66,15 +66,64 @@ def load_embeddings(path: str) -> Tuple[Dict[str, np.ndarray], dict]:
     return id2vec, meta
 
 
+def _repair_nonpersistent_buffers(auto_model) -> int:
+    """Recompute buffers the model registers with `persistent=False`.
+
+    Those buffers are excluded from the checkpoint by design, so the module's
+    __init__ is what fills them. Loading via meta-device init (transformers'
+    default, and not disableable through `low_cpu_mem_usage=False`) allocates
+    them without running that computation, leaving raw uninitialized memory.
+
+    The Alibaba-NLP `new-impl` architecture SFR-Embedding-Code-400M_R builds on
+    keeps `position_ids` and the RoPE `inv_freq`/`cos_cached`/`sin_cached`
+    caches this way, so unpatched it either raises IndexError on a garbage
+    index or silently returns NaN vectors -- the second being the dangerous
+    one, since NaN cosines would score as a legitimate ablation arm. Repairing
+    calls the model's own `_set_cos_sin_cache`, so no formula is duplicated
+    here beyond `inv_freq`, which its __init__ inlines.
+
+    Returns the number of modules repaired; 0 means the architecture does not
+    use these buffers and nothing was needed.
+    """
+    import torch
+
+    fixed = 0
+    for mod in auto_model.modules():
+        pid = getattr(mod, "position_ids", None)
+        if isinstance(pid, torch.Tensor):
+            mod.register_buffer(
+                "position_ids", torch.arange(pid.size(0), device=pid.device), persistent=False)
+            fixed += 1
+        if hasattr(mod, "inv_freq") and hasattr(mod, "_set_cos_sin_cache"):
+            device = mod.inv_freq.device
+            inv_freq = 1.0 / (mod.base ** (
+                torch.arange(0, mod.dim, 2, dtype=torch.float32, device=device) / mod.dim))
+            mod.register_buffer("inv_freq", inv_freq, persistent=False)
+            mod._set_cos_sin_cache(mod.max_seq_len_cached, device, torch.get_default_dtype())
+            fixed += 1
+    return fixed
+
+
 def encode_texts(texts: List[str], model: str, device: str, batch_size: int,
                  prefix: str) -> np.ndarray:
     """Encode with sentence-transformers (imported lazily, here only)."""
     from sentence_transformers import SentenceTransformer
     st = SentenceTransformer(model, trust_remote_code=True, device=device)
+    n_fixed = _repair_nonpersistent_buffers(st[0].auto_model)
+    if n_fixed:
+        print(f"  repaired {n_fixed} uninitialized non-persistent buffer group(s)")
     if prefix:
         texts = [prefix + t for t in texts]
-    return st.encode(texts, batch_size=batch_size, normalize_embeddings=True,
+    vecs = st.encode(texts, batch_size=batch_size, normalize_embeddings=True,
                      show_progress_bar=True, convert_to_numpy=True).astype("float32")
+    # A silently-NaN cache would poison every cosine downstream and still look
+    # like a finished run, so fail loudly here instead.
+    if not np.isfinite(vecs).all():
+        raise RuntimeError(
+            f"{model} produced non-finite vectors ({int((~np.isfinite(vecs)).any(axis=1).sum())} "
+            f"of {len(vecs)} rows). Buffer repair engaged on {n_fixed} module(s); if that is 0 "
+            f"the architecture needs its own repair path.")
+    return vecs
 
 
 def embed_repo(repo: str, out_dir: str, model: str, device: str,
