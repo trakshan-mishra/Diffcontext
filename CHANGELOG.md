@@ -8,6 +8,24 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.5] — 2026-08-23
+
+### Fixed (read-only repo cache crash — Glama sandbox blocker)
+- `index_repository()` crashed with `sqlite3.OperationalError` when the
+  repo path was not writable (read-only CI checkouts, Glama sandbox,
+  containers with read-only rootfs, repos the user doesn't own). The
+  cache DB path was hardcoded to `repo_path/.diffcontext_cache.db` with
+  no fallback.
+- **Cache path cascade** (in order): (1) `--cache-dir` CLI flag or
+  `DIFFCONTEXT_CACHE_DIR` env var, (2) `repo_path/.diffcontext_cache.db`
+  (current behaviour, keeps cache locality), (3) `$XDG_CACHE_HOME/diffcontext/
+  <hash>.db` or `~/.cache/diffcontext/<hash>.db`, (4) `:memory:` (degraded
+  — no persistence across calls, but working). The call never fails
+  because of cache.
+- Added `--cache-dir` flag to `index` and `compile` commands.
+- 7 tests in `test_cache_fallback.py`: read-only repo, env var override,
+  `:memory:` fallback, XDG fallback.
+
 ## [0.5.4] — 2026-08-23
 
 ### Added (query_text tests + untuned-default disclosure)

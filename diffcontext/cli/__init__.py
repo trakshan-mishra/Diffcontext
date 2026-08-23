@@ -50,6 +50,12 @@ def main():
              "(tests/, benchmarks/, docs/, ...). Useful when a change "
              "spans an excluded dir; .gitignore still applies.",
     )
+    p_index.add_argument(
+        "--cache-dir", default=None, metavar="DIR",
+        help="Cache database location (default: repo/.diffcontext_cache.db, "
+             "falls back to XDG cache or :memory: on read-only repos). "
+             "Also settable via DIFFCONTEXT_CACHE_DIR env var.",
+    )
 
     # --- impact ---
     p_impact = sub.add_parser("impact", help="Analyze impact of a symbol change")
@@ -83,6 +89,12 @@ def main():
     p_compile.add_argument("--changed", nargs="+", help="Changed symbol IDs")
     p_compile.add_argument("--ref", default=None, help="Git ref (auto-detect changes)")
     p_compile.add_argument("--repo", default=".", help="Repository path")
+    p_compile.add_argument(
+        "--cache-dir", default=None, metavar="DIR",
+        help="Cache database location (default: repo/.diffcontext_cache.db, "
+             "falls back to XDG cache or :memory: on read-only repos). "
+             "Also settable via DIFFCONTEXT_CACHE_DIR env var.",
+    )
     p_compile.add_argument(
         "--include", nargs="*", default=[], metavar="DIR",
         help="Directory names to index despite default exclusions (tests/, "
@@ -270,7 +282,7 @@ def _cmd_index(args):
     """Index repository: show stats."""
     t0 = time.perf_counter()
     include = set(args.include or [])
-    idx = index_repository(args.repo, include=include)
+    idx = index_repository(args.repo, include=include, cache_dir=args.cache_dir)
     elapsed = (time.perf_counter() - t0) * 1000
 
     print(f"Symbols : {len(idx.symbols)}")
@@ -368,7 +380,10 @@ def _cmd_diff(args):
 
 def _cmd_compile(args):
     """Build full context package."""
-    idx = index_repository(args.repo, include=set(args.include or []))
+    idx = index_repository(
+        args.repo, include=set(args.include or []),
+        cache_dir=getattr(args, "cache_dir", None),
+    )
 
     # Determine changed symbols
     if args.changed:
