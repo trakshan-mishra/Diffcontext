@@ -24,7 +24,7 @@ from .models import (
 from .languages import available_adapters, discover_files
 from .parser import extract_symbols
 from .scanner import find_python_files, first_excluded_dir
-from .cache import SymbolCache, get_file_hash, hash_source, repo_state_hash
+from .cache import SymbolCache, get_file_hash, hash_source, repo_state_hash, _resolve_cache_path
 from .resolver import build_import_map
 from .graph_builder import build_repository_graph
 from ._warn_once import warn_syntax_error_once, check_and_warn_encoding, WarnState
@@ -104,6 +104,7 @@ def _read_and_parse(
 
 def index_repository(
     repo_path: str, include: Optional[Set[str]] = None,
+    cache_dir: Optional[str] = None,
 ) -> RepositoryIndex:
     """
     Phase 1: Parse repository and build dependency graph.
@@ -123,9 +124,14 @@ def index_repository(
     list of files (if any) that failed to parse due to a SyntaxError. The
     returned index supports in-process incremental updates via
     `index.update([...])`.
+
+    `cache_dir` overrides the cache location. If None, the cascade in
+    `_resolve_cache_path` is used: repo_path/.diffcontext_cache.db →
+    XDG cache → :memory:. Pass a path to force a specific location (also
+    settable via DIFFCONTEXT_CACHE_DIR env var).
     """
     repo_path = os.path.abspath(repo_path)
-    db_path = os.path.join(repo_path, ".diffcontext_cache.db")
+    db_path = _resolve_cache_path(repo_path, cache_dir)
 
     files = find_python_files(repo_path, include)
 
@@ -258,6 +264,7 @@ def index_repository(
     index._lang_graphs = lang_graphs    # None on graph-cache hit (lazy)
     index._warn_state = warn_state
     index._include = include            # scanner dirs to keep despite defaults
+    index._cache_dir = cache_dir         # cache location override for update_index
     return index
 
 
@@ -442,7 +449,8 @@ def update_index(index: RepositoryIndex, changed_files: List[str]) -> Repository
             "index_repository()."
         )
     repo_path = index._repo_path
-    db_path = os.path.join(repo_path, ".diffcontext_cache.db")
+    cache_dir = getattr(index, "_cache_dir", None)
+    db_path = _resolve_cache_path(repo_path, cache_dir)
 
     _ensure_trees(index)
 

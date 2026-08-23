@@ -1,21 +1,36 @@
 """
 cache.py — SQLite-backed persistent caching for AST parsed symbols and the
 repository call graph.
+
+Cache path resolution (cascade, in order):
+1. DIFFCONTEXT_CACHE_DIR env var (if set)
+2. repo_path/.diffcontext_cache.db (current behaviour, keeps cache locality)
+3. $XDG_CACHE_HOME/diffcontext/<sha256 of abs repo_path>.db
+   or ~/.cache/diffcontext/<sha256>.db
+4. sqlite ':memory:' (degraded — no persistence across calls, but working)
+
+The cascade ensures DiffContext works on read-only repos (Glama sandbox,
+CI checkouts, containers with read-only rootfs, repos the user doesn't own).
+Do NOT fail the call because of cache — a stale or missing cache only costs
+a re-parse, never correctness.
 """
 
 import hashlib
 import json
+import logging
+import os
 import sqlite3
 from typing import Dict, Callable, List, Optional, Tuple
 
 from .models import Symbol
 
+logger = logging.getLogger(__name__)
+
 
 def get_file_hash(filepath: str) -> str:
-    """Compute SHA-256 hash of a file."""
+    """Compute SHA-256 of a file."""
     hasher = hashlib.sha256()
     with open(filepath, "rb") as f:
-        # Python files are small enough to read into memory safely
         hasher.update(f.read())
     return hasher.hexdigest()
 
@@ -26,11 +41,7 @@ def hash_source(source_bytes: bytes) -> str:
 
 
 def repo_state_hash(file_hashes: Dict[str, str]) -> str:
-    """
-    Single hash summarizing the content state of every Python file in the
-    repo. Keyed on (relative_path, content_hash) pairs, order-independent.
-    Any file added, removed, or edited changes this hash.
-    """
+    """Single hash summarizing the content state of every Python file."""
     hasher = hashlib.sha256()
     for path in sorted(file_hashes):
         hasher.update(path.encode("utf-8"))
@@ -40,17 +51,84 @@ def repo_state_hash(file_hashes: Dict[str, str]) -> str:
     return hasher.hexdigest()
 
 
+def _resolve_cache_path(
+    repo_path: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+) -> str:
+    """
+    Resolve the SQLite cache database path via a cascade.
+
+    1. If `cache_dir` is explicitly passed (from --cache-dir CLI flag), use it.
+    2. If DIFFCONTEXT_CACHE_DIR env var is set, use it.
+    3. Try repo_path/.diffcontext_cache.db (keeps cache locality with the repo).
+    4. Fall back to $XDG_CACHE_HOME/diffcontext/<hash>.db or ~/.cache/diffcontext/<hash>.db
+    5. Fall back to ':memory:' (degraded — no persistence, but working).
+
+    Steps 3 and 4 try to create the file/dir; if they fail (read-only
+    filesystem, permission denied), the cascade continues. Step 5 always
+    works.
+
+    Returns a path string (or ':memory:').
+    """
+    # 1. Explicit override (highest priority)
+    if cache_dir:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+        except OSError:
+            pass
+        return os.path.join(cache_dir, ".diffcontext_cache.db")
+
+    # 2. Env var override
+    env_cache_dir = os.environ.get("DIFFCONTEXT_CACHE_DIR")
+    if env_cache_dir:
+        try:
+            os.makedirs(env_cache_dir, exist_ok=True)
+        except OSError:
+            pass
+        return os.path.join(env_cache_dir, ".diffcontext_cache.db")
+
+    # 3. In-repo path (current behaviour, keeps cache locality)
+    if repo_path:
+        in_repo = os.path.join(repo_path, ".diffcontext_cache.db")
+        # Try to create/test writability. If it works, use it.
+        try:
+            # Touch to test writability (file may already exist)
+            fd = os.open(in_repo, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o644)
+            os.close(fd)
+            return in_repo
+        except OSError:
+            logger.debug("cache: repo_path not writable (%s), falling back", in_repo)
+
+    # 4. XDG cache dir
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache"))
+    # Hash the abs repo path so different repos don't collide
+    repo_hash = hashlib.sha256(os.path.abspath(repo_path or "").encode()).hexdigest()[:16]
+    cache_subdir = os.path.join(xdg_cache, "diffcontext")
+    xdg_path = os.path.join(cache_subdir, f"{repo_hash}.db")
+    try:
+        os.makedirs(cache_subdir, exist_ok=True)
+        fd = os.open(xdg_path, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o644)
+        os.close(fd)
+        logger.debug("cache: using XDG cache at %s", xdg_path)
+        return xdg_path
+    except OSError:
+        logger.debug("cache: XDG cache dir not writable (%s), falling back to :memory:", xdg_path)
+
+    # 5. In-memory (always works, but no persistence)
+    logger.debug("cache: all disk locations failed, using :memory:")
+    return ":memory:"
+
+
 class SymbolCache:
     """
     Persistent SQLite cache for parsed AST symbols and the call graph.
 
-    Safe for concurrent use from multiple threads within one process: the
-    connection is created with check_same_thread=False and every public
-    operation holds an internal lock (SQLite serializes at the file level
-    across processes on its own via WAL).
+    The cache path is resolved via _resolve_cache_path(). On read-only
+    repos, the cascade falls back to XDG cache or :memory: — the call
+    never fails because of cache.
     """
 
-    def __init__(self, db_path: str = ".diffcontext_cache.db"):
+    def __init__(self, db_path: str = ":memory:"):
         import threading
         self.db_path = db_path
         self._conn = None
@@ -61,10 +139,6 @@ class SymbolCache:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL")
-            # Cache contents are rebuildable from source; NORMAL skips the
-            # per-commit fsync (a measurable cost at one commit per file on
-            # a cold index) and risks nothing worse than a stale cache row
-            # after power loss, which the content hash then invalidates.
             self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._init_db()
