@@ -8,6 +8,21 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.6] — 2026-08-23
+
+### Fixed (cache cascade — tiers 1/2 short-circuit)
+- Tiers 1 (`--cache-dir`) and 2 (`DIFFCONTEXT_CACHE_DIR`) of the cache
+  path cascade swallowed the `OSError` from `makedirs` but returned the
+  unusable path anyway, short-circuiting the cascade. An unwritable
+  explicit override crashed with `OperationalError` instead of falling
+  through to tiers 3-5. The docstring promised "Step 5 always works" —
+  it didn't.
+- Fix: on `OSError` in tiers 1/2, log a warning and CONTINUE the cascade
+  rather than returning the bad path. An explicit override that can't be
+  honoured now warns loudly and degrades, not crashes.
+- 2 new tests: `test_unwritable_env_var_falls_through` and
+  `test_unwritable_cache_dir_flag_falls_through`.
+
 ## [0.5.5] — 2026-08-23
 
 ### Fixed (read-only repo cache crash — Glama sandbox blocker)

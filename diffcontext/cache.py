@@ -74,18 +74,24 @@ def _resolve_cache_path(
     if cache_dir:
         try:
             os.makedirs(cache_dir, exist_ok=True)
+            return os.path.join(cache_dir, ".diffcontext_cache.db")
         except OSError:
-            pass
-        return os.path.join(cache_dir, ".diffcontext_cache.db")
+            logger.warning(
+                "cache: --cache-dir %s is not writable; falling through cascade",
+                cache_dir,
+            )
 
     # 2. Env var override
     env_cache_dir = os.environ.get("DIFFCONTEXT_CACHE_DIR")
     if env_cache_dir:
         try:
             os.makedirs(env_cache_dir, exist_ok=True)
+            return os.path.join(env_cache_dir, ".diffcontext_cache.db")
         except OSError:
-            pass
-        return os.path.join(env_cache_dir, ".diffcontext_cache.db")
+            logger.warning(
+                "cache: DIFFCONTEXT_CACHE_DIR=%s is not writable; falling through cascade",
+                env_cache_dir,
+            )
 
     # 3. In-repo path (current behaviour, keeps cache locality)
     if repo_path:

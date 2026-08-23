@@ -119,3 +119,32 @@ class TestReadOnlyRepoIndexing:
             os.chmod(root, 0o755)
             for f in files:
                 os.chmod(os.path.join(root, f), 0o644)
+
+    def test_unwritable_env_var_falls_through(self, tmp_path, monkeypatch):
+        """DIFFCONTEXT_CACHE_DIR pointing to an unwritable path must NOT crash —
+        the cascade continues to tiers 3-5 instead of returning the bad path.
+
+        Previously, tiers 1/2 swallowed the OSError from makedirs but returned
+        the unusable path anyway, short-circuiting the cascade. This test pins
+        the fix: an explicit override that can't be honoured warns and degrades,
+        not crashes.
+        """
+        monkeypatch.setenv("DIFFCONTEXT_CACHE_DIR", "/nonexistent/unwritable/path")
+        monkeypatch.setenv("XDG_CACHE_HOME", "/also/nonexistent")
+
+        idx = index_repository(SIMPLE)
+        assert len(idx.symbols) > 0, (
+            "unwritable DIFFCONTEXT_CACHE_DIR must fall through to :memory:, "
+            "not crash with OperationalError"
+        )
+
+    def test_unwritable_cache_dir_flag_falls_through(self, tmp_path, monkeypatch):
+        """--cache-dir pointing to an unwritable path must NOT crash either."""
+        monkeypatch.delenv("DIFFCONTEXT_CACHE_DIR", raising=False)
+        monkeypatch.setenv("XDG_CACHE_HOME", "/also/nonexistent")
+
+        idx = index_repository(SIMPLE, cache_dir="/nonexistent/unwritable/path")
+        assert len(idx.symbols) > 0, (
+            "unwritable --cache-dir must fall through to :memory:, "
+            "not crash with OperationalError"
+        )
