@@ -305,5 +305,85 @@ class TestPipeline:
         assert ctx.token_estimate > 0
 
 
+class TestQueryText:
+    """The query_text signal: BM25 scores the bug report / issue text
+    against every symbol's source code, adding a relevance-to-the-problem
+    signal the graph alone can't provide.
+
+    Two requirements the user asked for:
+    1. query_text=None reproduces current ranking byte-identically
+       (regression guard — no behavior change when the feature is off).
+    2. A non-None value measurably reorders results (the signal actually
+       changes the ranking, not just the scores).
+    """
+
+    def test_none_reproduces_baseline_byte_identically(self):
+        """The regression guard: query_text=None must not change ANY score,
+        not even by a floating-point epsilon. This is what keeps the feature
+        truly opt-in — existing users see zero behavior change."""
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        seed = "./service.py:onboard_user"
+
+        baseline = analyze_impact(idx, [seed])
+        with_query_kwarg = analyze_impact(
+            idx, [seed], query_text=None, query_weight=0.0,
+        )
+        # Every score must be identical — not just the set of candidates,
+        # but the actual float values. query_text=None is a true no-op.
+        assert baseline.scores == with_query_kwarg.scores, (
+            "query_text=None must reproduce baseline scores exactly; "
+            "the feature must be a true no-op when disabled."
+        )
+
+    def test_query_text_reorders_results(self):
+        """A non-None query_text must measurably change the ranking — not
+        just add candidates, but move at least one existing symbol to a
+        different rank position. This proves the signal is doing work."""
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        seed = "./service.py:onboard_user"
+
+        baseline = analyze_impact(idx, [seed])
+        base_ranked = sorted(baseline.scores.items(), key=lambda x: -x[1])
+        base_order = [sid for sid, _ in base_ranked]
+
+        # "email validation check" should boost is_valid_email (whose code
+        # contains "email" and "valid") above User.__init__ (which doesn't).
+        impacted = analyze_impact(
+            idx, [seed], query_text="email validation check", query_weight=0.3,
+        )
+        q_ranked = sorted(impacted.scores.items(), key=lambda x: -x[1])
+        q_order = [sid for sid, _ in q_ranked]
+
+        assert base_order != q_order, (
+            "query_text must reorder at least one symbol; if the ranking "
+            "is identical the signal has no effect."
+        )
+        # Specifically: is_valid_email should rank higher with the query
+        # "email validation check" than without it.
+        base_email_rank = base_order.index("./validators.py:is_valid_email")
+        q_email_rank = q_order.index("./validators.py:is_valid_email")
+        assert q_email_rank < base_email_rank, (
+            f"is_valid_email should rank HIGHER with query_text='email "
+            f"validation check' (baseline rank {base_email_rank} -> query "
+            f"rank {q_email_rank}), not lower or unchanged."
+        )
+
+    def test_query_weight_zero_is_noop(self):
+        """query_weight=0.0 must be a no-op even with non-None query_text."""
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        seed = "./service.py:onboard_user"
+
+        baseline = analyze_impact(idx, [seed])
+        with_weight_zero = analyze_impact(
+            idx, [seed], query_text="email validation", query_weight=0.0,
+        )
+        assert baseline.scores == with_weight_zero.scores, (
+            "query_weight=0.0 must be a no-op even with non-None query_text."
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

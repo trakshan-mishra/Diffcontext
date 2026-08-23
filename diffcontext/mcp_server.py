@@ -68,6 +68,8 @@ def main():
     args = parser.parse_args()
     default_repo = os.path.abspath(args.repo)
 
+    from diffcontext import __version__ as dc_version
+
     server = MCPServer(
         name="diffcontext",
         description=(
@@ -75,7 +77,7 @@ def main():
             "the code that matters for a change and packs it into a token "
             "budget. Measures whether it works on your repo."
         ),
-        version="0.5.1",
+        version=dc_version,
     )
 
     @server.tool()
@@ -83,8 +85,9 @@ def main():
         repo_path: str = "",
         changed_symbols: Optional[List[str]] = None,
         git_ref: Optional[str] = None,
+        task_description: Optional[str] = None,
         max_tokens: int = 8000,
-        meta: str = "compact",
+        meta: str = "full",
     ) -> str:
         """Compile LLM-ready context for a change.
 
@@ -93,6 +96,10 @@ def main():
         related functions the model needs to make the change safely — packed
         into max_tokens with a disclosure header showing what was dropped.
 
+        Optionally pass task_description (the bug report or issue text) to
+        bias retrieval toward symbols relevant to the described problem —
+        the one signal the graph alone can't provide.
+
         Args:
             repo_path: Absolute path to the repository. If omitted, uses
                 the --repo from server startup.
@@ -100,19 +107,38 @@ def main():
                 ["./src/auth.py:validate_jwt"]). Mutually exclusive with
                 git_ref.
             git_ref: Git ref to detect changes from (e.g. "HEAD~1").
-                Mutually exclusive with changed_symbols.
+                Mutually exclusive with changed_symbols. When only
+                task_description is given (no changed_symbols or git_ref),
+                defaults to "HEAD".
+            task_description: The bug report or issue text. Biases retrieval
+                toward symbols semantically related to the described problem,
+                not just structurally near the changed symbols.
             max_tokens: Token budget for the context (default 8000).
-            meta: Disclosure header level: "full", "compact" (default), or "off".
-                Compact saves ~60% of header tokens for code.
+            meta: Disclosure header level: "full" (default), "compact", or "off".
+                The pass@1 effect of meta level is UNMEASURED.
         """
         from diffcontext.pipeline import analyze_impact, compile
 
         repo = repo_path or default_repo
         idx = _get_index(repo)
-        changed = _resolve_changed(idx, changed_symbols, git_ref, repo)
-        if not changed:
-            return "No changed symbols found. Pass changed_symbols or git_ref."
-        impact = analyze_impact(idx, changed)
+
+        # When only task_description is given, auto-detect changes from HEAD.
+        effective_ref = git_ref
+        if not changed_symbols and not git_ref and task_description:
+            effective_ref = "HEAD"
+
+        changed = _resolve_changed(idx, changed_symbols, effective_ref, repo)
+        if not changed and not task_description:
+            return "No changed symbols found. Pass changed_symbols, git_ref, or task_description."
+
+        # Untuned default; not derived from any sweep. The query_weight controls
+        # how much the problem-description signal moves candidates relative to
+        # the graph + BM25 + same-file blend. 0.3 is a guess that "matters but
+        # doesn't dominate" — it has NOT been benchmarked or optimized.
+        query_weight = 0.3 if task_description else 0.0
+        impact = analyze_impact(
+            idx, changed, query_text=task_description, query_weight=query_weight,
+        )
         ctx = compile(idx, impact, max_tokens=max_tokens, meta=meta)
         return ctx.text
 
