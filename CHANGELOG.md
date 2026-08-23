@@ -8,7 +8,65 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
-### Added (retrieval-quality bottleneck pass — roadmap items 1–3 shipped)
+## [0.5.0] — 2026-08-23
+
+### Added (ContextBench: external retrieval + downstream LLM pass@1)
+- **Context retrieval quadruples GLM 5.2 pass@1** on ContextBench Python
+  tasks: 5.5% → 25.8% on 128 tasks, judged by each repo's own test suite.
+  Exact McNemar p < 0.0001 on every context arm vs the no-context baseline.
+  The three context variants (default / gap / depboost) are statistically
+  indistinguishable from each other (p = 0.36 / 0.81 / 0.65) at n=128.
+  Conditioning on successful patch application, pass rate rises from 22%
+  to 42%. (`benchmarks/contextbench/RESULTS.md`)
+- **Retrieval false-negative analysis** (128 tasks, 1,011 gold symbols):
+  624 missed (62%), 68% of which are `reached_but_cut` — the dependency
+  graph finds them but the selection stage drops them. 99% of the
+  `reached_but_cut` are gap_cut (the precision lever fires before budget
+  or top_k). Top_k is NOT the bottleneck (identical at 20/40/60).
+- **Dependency-type score boost** (`dep_boost` parameter in `compile()`):
+  boosts direct callees/callers/siblings by +20 before the gap cutoff,
+  preserving precision while gaining +6.4% retrieval recall and +10.2%
+  symbol recall. Downstream pass@1 is unresolved (p = 0.648 vs gap) at
+  n=128 — the benchmark is underpowered to resolve a 3pp difference.
+  Opt-in; default off.
+- **`stats.py`**: Wilson score CI, exact McNemar test, paired-table
+  builder. 21 tests pinning all 6 pairwise p-values from the 128-task run.
+- **`gap_min_ratio` / `gap_min_keep` parameters** in `select_context()`:
+  prevent the gap cutoff from firing on trivial score drops (e.g. 1.10×)
+  or pruning below a minimum candidate count.
+
+### Fixed (apply patch cascade hardening)
+- `apply_patch()` in the pass@1 harness now tries a cascade of
+  increasingly lenient tools (git apply -p1, --recount, --3way,
+  --ignore-whitespace, patch --fuzz=3, + trailing-newline normalization)
+  instead of only two. Reduced apply errors from 84→82 (none), 69→46
+  (diffcontext), 66→46 (gap), raising gap pass@1 from 19.5% to 25.8%.
+  Diff relocator tested and rejected (0/18 recovered — context
+  hallucinated, not a formatting issue; see `diff_relocator.py`).
+
+### Fixed (public-facing claim corrections)
+- README: "~2× the recall of grep at every token budget" → "1.5–2.7×
+  depending on budget" (the 1k row is 1.47×, not 2×).
+- README/docs/website: "423 commits, 5 repos + 2 validation" → "701
+  commits, 5 repos + 4 validation" (rich, starlette added).
+- verify.mdx: replaced stale r=0.274 (n=25, polluted index) with clean
+  r=0.287 (p=0.0001, n=1,080) + visible retraction link to benchmarks.mdx.
+- "99.2% smaller" → "up to 99.2% smaller on the largest repos" (top of a
+  77–99% range, not the typical case).
+- `--cutoff gap` precision/recall claims scoped to the co-change benchmark
+  (2.2× / ~14% on ContextBench, not 4× / 30%).
+- benchmarks.mdx: n=30 head-to-head table now carries a sample-size caveat.
+
+### Changed (release pipeline)
+- `publish.yml` trigger narrowed from `tags: ["v*"]` to
+  `tags: ["v[0-9]+.[0-9]+.[0-9]+"]` so research checkpoint tags (e.g.
+  `v0.4.0-selection-baseline`, `baseline/selection-2026-08`) can never
+  fire the PyPI release pipeline.
+- `__version__` bumped from 0.3.0 to 0.5.0 (was stale since 2026-07-20;
+  the v0.4.0/v0.4.1 GitHub releases were cut from branches that never
+  merged the version bump back to main).
+
+## [0.3.0] — 2026-07-20
 - **Dispatch-sibling override edges** (graph phase 1G): subclasses of the
   same resolved base that define the same method name are now connected
   pairwise — including when the base never defines the method (the

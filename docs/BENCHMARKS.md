@@ -208,3 +208,14 @@ call-graph connection:
 
 When in doubt: `grep -rn "function_name(" --include="*.py" .` before fully
 trusting "no callers found."
+
+## Downstream: Does Better Context Improve LLM Task Outcomes?
+
+Yes — **context roughly quadruples pass@1**: 5.5% → 25.8% on 128 ContextBench
+Python tasks, judged by each repo's own test suite. Exact McNemar p < 0.0001
+on every context arm vs the no-context baseline. The three context variants
+(default / gap / depboost) are statistically indistinguishable from each
+other (p = 0.36 / 0.81 / 0.65) at n=128. Conditioning on successful patch
+application, pass rate rises from 22% to 42%. Full methodology, provenance,
+and reproduction: `benchmarks/contextbench/RESULTS.md`. Every number is
+regenerated from JSONL by `verify_results.py`.

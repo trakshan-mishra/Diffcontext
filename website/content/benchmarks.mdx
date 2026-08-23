@@ -94,6 +94,43 @@ diffcontext verify --from-history 20 --calibrate
 
 See [Verify](/docs/verify) for the full methodology.
 
+## Downstream: Does Better Context Improve LLM Task Outcomes?
+
+Yes — **context roughly quadruples pass@1**. Measured on 128 ContextBench
+Python tasks (django, requests, flask), judged by each repo's own test
+suite (Django `runtests.py`; pytest for requests/flask). No LLM-as-judge.
+
+| Variant | Passed | Pass@1 | 95% Wilson CI |
+|---|---:|---:|---|
+| none (no context) | 7 | **5.5%** | [0.027, 0.109] |
+| diffcontext (default) | 28 | **21.9%** | [0.156, 0.298] |
+| diffcontext_gap | 33 | **25.8%** | [0.190, 0.340] |
+| diffcontext_depboost | 30 | **23.4%** | [0.169, 0.315] |
+
+Exact McNemar, context vs no-context (all arms p < 0.0001):
+
+| Pair | Both pass | A only | B only | Neither | p |
+|---|---:|---:|---:|---:|---:|
+| none vs diffcontext | 5 | 2 | 23 | 98 | **0.00002** *** |
+| none vs gap | 5 | 2 | 28 | 93 | **0.0000009** *** |
+| none vs depboost | 4 | 3 | 26 | 95 | **0.00002** *** |
+
+The honest companion: the three context variants are **statistically
+indistinguishable** from each other. Their Wilson CIs overlap almost
+completely, and exact McNemar gives p = 0.36 / 0.81 / 0.65 for
+diffcontext vs gap, diffcontext vs depboost, and gap vs depboost
+respectively. Only ~19 of 128 tasks are discordant on any
+context-variant pair — the benchmark is underpowered to resolve a 3pp
+difference, and more seeds will not help (the limit is discordant-pair
+count, not run-to-run noise).
+
+Conditioning on successful patch application (the model produced a
+diff that `git apply` accepted), pass rate rises from **22%** (no
+context) to **42%** (with context): context halves the rate at which the
+model hallucinates code structure and produces a malformed patch.
+
+Full methodology, provenance, and reproduction: [`benchmarks/contextbench/RESULTS.md`](https://github.com/anomalyco/Diffcontext/blob/main/benchmarks/contextbench/RESULTS.md). Every number is regenerated from JSONL by `verify_results.py`.
+
 ## Known Limitations
 
 From the failure taxonomy — 60 hand-audited Django co-change pairs with no call-graph connection:

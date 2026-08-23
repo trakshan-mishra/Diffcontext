@@ -124,16 +124,13 @@ whose change lacks the context an agent or reviewer would need.
   under 0.1 at the default top-k.
 - The `verify` sufficiency score is a **structural proxy**, not a probability,
   and it has **zero discriminating power on TypeScript** today.
-- **The downstream question is still open.** Everything above measures whether
-  the right code was retrieved (a proxy), not whether an LLM given that context
-  produces a better patch. The harness for that exists and has run; the current
-  result is a null from a task set that cannot discriminate between arms — on
-  the corpus audited 2026-08-05 all three arms scored 0.333 with
-  `discrimination: 0/9` and `n_eff=0`. A null from a non-discriminating task set
-  is indistinguishable from a null from a retriever that does not help, so no
-  claim is made in either direction. Read the `discrimination:` line before any
-  pass-rate table from that harness; pooled numbers recorded before 2026-08-05
-  were paired on the bare commit rather than `(model, commit)` and are void.
+- **The downstream question is now answered.** Context roughly quadruples
+  GLM 5.2 pass@1 on 128 ContextBench Python tasks: 5.5% → 25.8%, exact McNemar
+  p < 0.0001 on every context arm vs no-context. The three context variants
+  (default / gap / depboost) are statistically indistinguishable (p = 0.36 /
+  0.81 / 0.65) at n=128 — the benchmark is underpowered to resolve 3pp
+  differences (only ~19/128 tasks are discordant). Full results:
+  `benchmarks/contextbench/RESULTS.md`.
 
 ## Quality gates in CI
 
