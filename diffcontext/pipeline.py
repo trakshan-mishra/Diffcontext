@@ -709,6 +709,8 @@ def compile(
     scoring_config: Optional["ScoringConfig"] = None,
     top_k: Optional[int] = None,
     cutoff: Optional[str] = None,
+    gap_min_ratio: float = 1.0,
+    gap_min_keep: int = 0,
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
@@ -728,6 +730,13 @@ def compile(
                         symbols, ~30% relative recall cost; see
                         benchmarks/RIGOR_REPORT_2026-07.md §7). Default
                         None keeps recall-first top-k selection.
+        gap_min_ratio:  Only fire the gap cutoff when the largest relative
+                        score drop >= this ratio (default 1.0 = always fire,
+                        the original behavior). 1.5 = only cut on a real 50%+
+                        break, not on noise like 1.10x.
+        gap_min_keep:   Always keep at least this many candidates past the
+                        gap (default 0 = no minimum, the original behavior).
+                        10 = never prune below 10; the budget controls size.
     """
     selected, dropped = select_context(
         index.symbols,
@@ -739,6 +748,8 @@ def compile(
         graph=index.graph,
         reverse=index.reverse_graph,
         cutoff=cutoff,
+        gap_min_ratio=gap_min_ratio,
+        gap_min_keep=gap_min_keep,
     )
 
     return compile_context(

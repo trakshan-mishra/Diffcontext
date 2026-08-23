@@ -52,8 +52,22 @@ MAX_SINGLE_SYMBOL_FRACTION = 0.25
 GAP_CUTOFF_WINDOW = 50
 GAP_SCORE_EPSILON = 1e-12
 
+# Minimum ratio for the gap to fire. The original gap_cut_count always cut at
+# the largest relative drop, even when that drop was 1.10x (noise, not a real
+# break). On ContextBench, 99% of 624 missed gold symbols were gap_cut — many
+# at rank 3-4 with scores 75-84, cut by a trivial 1.10x drop at rank 2.
+# min_ratio=1.5 means the gap only fires when the drop is >= 50% — a real break.
+GAP_MIN_RATIO = 1.5
 
-def gap_cut_count(ranked_scores: List[float]) -> int:
+# Minimum number of candidates the gap must keep. The original kept ~1-2 on
+# ContextBench (out of 7000+ scored symbols), over-pruning to the point where
+# direct callees at score 90 were cut. min_keep=10 ensures the gap never
+# prunes below 10 candidates; the budget controls context size after that.
+GAP_MIN_KEEP = 10
+
+
+def gap_cut_count(ranked_scores: List[float],
+                  min_ratio: float = 1.0, min_keep: int = 0) -> int:
     """
     How many leading candidates the largest-gap cutoff keeps.
 
@@ -64,6 +78,15 @@ def gap_cut_count(ranked_scores: List[float]) -> int:
     top-20 at 6-9 retrieved symbols, for ~30% relative recall cost
     (benchmarks/RIGOR_REPORT_2026-07.md §7). With fewer than 3 candidates
     there is no distribution to read, so everything is kept.
+
+    Args:
+        min_ratio: only cut if the largest relative drop >= this ratio.
+            Default 1.0 = always cut (original behavior). 1.5 = only cut
+            when the drop is >= 50% (filters noise drops like 1.10x).
+        min_keep: always keep at least this many candidates, even if the
+            gap would cut earlier. Default 0 = no minimum (original
+            behavior). 10 = never prune below 10 candidates; the budget
+            controls context size after that.
     """
     n = len(ranked_scores)
     if n < 3:
@@ -75,7 +98,11 @@ def gap_cut_count(ranked_scores: List[float]) -> int:
         if ratio > best_ratio:
             best_ratio = ratio
             best_i = i + 1
-    return best_i
+    # Only apply the gap if the drop is significant enough to be a real break.
+    if best_ratio < min_ratio:
+        return n  # no significant gap — keep all, let budget/top_k decide
+    # Never prune below min_keep candidates.
+    return max(best_i, min_keep)
 
 
 def select_context(
@@ -89,6 +116,8 @@ def select_context(
     reverse: Optional[Dict[str, Set[str]]] = None,
     rel_cap: Optional[int] = None,
     cutoff: Optional[str] = None,
+    gap_min_ratio: float = 1.0,
+    gap_min_keep: int = 0,
 ) -> Tuple[List[str], List[str]]:
     """
     Select symbols for context based on scores and token budget.
@@ -185,7 +214,8 @@ def select_context(
             (sid, sc) for sid, sc in scored
             if sid in symbols and sc > GAP_SCORE_EPSILON
         ]
-        keep_n = gap_cut_count([sc for _, sc in candidates])
+        keep_n = gap_cut_count([sc for _, sc in candidates],
+                               min_ratio=gap_min_ratio, min_keep=gap_min_keep)
         gap_kept = {sid for sid, _ in candidates[:keep_n]}
 
     included_non_changed = 0
