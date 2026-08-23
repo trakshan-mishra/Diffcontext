@@ -16,7 +16,8 @@ import MeasuredLimits from '../components/MeasuredLimits'
 
 <Pipeline />
 
-- Zero runtime dependencies, Python 3.9+, `pip install -e .`
+- Zero runtime dependencies, Python 3.9+, `pip install diffcontext`
+- **MCP server** for Claude Code / Cursor / Windsurf: `pip install "diffcontext[mcp]"`
 - Output is **honest by construction**: a meta header discloses exactly which symbols were dropped, so the model knows what it cannot see.
 
 ## Why
@@ -80,6 +81,6 @@ def validate_jwt(token: str) -> dict:
 <Cards>
   <Cards.Card title="Quick Start →" href="/docs/quick-start" />
   <Cards.Card title="Usage Guide →" href="/docs/usage" />
-  <Cards.Card title="Architecture →" href="/docs/architecture" />
+  <Cards.Card title="MCP Server →" href="/docs/mcp" />
   <Cards.Card title="Benchmarks →" href="/docs/benchmarks" />
 </Cards>
