@@ -131,8 +131,10 @@ def main():
         if not changed and not task_description:
             return "No changed symbols found. Pass changed_symbols, git_ref, or task_description."
 
-        # query_weight > 0 only when task_description is provided — the
-        # signal is opt-in and has no effect when absent (backwards compat).
+        # Untuned default; not derived from any sweep. The query_weight controls
+        # how much the problem-description signal moves candidates relative to
+        # the graph + BM25 + same-file blend. 0.3 is a guess that "matters but
+        # doesn't dominate" — it has NOT been benchmarked or optimized.
         query_weight = 0.3 if task_description else 0.0
         impact = analyze_impact(
             idx, changed, query_text=task_description, query_weight=query_weight,

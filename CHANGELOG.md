@@ -8,6 +8,20 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-08-23
+
+### Added (query_text tests + untuned-default disclosure)
+- **Tests for query_text** (3 in `test_core.py::TestQueryText`):
+  `test_none_reproduces_baseline_byte_identically` — the regression guard:
+  query_text=None must not change ANY score, not even by a floating-point
+  epsilon. `test_query_text_reorders_results` — a non-None query_text must
+  measurably reorder the ranking (is_valid_email moves up with the query
+  "email validation check"). `test_query_weight_zero_is_noop` —
+  query_weight=0.0 is a no-op even with non-None query_text.
+- **Untuned-default disclosure**: the `query_weight = 0.3` magic number in
+  the CLI and MCP server now carries an explicit comment: "Untuned default;
+  not derived from any sweep. Do not cite this as a measured value."
+
 ## [0.5.3] — 2026-08-23
 
 ### Fixed (false claim retraction)
