@@ -8,6 +8,28 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-08-23
+
+### Added (distribution + MCP)
+- **MCP server** (`diffcontext-mcp`): four tools wrapping the existing
+  pipeline for Claude Code / Cursor / Windsurf integration. Install with
+  `pip install "diffcontext[mcp]"` (the `mcp` SDK is an optional extra;
+  the core stays zero-dependency). Tools: `compile_context`,
+  `find_impact`, `explain_selection`, `verify_retrieval`. In-process index
+  cache so a long-lived server doesn't reindex per call. See
+  [docs/MCP.md](docs/MCP.md).
+- **`--meta full|compact|off` flag** on `compile`: controls the disclosure
+  header's budget cost. The A/B test showed full meta costs ~10pp pass@1
+  at 4000 tokens by displacing code; `compact` (counts + dropped top-3 +
+  warnings, ~60% smaller) is the new default for the MCP server.
+
+### Changed (repositioning)
+- README reordered: Install + "Don't trust our benchmarks — run yours"
+  moved above the fold, before the pass@1 claim. A reader who stops after
+  30 seconds now knows they can test the claim themselves in 2 minutes.
+- Repo metadata updated: description, topics (llm, mcp, rag, code-search,
+  static-analysis, ai-agents, developer-tools), homepage.
+
 ## [0.5.1] — 2026-08-23
 
 ### Added (first PyPI release)
