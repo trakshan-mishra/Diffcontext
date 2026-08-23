@@ -43,6 +43,13 @@ Yes — measured end to end, not by proxy. On 128 ContextBench Python tasks
 judged by each repository's own test suite (no LLM-as-judge), **context
 roughly quadruples pass@1: 5.5% → 25.8%**, exact McNemar p < 0.0001.
 
+Two qualifiers, both in [`benchmarks/contextbench/RESULTS.md`](benchmarks/contextbench/RESULTS.md)
+§6: **(a)** the seed functions given to every arm are **oracle** — extracted
+from the gold patch — so this measures *"given correct localization, does
+context quality matter?"*, not end-to-end issue solving (localization is
+handed to every arm for free); **(b)** 121 of the 128 effective tasks are
+django, so this is largely a django result.
+
 The honest companion: the three context variants (default / gap / depboost)
 are statistically **indistinguishable** from each other, p = 0.36–0.81. The
 win is context versus no context — not this selector versus that one. Full
