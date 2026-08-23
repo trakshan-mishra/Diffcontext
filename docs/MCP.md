@@ -40,12 +40,20 @@ Compile LLM-ready context for a change. Give it changed symbol IDs or a
 git ref, and it returns the callers, callees, and related functions packed
 into a token budget with a disclosure header showing what was dropped.
 
+Optionally pass `task_description` (the bug report or issue text) to bias
+retrieval toward symbols relevant to the described problem — the one signal
+the graph alone can't provide. When only `task_description` is given (no
+`changed_symbols` or `git_ref`), changes are auto-detected from `HEAD`.
+
 Parameters:
 - `repo_path` (optional): repo path, defaults to `--repo`
 - `changed_symbols` (optional): list of symbol IDs (e.g. `["./src/auth.py:validate_jwt"]`)
 - `git_ref` (optional): git ref to detect changes from (e.g. `"HEAD~1"`)
+- `task_description` (optional): bug report or issue text — biases retrieval
+  toward symbols semantically related to the described problem
 - `max_tokens` (default 8000): token budget
-- `meta` (default `"compact"`): header level — `"full"`, `"compact"`, or `"off"`
+- `meta` (default `"full"`): header level — `"full"`, `"compact"`, or `"off"`.
+  The pass@1 effect of meta level is UNMEASURED.
 
 ### `find_impact`
 

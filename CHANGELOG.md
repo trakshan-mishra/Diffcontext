@@ -8,6 +8,33 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-08-23
+
+### Fixed (false claim retraction)
+- Stripped every instance of "the A/B test showed full meta costs ~10pp
+  pass@1" and "compact is the measured middle ground" from 6 files. That
+  A/B has never been run — the numbers came from a cross-run comparison
+  already flagged as a confound in RESULTS.md §3b. Replaced with "the
+  pass@1 effect of meta level is UNMEASURED." The compact/off modes remain
+  (they're useful for tight budgets) but the MCP server default is reverted
+  to "full" until measured.
+
+### Added (query_text signal)
+- **`query_text` parameter** on `analyze_impact()` and `--query-text` flag
+  on `compile`. BM25 scores the query text (bug report / issue text /
+  task description) against every symbol's source code and adds
+  `query_weight * normalized_score` to each candidate. This is the one
+  signal that ranks by relevance to the *described problem* rather than
+  structural nearness — the "thematic siblings" blind spot the graph
+  alone cannot address. Default `query_weight=0.0` = no effect (backwards
+  compatible). The MCP `compile_context` tool surfaces this as
+  `task_description`; when only `task_description` is given (no
+  `changed_symbols` or `git_ref`), changes are auto-detected from `HEAD`.
+
+### Fixed (minor)
+- `diffcontext --version` now works (was missing).
+- MCP server version no longer hardcoded — uses `diffcontext.__version__`.
+
 ## [0.5.2] — 2026-08-23
 
 ### Added (distribution + MCP)
@@ -19,9 +46,8 @@ covered by any stability expectation.
   cache so a long-lived server doesn't reindex per call. See
   [docs/MCP.md](docs/MCP.md).
 - **`--meta full|compact|off` flag** on `compile`: controls the disclosure
-  header's budget cost. The A/B test showed full meta costs ~10pp pass@1
-  at 4000 tokens by displacing code; `compact` (counts + dropped top-3 +
-  warnings, ~60% smaller) is the new default for the MCP server.
+  header's budget cost. The pass@1 effect of meta level is UNMEASURED;
+  compact/off are useful for tight budgets but not yet benchmarked.
 
 ### Changed (repositioning)
 - README reordered: Install + "Don't trust our benchmarks — run yours"

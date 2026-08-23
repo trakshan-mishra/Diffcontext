@@ -23,6 +23,7 @@ import time
 from ..pipeline import index_repository, analyze_impact, compile, warn_unknown_symbols
 from ..diff.git_diff import find_changed_symbols
 from ..impact.visualizer import render_blast_radius, render_verification
+from .. import __version__ as DC_VERSION
 
 
 def main():
@@ -37,6 +38,7 @@ def main():
         prog="diffcontext",
         description="Static-analysis-powered repository context compiler for LLMs",
     )
+    parser.add_argument("--version", action="version", version=f"diffcontext {DC_VERSION}")
     sub = parser.add_subparsers(dest="command", help="Available commands")
 
     # --- index ---
@@ -114,13 +116,19 @@ def main():
     )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
     p_compile.add_argument(
+        "--query-text", type=str, default=None,
+        help="Bug report or issue text. Biases retrieval toward symbols "
+             "semantically related to the described problem — the one "
+             "signal the graph alone can't provide.",
+    )
+    p_compile.add_argument(
         "--meta", choices=["full", "compact", "off"], default="full",
         help=(
             "Disclosure-header level. 'full' (default): counts, architecture "
             "snapshot, dropped manifest, graph confidence, warnings. 'compact': "
-            "counts + dropped top-3 + warnings only (~60%% smaller — the A/B "
-            "test showed full meta costs ~10pp pass@1 at 4000 tokens by "
-            "displacing code). 'off': no meta-header, just code sections."
+            "counts + dropped top-3 + warnings only (~60%% smaller). 'off': no "
+            "meta-header, just code sections. The pass@1 effect of meta level "
+            "is UNMEASURED."
         ),
     )
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
@@ -384,9 +392,11 @@ def _cmd_compile(args):
         from ..history import CoChangeIndex
         history = CoChangeIndex(args.repo)
 
+    query_weight = 0.3 if args.query_text else 0.0
     impact = analyze_impact(
         idx, changed, max_depth=args.depth, hybrid=not args.graph_only,
         history=history,
+        query_text=args.query_text, query_weight=query_weight,
     )
     max_tokens = args.max_tokens if args.max_tokens > 0 else None
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
