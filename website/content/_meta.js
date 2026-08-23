@@ -9,6 +9,9 @@ export default {
   usage: {
     title: 'Usage Guide',
   },
+  mcp: {
+    title: 'MCP Server',
+  },
   architecture: {
     title: 'Architecture',
   },
