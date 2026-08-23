@@ -42,11 +42,22 @@ def main():
     # --- index ---
     p_index = sub.add_parser("index", help="Index a repository")
     p_index.add_argument("repo", default=".", nargs="?", help="Path to repository")
+    p_index.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite the default exclusions "
+             "(tests/, benchmarks/, docs/, ...). Useful when a change "
+             "spans an excluded dir; .gitignore still applies.",
+    )
 
     # --- impact ---
     p_impact = sub.add_parser("impact", help="Analyze impact of a symbol change")
     p_impact.add_argument("symbols", nargs="+", help="Changed symbol IDs (e.g. ./auth.py:validate_jwt)")
     p_impact.add_argument("--repo", default=".", help="Repository path")
+    p_impact.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite default exclusions (tests/, "
+             "benchmarks/, docs/, ...). .gitignore still applies.",
+    )
     p_impact.add_argument("--depth", type=int, default=2, help="Max dependency depth")
     p_impact.add_argument("--tree", action="store_true", help="Show visual blast radius tree")
     p_impact.add_argument("--verify", action="store_true", help="Show proof chains for each edge")
@@ -55,6 +66,11 @@ def main():
     p_diff = sub.add_parser("diff", help="Find changed symbols from git diff")
     p_diff.add_argument("ref", default="HEAD~1", nargs="?", help="Git ref to compare against")
     p_diff.add_argument("--repo", default=".", help="Repository path")
+    p_diff.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite default exclusions (tests/, "
+             "benchmarks/, docs/, ...). .gitignore still applies.",
+    )
     p_diff.add_argument(
         "--committed-only", action="store_true",
         help="Compare two commits only (ref vs HEAD); ignores uncommitted working-tree changes",
@@ -65,6 +81,13 @@ def main():
     p_compile.add_argument("--changed", nargs="+", help="Changed symbol IDs")
     p_compile.add_argument("--ref", default=None, help="Git ref (auto-detect changes)")
     p_compile.add_argument("--repo", default=".", help="Repository path")
+    p_compile.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite default exclusions (tests/, "
+             "benchmarks/, docs/, ...). When a --ref change spans an excluded "
+             "dir, re-run with --include <dir> so its symbols are resolved. "
+             ".gitignore still applies.",
+    )
     p_compile.add_argument("--depth", type=int, default=2, help="Max dependency depth")
     p_compile.add_argument("--max-tokens", type=int, default=10000, help="Token budget")
     p_compile.add_argument(
@@ -97,6 +120,11 @@ def main():
     p_blast.add_argument("--changed", nargs="+", help="Changed symbol IDs (manual)")
     p_blast.add_argument("--ref", default=None, help="Git ref (auto-detect changes)")
     p_blast.add_argument("--repo", default=".", help="Repository path")
+    p_blast.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite default exclusions (tests/, "
+             "benchmarks/, docs/, ...). .gitignore still applies.",
+    )
     p_blast.add_argument("--depth", type=int, default=3, help="Max traversal depth for tree")
     p_blast.add_argument("--verify", action="store_true", help="Show proof chains for each edge")
     p_blast.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
@@ -113,6 +141,11 @@ def main():
     p_verify.add_argument("--changed", nargs="+", help="Changed symbol IDs")
     p_verify.add_argument("--ref", default=None, help="Git ref (auto-detect changes)")
     p_verify.add_argument("--repo", default=".", help="Repository path")
+    p_verify.add_argument(
+        "--include", nargs="*", default=[], metavar="DIR",
+        help="Directory names to index despite default exclusions (tests/, "
+             "benchmarks/, docs/, ...). .gitignore still applies.",
+    )
     p_verify.add_argument("--depth", type=int, default=2, help="Max dependency depth")
     p_verify.add_argument("--max-tokens", type=int, default=10000, help="Token budget (0 = unlimited)")
     p_verify.add_argument(
@@ -173,10 +206,53 @@ def main():
         _cmd_verify(args)
 
 
+def _print_index_scope(repo, indexed_files, include):
+    """One-line index-scope summary: which top-level dirs were indexed and
+    which were skipped by default (EXCLUDED_DIRS, minus any --include).
+
+    Printed after `diffcontext index` so the scoping that drives later
+    "was not found in the index" warnings is visible up front, not buried
+    in 14 warnings on the next command. Only source-like exclusions are
+    reported — tests/, benchmarks/, docs/ are where a real commit spans an
+    excluded dir and produces the warning; .git/, venv/, .pytest_cache/
+    never contain changed source and would be noise here. Stays quiet when
+    nothing source-like was skipped (a flat repo, or all --include'd)."""
+    # The subset of EXCLUDED_DIRS that commonly hold the user's own source
+    # and are the ones a commit can span — the rest are caches/venvs where
+    # "not found in the index" never fires for a real change.
+    SOURCE_LIKE_EXCLUDED = {
+        "tests", "test", "benchmarks", "docs", "examples",
+        "experimental", "datasets",
+    }
+    repo_abs = os.path.abspath(repo)
+    if not os.path.isdir(repo_abs):
+        return
+    indexed_dirs = set()
+    for f in indexed_files:
+        try:
+            rel = os.path.relpath(f, repo_abs)
+        except ValueError:
+            continue
+        parts = rel.replace(os.sep, "/").split("/")
+        if len(parts) > 1 and parts[0] not in (".", ".."):
+            indexed_dirs.add(parts[0])
+    skipped = sorted(
+        name for name in os.listdir(repo_abs)
+        if os.path.isdir(os.path.join(repo_abs, name))
+        and name in SOURCE_LIKE_EXCLUDED and name not in include
+    )
+    if skipped:
+        print(f"Scope   : {len(indexed_files)} files in "
+              f"{', '.join(sorted(indexed_dirs)) or '(root)'}; "
+              f"skipped by default: {', '.join(skipped)} "
+              f"(re-run with --include <dir> to index them)")
+
+
 def _cmd_index(args):
     """Index repository: show stats."""
     t0 = time.perf_counter()
-    idx = index_repository(args.repo)
+    include = set(args.include or [])
+    idx = index_repository(args.repo, include=include)
     elapsed = (time.perf_counter() - t0) * 1000
 
     print(f"Symbols : {len(idx.symbols)}")
@@ -192,10 +268,18 @@ def _cmd_index(args):
     if idx.broken_files:
         print(f"Broken  : {len(idx.broken_files)} file(s) failed to parse (see warnings above)")
 
+    # Index-scope summary: which top-level dirs were indexed and which were
+    # skipped by default. The scoping is the single biggest practical gotcha
+    # (a commit spanning benchmarks/ produces 14 "not found in the index"
+    # warnings and omits the changed file) — surfacing it here, right after
+    # indexing, tells the user *why* a later --ref compile may miss symbols
+    # before they see the wall of warnings.
+    _print_index_scope(args.repo, files, include)
+
 
 def _cmd_impact(args):
     """Analyze impact of specific symbol changes."""
-    idx = index_repository(args.repo)
+    idx = index_repository(args.repo, include=set(args.include or []))
     impact = analyze_impact(idx, args.symbols, max_depth=args.depth)
 
     if getattr(args, 'tree', False) or getattr(args, 'verify', False):
@@ -241,7 +325,7 @@ def _print_broken_files(idx, broken_patches):
 
 def _cmd_diff(args):
     """Find changed symbols from git diff."""
-    idx = index_repository(args.repo)
+    idx = index_repository(args.repo, include=set(args.include or []))
 
     against = "HEAD" if args.committed_only else None
     broken_patches = {}
@@ -266,7 +350,7 @@ def _cmd_diff(args):
 
 def _cmd_compile(args):
     """Build full context package."""
-    idx = index_repository(args.repo)
+    idx = index_repository(args.repo, include=set(args.include or []))
 
     # Determine changed symbols
     if args.changed:
@@ -301,12 +385,36 @@ def _cmd_compile(args):
                   top_k=top_k, cutoff=cutoff)
 
     if args.json:
+        # Existing keys are kept for backwards compatibility. Added for
+        # agent integration (USAGE.md advertises --json as "machine-readable,
+        # for scripts and agents"): `included_symbols` and `dropped_symbols`
+        # expose WHICH symbols were selected / cut, with scores and tokens,
+        # so a calling agent can inspect or filter the selection instead of
+        # having to parse the rendered `context` text.
+        included_symbols = [
+            {
+                "id": item.symbol_id,
+                "role": item.role,
+                "score": round(item.score, 2),
+                "tokens": item.token_estimate,
+            }
+            for item in ctx.items
+        ]
+        dropped_symbols = [
+            {
+                "id": sid,
+                "score": round(impact.scores.get(sid, 0.0), 2),
+            }
+            for sid in ctx.dropped_symbols
+        ]
         result = {
             "symbol_count": ctx.symbol_count,
             "token_estimate": ctx.token_estimate,
             "total_repo_tokens": ctx.total_repo_tokens,
             "reduction_pct": round(ctx.reduction_pct, 2),
             "context": ctx.text,
+            "included_symbols": included_symbols,
+            "dropped_symbols": dropped_symbols,
         }
         print(json.dumps(result, indent=2))
     else:
@@ -320,7 +428,7 @@ def _cmd_compile(args):
 def _cmd_blast(args):
     """Visual blast radius analysis."""
     t0 = time.perf_counter()
-    idx = index_repository(args.repo)
+    idx = index_repository(args.repo, include=set(args.include or []))
     index_ms = (time.perf_counter() - t0) * 1000
 
     against = "HEAD" if getattr(args, "committed_only", False) else None
@@ -467,7 +575,7 @@ def _cmd_verify(args):
         sys.exit(0 if all(r.passed for r in results) else 1)
 
     # ── Mode 3: single sufficiency report for a change ────────────────────
-    idx = index_repository(args.repo)
+    idx = index_repository(args.repo, include=set(args.include or []))
 
     if args.changed:
         changed = args.changed

@@ -14,7 +14,7 @@ import ast
 import difflib
 import logging
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 from .impact.scoring import ScoringConfig
 
@@ -23,7 +23,7 @@ from .models import (
 )
 from .languages import available_adapters, discover_files
 from .parser import extract_symbols
-from .scanner import find_python_files
+from .scanner import find_python_files, first_excluded_dir
 from .cache import SymbolCache, get_file_hash, hash_source, repo_state_hash
 from .resolver import build_import_map
 from .graph_builder import build_repository_graph
@@ -102,7 +102,9 @@ def _read_and_parse(
     return rel_file, source, tree, hash_source(raw)
 
 
-def index_repository(repo_path: str) -> RepositoryIndex:
+def index_repository(
+    repo_path: str, include: Optional[Set[str]] = None,
+) -> RepositoryIndex:
     """
     Phase 1: Parse repository and build dependency graph.
 
@@ -112,15 +114,20 @@ def index_repository(repo_path: str) -> RepositoryIndex:
     hash of every file), so re-indexing an unchanged repo — even from a new
     process — skips parsing and graph construction entirely.
 
+    `include` is a set of directory names to index despite the default
+    exclusions (scanner.EXCLUDED_DIRS — tests/, benchmarks/, docs/, ...).
+    Pass {"benchmarks"} to index benchmarks/ too; the cache key covers the
+    include set, so an index built with and without --include do not collide.
+
     Returns a RepositoryIndex with all symbols, the call graph, and the
     list of files (if any) that failed to parse due to a SyntaxError. The
     returned index supports in-process incremental updates via
-    `index.update(changed_files)`.
+    `index.update([...])`.
     """
     repo_path = os.path.abspath(repo_path)
     db_path = os.path.join(repo_path, ".diffcontext_cache.db")
 
-    files = find_python_files(repo_path)
+    files = find_python_files(repo_path, include)
 
     # Optional language adapters (languages/): each contributes its own
     # files, symbols, and edges. Absent extras mean empty dicts here and
@@ -250,6 +257,7 @@ def index_repository(repo_path: str) -> RepositoryIndex:
     index._import_maps = import_maps    # None on graph-cache hit (lazy)
     index._lang_graphs = lang_graphs    # None on graph-cache hit (lazy)
     index._warn_state = warn_state
+    index._include = include            # scanner dirs to keep despite defaults
     return index
 
 
@@ -259,9 +267,10 @@ def _ensure_trees(index: RepositoryIndex) -> None:
     if index._file_trees is not None:
         return
     repo_path = index._repo_path
+    include = getattr(index, "_include", None)
     broken: List[str] = []
     trees: Dict[str, ast.Module] = {}
-    for filename in find_python_files(repo_path):
+    for filename in find_python_files(repo_path, include):
         rel, _source, tree, _h = _read_and_parse(
             filename, repo_path, broken, warn_state=index._warn_state
         )
@@ -404,9 +413,10 @@ def _update_language_parts(index, cache, lang_changed_rels) -> Dict[str, str]:
 def _persist_graph_cache(cache, index, adapter_file_hashes) -> None:
     """Persist the new state so future processes get a warm start too."""
     repo_path = index._repo_path
+    include = getattr(index, "_include", None)
     file_hashes = {
         "./" + os.path.relpath(f, repo_path): get_file_hash(f)
-        for f in find_python_files(repo_path)
+        for f in find_python_files(repo_path, include)
     }
     file_hashes.update(adapter_file_hashes)
     cache.put_graph(repo_state_hash(file_hashes), index.graph, list(index.broken_files))
@@ -474,9 +484,40 @@ def warn_unknown_symbols(index: RepositoryIndex, changed_symbols: List[str]) -> 
     """
     Check `changed_symbols` against the index and warn about any that don't
     actually exist. Returns the list of unknown symbol IDs.
+
+    Three cases, in priority order:
+      1. The symbol's FILE exists on disk but lies in a directory excluded
+         from indexing by default (tests/, benchmarks/, docs/, ...). This is
+         the most common real-world miss and the most actionable: say so
+         specifically and tell the user to re-run with `--include <dir>`,
+         instead of the generic "typo, renamed, or deleted" message that
+         sends them looking for a typo that doesn't exist.
+      2. A close name match exists (a moved/renamed symbol): suggest it.
+      3. None of the above: the symbol is a genuine typo, was deleted, or
+         the file failed to parse. Surface that, plus a hint that an
+         excluded directory is one possible cause.
     """
+    repo_path = getattr(index, "_repo_path", None)
+    index_include = getattr(index, "_include", None)
     unknown = [s for s in changed_symbols if s not in index.graph and s not in index.symbols]
     for sym_id in unknown:
+        file_part = sym_id.split(":", 1)[0]
+        rel = file_part[2:] if file_part.startswith("./") else file_part
+        excluded_dir = first_excluded_dir(file_part, index_include)
+        file_exists = (
+            repo_path is not None
+            and os.path.isfile(os.path.join(repo_path, rel))
+        )
+        if excluded_dir is not None and file_exists:
+            logger.warning(
+                "\033[93m'%s' was not found in the index because '%s' is "
+                "excluded from indexing by default (along with tests/, "
+                "benchmarks/, docs/, ...). Re-run with `--include %s` to "
+                "index it. Its blast radius will show as empty, which does "
+                "NOT mean the real symbol has no impact.\033[0m",
+                sym_id, file_part, excluded_dir,
+            )
+            continue
         suggestion = _suggest_similar_symbol(sym_id, index.symbols.keys())
         if suggestion:
             logger.warning(
@@ -489,7 +530,9 @@ def warn_unknown_symbols(index: RepositoryIndex, changed_symbols: List[str]) -> 
             logger.warning(
                 "\033[93m'%s' was not found in the index (typo, renamed, or "
                 "deleted symbol?). Its blast radius will show as empty, "
-                "which does NOT mean the real symbol has no impact.\033[0m",
+                "which does NOT mean the real symbol has no impact. If the "
+                "file is in a directory excluded from indexing (tests/, "
+                "benchmarks/, docs/), re-run with `--include <dir>`.\033[0m",
                 sym_id,
             )
     return unknown

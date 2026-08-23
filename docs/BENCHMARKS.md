@@ -216,6 +216,11 @@ Python tasks, judged by each repo's own test suite. Exact McNemar p < 0.0001
 on every context arm vs the no-context baseline. The three context variants
 (default / gap / depboost) are statistically indistinguishable from each
 other (p = 0.36 / 0.81 / 0.65) at n=128. Conditioning on successful patch
-application, pass rate rises from 22% to 42%. Full methodology, provenance,
-and reproduction: `benchmarks/contextbench/RESULTS.md`. Every number is
+application, pass rate rises from 22% to 42%. Two qualifiers (see
+`benchmarks/contextbench/RESULTS.md` §6): **(a)** the seed functions given
+to every arm are **oracle** — extracted from the gold patch — so this
+measures "given correct localization, does context quality matter?", not
+end-to-end issue solving; **(b)** 121 of the 128 effective tasks are django,
+so this is largely a django result. Full methodology, provenance, and
+reproduction: `benchmarks/contextbench/RESULTS.md`. Every number is
 regenerated from JSONL by `verify_results.py`.

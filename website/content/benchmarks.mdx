@@ -100,6 +100,12 @@ Yes — **context roughly quadruples pass@1**. Measured on 128 ContextBench
 Python tasks (django, requests, flask), judged by each repo's own test
 suite (Django `runtests.py`; pytest for requests/flask). No LLM-as-judge.
 
+Two qualifiers (see [`RESULTS.md`](https://github.com/anomalyco/Diffcontext/blob/main/benchmarks/contextbench/RESULTS.md) §6):
+**(a)** the seed functions given to every arm are **oracle** — extracted
+from the gold patch — so this measures *"given correct localization, does
+context quality matter?"*, not end-to-end issue solving; **(b)** 121 of
+the 128 effective tasks are django, so this is largely a django result.
+
 | Variant | Passed | Pass@1 | 95% Wilson CI |
 |---|---:|---:|---|
 | none (no context) | 7 | **5.5%** | [0.027, 0.109] |

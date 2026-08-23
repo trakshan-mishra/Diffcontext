@@ -17,7 +17,12 @@ covered by any stability expectation.
   The three context variants (default / gap / depboost) are statistically
   indistinguishable from each other (p = 0.36 / 0.81 / 0.65) at n=128.
   Conditioning on successful patch application, pass rate rises from 22%
-  to 42%. (`benchmarks/contextbench/RESULTS.md`)
+  to 42%. Two qualifiers (see RESULTS.md §6): **(a)** the seed functions
+  given to every arm are **oracle** — extracted from the gold patch — so
+  this measures "given correct localization, does context quality matter?",
+  not end-to-end issue solving; **(b)** 121 of the 128 effective tasks are
+  django, so this is largely a django result.
+  (`benchmarks/contextbench/RESULTS.md`)
 - **Retrieval false-negative analysis** (128 tasks, 1,011 gold symbols):
   624 missed (62%), 68% of which are `reached_but_cut` — the dependency
   graph finds them but the selection stage drops them. 99% of the

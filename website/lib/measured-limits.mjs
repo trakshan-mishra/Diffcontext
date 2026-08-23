@@ -37,7 +37,7 @@ export const MEASURED_LIMITS = [
   {
     id: 'downstream-pass1',
     text:
-      'Context roughly quadruples pass@1 (5.5% → 25.8%, McNemar p < 0.0001) — but the three context variants are statistically indistinguishable from each other (p = 0.36–0.81) at n=128.',
+      'Context roughly quadruples pass@1 (5.5% → 25.8%, McNemar p < 0.0001) — but seeds are oracle (extracted from the gold patch, so this measures context quality given correct localization, not end-to-end issue solving), 121/128 effective tasks are django, and the three context variants are statistically indistinguishable (p = 0.36–0.81) at n=128.',
     href: '/docs/benchmarks',
   },
 ]

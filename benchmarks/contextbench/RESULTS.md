@@ -148,6 +148,95 @@ All 164 `test_error` rows were verified as genuine test failures (real Python tr
 
 ---
 
+## 3b. Arms comparison: does DiffContext's selection beat BM25 / same-file?
+
+### Setup
+
+A falsification test. Four arms — `none`, `diffcontext`, `bm25`, `samefile` —
+run on the same 128 ContextBench tasks, same oracle seeds, same token budget
+(4000), same model (GLM 5.2), same prompt. The ONLY thing that differs is
+which supporters fill the budget after the seeds.
+
+All arms use a **shared renderer** (seeds + `render_context`, no meta-header)
+via `run_glm_pass1.py --shared-renderer`, so no arm gets DiffContext's graph-
+derived meta-header, relationship annotations, or architecture snapshot.
+This isolates the selection algorithm from the product's rich rendering —
+the published 21.9%/25.8% (§3) used the rich renderer and are a separate claim.
+
+`diffcontext` here = `rank_diffcontext` (hybrid graph+BM25+same-file blend,
+recall-first) under the shared renderer — NOT the product's `dc_compile`.
+`bm25` = rank-BM25 over full function sources (the strongest single baseline
+per RIGOR_REPORT §5). `samefile` = same-file co-location ("just include the
+rest of the file"). Providers ported from `benchmarks/downstream/providers.py`
+(see `observability/trace_arms.py`).
+
+### Results (128 attempted, 0 setup errors, 544 rows, provenance a494b47)
+
+| Arm | Passed | Pass@1 | 95% Wilson CI |
+|---|---:|---:|---|
+| none (no context) | 10 | **7.8%** | [0.043, 0.138] |
+| samefile | 33 | **25.8%** | [0.190, 0.340] |
+| bm25 | 37 | **28.9%** | [0.218, 0.373] |
+| diffcontext | 41 | **32.0%** | [0.246, 0.405] |
+
+### Full pairwise McNemar matrix (attempted tasks, matched pairs, n=128)
+
+| Pair | Both pass | A only | B only | Neither | McNemar p |
+|---|---:|---:|---:|---:|---:|
+| none vs diffcontext | 8 | 2 | 33 | 85 | **3.7 × 10⁻⁸** *** |
+| none vs bm25 | 8 | 2 | 29 | 89 | **4.6 × 10⁻⁷** *** |
+| none vs samefile | 8 | 2 | 25 | 93 | **5.6 × 10⁻⁶** *** |
+| diffcontext vs bm25 | 29 | 12 | 8 | 79 | 0.503 |
+| diffcontext vs samefile | 27 | 14 | 6 | 81 | 0.115 |
+| bm25 vs samefile | 27 | 10 | 6 | 85 | 0.455 |
+
+### Reading
+
+1. **Context vs no-context replicates robustly.** All three context arms beat
+   `none` at p < 10⁻⁵. This is the same finding as §3 under a different
+   renderer — the win is context, not the renderer.
+
+2. **DiffContext does NOT beat BM25 at p < 0.05 (p = 0.503).** The raw
+   advantage is +3.1pp (32.0% vs 28.9%), but only 20 tasks are discordant
+   (12 diffcontext-only, 8 bm25-only). At n=128 with ~20 discordant pairs,
+   this is indistinguishable — the same power ceiling that made gap/depboost
+   unresolvable (§5 finding 2). The graph is not measurably earning its
+   complexity at this sample size.
+
+3. **DiffContext does NOT beat samefile at p < 0.05 (p = 0.115).** The raw
+   advantage is +6.2pp (32.0% vs 25.8%), the largest of the three context-
+   arm comparisons, and the most lopsided discordant split (14 diffcontext-
+   only, 6 samefile-only). This is the closest to significant of the three
+   and the most interesting directionally — but it does not clear p < 0.05,
+   and the honest reading is "indistinguishable" at n=128.
+
+4. **samefile is competitive.** "Just include the rest of the file" solves
+   25 tasks that `none` fails (vs 33 for diffcontext, 29 for bm25). If
+   same-file co-location alone gets within 6pp of a dependency graph, the
+   graph's value proposition at this sample size is "marginal directional
+   signal," not "structurally necessary." This is the finding that most
+   changes what the project is.
+
+5. **All four arms differ by <10pp.** The honest headline becomes narrower:
+   context helps (replicated), selection method does not measurably differ
+   at n=128 on django under oracle localization. Resolving the directional
+   diffcontext > bm25 > samefile ordering needs ~10× more tasks (cloning
+   the other 17 ContextBench repos), not more seeds — the limit is
+   discordant-pair count.
+
+### Renderer confound (disclosed)
+
+The shared renderer gives all arms more usable context than the rich
+renderer: `diffcontext` here is 32.0% vs 21.9% published (§3), and
+`samefile` here (25.8%) matches the published `diffcontext_gap` (25.8%).
+This suggests the meta-header may be costing the model pass@1 — a
+separate question from the arms comparison (all arms here used the same
+renderer, so the comparison is valid; but the absolute numbers are not
+comparable to §3). The published 5.5% → 25.8% claim stands on its own
+run; this ledger isolates the selection algorithm.
+
+---
+
 ## 4. Official ContextBench evaluator (external validation)
 
 *Pending — the official evaluator (`python -m contextbench.evaluate` from [github.com/EuniAI/ContextBench](https://github.com/EuniAI/ContextBench)) is running on all 136 tasks at file/symbol/span/line granularity. Results will be filled in from `verify_results.py` when complete.*
@@ -201,6 +290,17 @@ HF_HUB_OFFLINE=1 python3 benchmarks/contextbench/run_glm_pass1.py \
 
 # 4. Regenerate every number in this file from JSONL
 python3 benchmarks/contextbench/verify_results.py
+
+# 5. Arms comparison (Task A): 4 arms, shared renderer, 128 tasks, ~1.5 hr
+#    Same seeds/budget/prompt; only supporter ranking differs between arms.
+set -a; . .env; set +a
+HF_HUB_OFFLINE=1 python3 benchmarks/contextbench/run_glm_pass1.py \
+    --out benchmarks/contextbench/results/glm_pass1/glm_pass1_arms.jsonl \
+    --repos django,requests,flask --limit 0 \
+    --variants none,diffcontext,bm25,samefile --shared-renderer \
+    --test-python /home/trakshan/temporary/cb_tmp/py311/bin/python
+python3 benchmarks/contextbench/analyze_arms.py \
+    benchmarks/contextbench/results/glm_pass1/glm_pass1_arms.jsonl
 ```
 
 ---
@@ -220,12 +320,14 @@ benchmarks/contextbench/
 ├── ablation_selector.py     # Phase 2+3: 10-config ablation harness
 ├── diff_relocator.py        # tested-and-rejected patch repair (0/18)
 ├── validate_relocator.py    # offline validation of relocator
+├── analyze_arms.py         # 4-arm pass@1 + full McNemar matrix (Task A)
 ├── RESULTS.md               # this file
 ├── SESSION_STATE.md         # session notes + lessons learned
 └── results/
     ├── retrieval_136_5var/  # 136-task run: pred_*.jsonl + summary.json (5 variants)
     ├── retrieval_136_4var/  # [baseline] 4-variant run (tag v0.4.0-selection-baseline)
-    ├── glm_pass1/           # GLM 5.2 pass@1 (glm_pass1_depboost.jsonl, 544 rows)
+    ├── glm_pass1/           # GLM 5.2 pass@1 (glm_pass1_depboost.jsonl, 544 rows;
+    │                        #   glm_pass1_arms.jsonl, 544 rows, 4-arm comparison)
     ├── ablation_dep_boost/  # 10-config selection ablation (128 tasks)
     ├── retrieval_failures/  # false-negative analysis (128 tasks)
     ├── selector_diagnosis_*/ # selector cut-reason diagnosis

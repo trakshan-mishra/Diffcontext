@@ -11,6 +11,11 @@ Context variants compared under the same model + prompt:
   diffcontext        — seeds + retrieved (default recall-first retrieval)
   diffcontext_gap    — seeds + gap-cutoff retrieved (the precision improvement)
 
+Arms comparison (--shared-renderer, Task A): diffcontext / bm25 / samefile
+all routed through ONE shared renderer (seeds + render_context) so the only
+difference is supporter ranking. bm25 and samefile are only meaningful with
+--shared-renderer; without it they fall back to empty context.
+
 Oracle localization: seeds are extracted from the gold patch (the functions
 the gold fix modifies). This isolates context quality as the variable —
 disclosed as a limitation (same methodology as DiffContext's own downstream eval).
@@ -187,6 +192,51 @@ def compile_context_text(index, seeds, max_tokens=8000, top_k=20, cutoff=None,
     pkg = dc_compile(index, impact, max_tokens=max_tokens, top_k=top_k,
                      cutoff=cutoff, dep_boost=dep_boost)
     return pkg.text, pkg.token_estimate
+
+
+def compile_arm_context(index, provider, seeds, max_tokens=8000):
+    """Shared-renderer context builder for the arms comparison (Task A).
+
+    Seeds (the oracle floor — the functions the gold patch modifies) are
+    rendered first and always included, IDENTICALLY for every arm. The
+    remaining token budget is then filled with supporters ranked by
+    `provider` via the shared render_context from
+    benchmarks.downstream.providers — the same renderer trace_arms.py uses.
+
+    The ONLY thing that differs between arms is which supporters are
+    chosen: same seeds, same budget, same renderer, same model, same
+    prompt. This is the falsification test — does DiffContext's hybrid
+    selection beat BM25 / same-file selection downstream, or does any
+    context do equally well?
+
+    `diffcontext` here = rank_diffcontext (hybrid graph+BM25+samefile
+    blend, recall-first, NO top_k cap, NO meta-header) under the shared
+    renderer — NOT the product's rich dc_compile. That is deliberate: the
+    rich meta-header is generated from DiffContext's own graph analysis,
+    so giving it to one arm but not the others would confound the
+    comparison. The published 21.9%/25.8% (context vs none) used the rich
+    renderer and stand as a separate claim; this ledger isolates the
+    selection algorithm under a controlled renderer.
+    """
+    from benchmarks.downstream.providers import (
+        RANKERS, render_context, _estimate_tokens,
+    )
+    seeds_in_index = [s for s in seeds if s in index.symbols]
+    if not seeds_in_index:
+        return "", 0
+    seed_parts, seed_chars = [], 0
+    for sid in seeds_in_index:
+        sym = index.symbols[sid]
+        block = f"# {sid}\n{sym.code}\n"
+        seed_chars += len(block) + (1 if seed_parts else 0)
+        seed_parts.append(block)
+    seed_text = "\n".join(seed_parts)
+    seed_tokens = _estimate_tokens(seed_text)
+    remaining = max(0, max_tokens - seed_tokens)
+    ranked = RANKERS[provider](index, seeds_in_index)
+    supporters = render_context(index, ranked, remaining)
+    full = seed_text + ("\n\n" + supporters if supporters else "")
+    return full, _estimate_tokens(full)
 
 
 # ── patch application (full stderr) ─────────────────────────────────────────
@@ -450,6 +500,14 @@ def main():
                     help="Comma-separated instance_ids to run (subset filter). "
                          "Empty = all matching tasks. Used for targeted re-runs "
                          "of apply-error cases with diff capture.")
+    ap.add_argument("--shared-renderer", action="store_true",
+                    help="Arms-comparison mode (Task A): route diffcontext, "
+                         "diffcontext_gap, bm25, and samefile through ONE "
+                         "shared renderer (seeds + render_context) so the "
+                         "ONLY difference between arms is supporter ranking. "
+                         "diffcontext here is rank_diffcontext under the "
+                         "shared renderer, NOT the product's rich dc_compile. "
+                         "bm25/samefile are only meaningful with this flag.")
     args = ap.parse_args()
     test_py = args.test_python or sys.executable
 
@@ -557,6 +615,11 @@ def main():
                     for v in pending:
                         if v == "none":
                             ctxs[v] = ""; ctx_tokens[v] = 0
+                        elif args.shared_renderer and v in (
+                            "diffcontext", "diffcontext_gap", "bm25", "samefile"
+                        ):
+                            ctxs[v], ctx_tokens[v] = compile_arm_context(
+                                index, v, seeds, args.max_tokens)
                         elif v == "diffcontext":
                             ctxs[v], ctx_tokens[v] = compile_context_text(
                                 index, seeds, args.max_tokens)
