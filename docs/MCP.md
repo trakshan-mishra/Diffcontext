@@ -57,12 +57,19 @@ Parameters:
 
 #### Example: plain-English bug report → cross-file context
 
-```
-$ diffcontext compile --repo /path/to/click \
+Reproduced with diffcontext 0.5.4 against click at commit 2c8cd3a:
+
+```bash
+git clone --depth 1 https://github.com/pallets/click.git
+diffcontext compile --repo click \
     --changed ./src/click/shell_completion.py:shell_complete \
     --query-text "shell completion for bash and zsh is broken" \
     --max-tokens 4000 --meta compact
+```
 
+Actual output (with `--query-text`):
+
+```
 === DIFFCONTEXT META ===
 Repo symbols total    : 524
 Symbols IN context    : 10
@@ -96,17 +103,17 @@ FUNCTION: add_completion_class (score: 74)
 ...
 ```
 
-Without `--query-text`, `BashComplete._check_version` is **dropped** — it
-ranks 17th, below the 4000-token budget. With the bug report "shell
-completion for **bash** and zsh is broken", it jumps to rank 3: the
-`query_text` signal BM25-matched "bash" against `BashComplete` in the
-code. The graph found it (same-file sibling), but ranked it low; the
-problem description told the ranker "this is the specific part that's
-broken."
+Without `--query-text`, 9 symbols fit (not 10). `BashComplete._check_version`
+ranks 17th among non-seed symbols (score 44.3) and is **dropped** — below
+the 4000-token budget. With the bug report "shell completion for **bash**
+and zsh is broken", it jumps to rank 3 (score 74.3): the `query_text` signal
+BM25-matched "bash" against `BashComplete` in the code. The graph found it
+(same-file sibling), but ranked it low; the problem description told the
+ranker this is the specific part that's broken.
 
 `Command._main_shell_completion` is in `core.py` — a different file from
-the changed symbol, reached via a call edge. It was already in the top 10;
-the query text moved it from rank 4 to rank 2.
+the changed symbol, reached via a call edge. The query text moved it from
+rank 4 to rank 2.
 
 Then `diffcontext verify --from-history 20` grades retrieval on click's
 own git history: 11/12 co-change cases pass (recall ≥ 50%), 1 fails. Real

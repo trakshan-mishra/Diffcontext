@@ -51,10 +51,13 @@ the graph alone can't provide. When only `task_description` is given (no
 `changed_symbols` or `git_ref`), changes are auto-detected from `HEAD`.
 
 **Example:** A bug report says *"shell completion for bash and zsh is broken."*
-You changed `shell_complete()` in click's `shell_completion.py`. Without the
-bug report, `BashComplete._check_version` ranks 17th and is dropped. Pass the
-bug report as `task_description` — it jumps to rank 3, because "bash" in the
-report matched `BashComplete` in the code.
+You changed `shell_complete()` in click's `shell_completion.py` (click at
+commit 2c8cd3a, diffcontext 0.5.4). Without the bug report, 9 symbols fit
+in the 4000-token budget; `BashComplete._check_version` ranks 17th among
+non-seed symbols (score 44.3) and is dropped. Pass the bug report as
+`task_description` — 10 symbols now fit; `BashComplete._check_version`
+jumps to rank 3 (score 74.3), because "bash" in the report BM25-matched
+`BashComplete` in the code.
 
 Parameters:
 - `repo_path` (optional): repo path, defaults to `--repo`
