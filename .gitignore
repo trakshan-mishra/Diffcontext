@@ -26,3 +26,6 @@ benchmarks/results/
 benchmarks/downstream/results/
 benchmark_results.json
 DiffContext_Status_Summary.pdf
+
+# Secrets — never commit. Read via environment only.
+.env
