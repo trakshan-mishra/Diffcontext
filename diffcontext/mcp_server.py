@@ -96,6 +96,11 @@ def main():
         related functions the model needs to make the change safely — packed
         into max_tokens with a disclosure header showing what was dropped.
 
+        Uses the gap cutoff by default (~6-9 symbols at ~4x precision vs
+        top-20, costing ~30% recall) — MCP consumers are budget-sensitive,
+        so the default is precise, not exhaustive. The total count of
+        dropped symbols is always shown in the meta header.
+
         Optionally pass task_description (the bug report or issue text) to
         bias retrieval toward symbols relevant to the described problem —
         the one signal the graph alone can't provide.
@@ -139,23 +144,34 @@ def main():
         impact = analyze_impact(
             idx, changed, query_text=task_description, query_weight=query_weight,
         )
-        ctx = compile(idx, impact, max_tokens=max_tokens, meta=meta)
+        # Gap cutoff by default: ~6-9 symbols at ~4x precision vs top-20,
+        # costing ~30% recall. MCP consumers are budget-sensitive — the
+        # default should be precise, not exhaustive.
+        ctx = compile(idx, impact, max_tokens=max_tokens, meta=meta, cutoff="gap")
         return ctx.text
 
     @server.tool()
     def find_impact(
         repo_path: str = "",
         symbol: str = "",
+        limit: int = 0,
     ) -> str:
         """Find what breaks if you change a symbol.
 
         Returns the blast radius: direct callers, direct callees, and
-        transitive impact. The "what breaks if I change this" query.
+        transitive impact, ranked by impact score. Default cap is 10
+        symbols — a reviewer brief must be short enough to read. Pass
+        limit > 0 to override with a different cap, or limit=0 for all.
+
+        The total count is always shown ("339 impacted, showing top 9")
+        so nothing is hidden — the cap is a display choice, not
+        information loss.
 
         Args:
             repo_path: Absolute path to the repository. If omitted, uses
                 the --repo from server startup.
             symbol: Symbol ID (e.g. ./src/auth.py:validate_jwt).
+            limit: Max symbols to show. 0 = all (default 10).
         """
         from diffcontext.pipeline import analyze_impact, warn_unknown_symbols
 
@@ -164,12 +180,22 @@ def main():
         warn_unknown_symbols(idx, [symbol])
         impact = analyze_impact(idx, [symbol], hybrid=False)
 
+        # Rank all impacted symbols by score (excluding the changed symbol).
+        ranked = sorted(
+            ((sid, sc) for sid, sc in impact.scores.items() if sid != symbol),
+            key=lambda x: x[1], reverse=True,
+        )
+        total = len(ranked)
+
+        cap = limit if limit > 0 else 10
+        show = min(cap, total)
+
         lines = [f"Changed: {symbol}"]
-        lines.append(f"\nBlast radius ({len(impact.blast_radius)}):")
-        for sym in impact.blast_radius[:20]:
-            score = impact.scores.get(sym, 0)
-            lines.append(f"  {sym} (score: {score:.0f})")
-        lines.append(f"\nTotal impacted: {len(impact.all_relevant)}")
+        lines.append(f"\n{total} impacted, showing top {show}:")
+        for sid, sc in ranked[:show]:
+            lines.append(f"  {sid} (score: {sc:.0f})")
+        if total > show:
+            lines.append(f"\n... and {total - show} more (pass limit={total} to see all)")
         return "\n".join(lines)
 
     @server.tool()
@@ -180,9 +206,11 @@ def main():
     ) -> str:
         """Explain why symbols were included or dropped from context.
 
-        Returns the included symbols (with scores and token costs) and
-        the dropped symbols (scored but cut by the token budget), so an
-        agent can inspect or filter the selection.
+        Returns the included symbols (with scores and token costs) and the
+        top dropped symbols (scored but cut by the token budget), so an agent
+        can inspect or filter the selection. Dropped symbols are capped at
+        10 by default (gap cutoff) — the total count is always shown so
+        nothing is hidden.
 
         Args:
             repo_path: Absolute path to the repository. If omitted, uses
@@ -203,13 +231,15 @@ def main():
              "score": round(item.score, 1), "tokens": item.token_estimate}
             for item in ctx.items
         ]
+        total_dropped = len(ctx.dropped_symbols)
         dropped = [
             {"id": sid, "score": round(impact.scores.get(sid, 0.0), 1)}
-            for sid in ctx.dropped_symbols
+            for sid in ctx.dropped_symbols[:10]
         ]
         result = {
             "included_symbols": included,
             "dropped_symbols": dropped,
+            "dropped_symbols_total": total_dropped,
             "total_tokens": ctx.token_estimate,
             "symbol_count": ctx.symbol_count,
         }
