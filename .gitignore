@@ -54,3 +54,6 @@ notes/
 
 # Local editor/agent configuration.
 .claude/
+
+# Cloudflare Pages deploy cache (written by `wrangler pages deploy`).
+.wrangler/
