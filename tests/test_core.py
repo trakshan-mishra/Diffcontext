@@ -305,5 +305,60 @@ class TestPipeline:
         assert ctx.token_estimate > 0
 
 
+class TestQueryText:
+    """The query_text signal: BM25 scores the bug report / issue text
+    against every symbol's source code, adding a relevance-to-the-problem
+    signal the graph alone can't provide."""
+
+    def test_query_text_adds_candidates(self):
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        sym_id = "./service.py:onboard_user"
+        assert sym_id in idx.graph
+
+        # Without query_text: baseline scores
+        impact_base = analyze_impact(idx, [sym_id])
+        base_sids = set(impact_base.scores)
+
+        # With query_text: should surface additional candidates whose code
+        # matches the described problem but may have no call-graph connection.
+        # Use a query that matches symbols in the medium repo.
+        impact_q = analyze_impact(
+            idx, [sym_id], query_text="create user order onboard", query_weight=0.3,
+        )
+        query_sids = set(impact_q.scores)
+
+        # Query-text candidates can add symbols the graph didn't reach.
+        # At minimum, the query should not REMOVE any baseline candidates.
+        assert base_sids.issubset(query_sids), (
+            "query_text must not remove baseline candidates, only add them"
+        )
+
+    def test_query_weight_zero_is_noop(self):
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        sym_id = "./service.py:onboard_user"
+
+        # query_weight=0.0 = no effect (backwards compatible)
+        impact_off = analyze_impact(idx, [sym_id], query_text="anything", query_weight=0.0)
+        impact_none = analyze_impact(idx, [sym_id])
+        # Same scores (query_text with weight 0 is a no-op)
+        assert impact_off.scores == impact_none.scores, (
+            "query_weight=0.0 must be a no-op"
+        )
+
+    def test_no_query_text_is_noop(self):
+        _require_fixture(MEDIUM, "medium_repo")
+        idx = index_repository(MEDIUM)
+        sym_id = "./service.py:onboard_user"
+
+        # No query_text = no effect even if query_weight > 0
+        impact_off = analyze_impact(idx, [sym_id], query_weight=0.3)
+        impact_none = analyze_impact(idx, [sym_id])
+        assert impact_off.scores == impact_none.scores, (
+            "no query_text with query_weight > 0 must be a no-op"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
