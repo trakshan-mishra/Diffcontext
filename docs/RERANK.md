@@ -1,6 +1,18 @@
 # Stage-2 reranking — measurement report
 
-Status: **implemented, validated, opt-in and default-OFF.**
+> **NOT SHIPPED — research branch only.**
+> The reranker lives only on the `eval/rigor-pass` branch and is not importable
+> from the installed package (`grep -rn 'rerank' diffcontext/*.py` returns
+> nothing at HEAD). `analyze_impact()` takes no `rerank` kwarg. The file
+> `diffcontext/rerank/weights.json` is committed but the integration that uses
+> it is not on `main`.
+>
+> Where it was tested downstream (ContextBench, 57-task subset), it did not
+> help: retrieval F1 0.180 vs 0.189 without it (`benchmarks/contextbench/
+> RESULTS.md`). The frozen-fold p=0.0225 reported below is the weakest of four
+> tests reported together and does not survive correction for multiplicity.
+
+Status: **research branch only, not shipped, default-OFF.**
 Date: 2026-08-08. Branch `eval/rigor-pass`.
 
 Every number here comes from a committed artifact. Reproduce with:
