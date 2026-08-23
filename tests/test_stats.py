@@ -10,11 +10,9 @@ The key regression test is mcnemar_exact(11, 8) ≈ 0.648 — the gap-vs-depboos
 pair from the full 128-task GLM 5.2 run (see RESULTS.md section 3).
 """
 
-import math
 import os
 import sys
 
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
