@@ -8,6 +8,19 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.7] — 2026-08-23
+
+### Fixed (MCP tool output too large for agents)
+- `find_impact` returned 339 symbols for a single query in the Glama
+  sandbox — unusable for an agent. Now capped at 10 by default with the
+  total count shown ("339 impacted, showing top 10"). Pass `limit` to
+  override (0 = all).
+- `explain_selection` dropped symbols capped at 10 with
+  `dropped_symbols_total` showing the full count.
+- `compile_context` now uses `cutoff="gap"` by default (~6-9 symbols at
+  ~4x precision vs top-20) — MCP consumers are budget-sensitive, so the
+  default should be precise, not exhaustive.
+
 ## [0.5.6] — 2026-08-23
 
 ### Fixed (cache cascade — tiers 1/2 short-circuit)
