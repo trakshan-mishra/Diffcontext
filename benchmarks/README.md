@@ -5,9 +5,9 @@
 actually changed alongside.**
 
 On Django — 9,164 functions, 1.2M tokens of source — a change to one
-function compiles into a **9.5K-token prompt (99.2% smaller)** that still
-contains **79%** of the functions that commit really touched. Index: 2.9s
-cold, 96ms warm. Retrieval: 325ms.
+function compiles into a **9.5K-token prompt (up to 99.2% smaller on the
+largest repos)** that still contains **79%** of the functions that commit
+really touched. Index: 2.9s cold, 96ms warm. Retrieval: 325ms.
 
 Measured on **9 real Python repositories** and **701 real commits**, with
 ground truth mined from git history: *a developer changed these functions

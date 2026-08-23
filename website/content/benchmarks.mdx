@@ -40,14 +40,14 @@ Independent validation on repos **never used for tuning or weight selection** (f
 - **starlette**: hit 0.929 / recall 0.776
 
 <Callout type="warning">
-  The flip side of that recall: cross-repo mean **precision is under 0.1** at the default top-k selection — roughly 90%+ of retrieved symbols are not in the ground-truth co-change set (and GT-adjusting for incomplete ground truth still leaves it under 0.15 everywhere). They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision — not recall — is this product's real problem. The measured lever is `--cutoff gap`: roughly **4× the precision of top-20 at 6–9 retrieved symbols**, costing ~30% relative recall.
+  The flip side of that recall: cross-repo mean **precision is under 0.1** at the default top-k selection — roughly 90%+ of retrieved symbols are not in the ground-truth co-change set (and GT-adjusting for incomplete ground truth still leaves it under 0.15 everywhere). They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision — not recall — is this product's real problem. The measured lever is `--cutoff gap`: roughly **4× the precision of top-20 at 6–9 retrieved symbols on the co-change benchmark (2.2× on ContextBench)**, costing ~30% relative recall on the co-change benchmark (~14% on ContextBench).
 </Callout>
 
 ## Head-to-Head vs grep, at Identical Token Budgets
 
 The question that actually matters for an agent loop: _given the same context window, does this beat what a developer does by hand?_
 
-30 real co-change queries from black's history; recall of the true co-change partners inside the packed window:
+30 real co-change queries from black's history (n=30, no confidence interval — small sample; the 2.7× headline is the most-quoted number in this project and rests on the thinnest sampling). Recall of the true co-change partners inside the packed window:
 
 | Token budget | grep-packing | DiffContext | Improvement |
 |---|---|---|---|
