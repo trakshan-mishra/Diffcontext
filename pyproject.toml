@@ -47,10 +47,16 @@ typescript = [
     "tree-sitter-typescript>=0.21",
     "tree-sitter-javascript>=0.21",
 ]
+# MCP server for Claude Code / Cursor / Windsurf integration.
+# The core stays zero-dependency; this extra adds the MCP SDK only.
+mcp = [
+    "mcp>=1.0",
+]
 
 
 [project.scripts]
 diffcontext = "diffcontext.cli:cli_main"
+diffcontext-mcp = "diffcontext.mcp_server:main"
 
 
 [tool.setuptools.packages.find]
