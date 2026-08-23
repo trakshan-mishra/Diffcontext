@@ -8,6 +8,31 @@ covered by any stability expectation.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-08-23
+
+### Added (first PyPI release)
+- **PyPI trusted publishing** via the `publish.yml` workflow (OIDC, no API
+  token). First release available as `pip install diffcontext`.
+- **`--include` flag** on all CLI commands: index directories excluded
+  from indexing by default (tests/, benchmarks/, docs/). A commit spanning
+  an excluded dir no longer produces a wall of generic warnings — it names
+  the dir and says "re-run with `--include <dir>`."
+- **`compile --json` payload** now includes `included_symbols` (id, role,
+  score, tokens) and `dropped_symbols` (id, score), so a calling agent can
+  inspect or filter the selection. Existing keys kept for backwards
+  compatibility.
+- **4-arm pass@1 falsification test** (diffcontext vs bm25 vs samefile vs
+  none, 128 tasks). Result: context vs no-context replicates (p < 1e-5 on
+  all arms); diffcontext does NOT beat bm25 (p=0.503) or samefile (p=0.115)
+  at p<0.05 — indistinguishable at n=128. See `benchmarks/contextbench/
+  RESULTS.md` §3b.
+
+### Fixed
+- `warn_unknown_symbols` now distinguishes "symbol's file is in an excluded
+  dir" from a genuine typo, giving the specific actionable warning.
+- `diffcontext index` prints a one-line scope summary (N files across which
+  dirs, what was skipped).
+
 ## [0.5.0] — 2026-08-23
 
 ### Added (ContextBench: external retrieval + downstream LLM pass@1)

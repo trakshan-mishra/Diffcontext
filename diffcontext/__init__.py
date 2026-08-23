@@ -32,7 +32,7 @@ Usage as a library:
     print(ctx.reduction_pct)    # how much code was filtered out
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # Public, semver-covered API. Everything not listed here (graph_builder,
 # resolver, symbols, scanner, parser internals) is importable but carries no

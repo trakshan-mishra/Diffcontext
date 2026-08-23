@@ -57,14 +57,18 @@ results: [`benchmarks/contextbench/RESULTS.md`](benchmarks/contextbench/RESULTS.
 
 ## Install
 
-Not yet on PyPI — install from source:
+```bash
+pip install diffcontext
+```
+
+Zero runtime dependencies, Python 3.9+.
+
+From source for development:
 
 ```bash
 git clone https://github.com/trakshan-mishra/Diffcontext.git
 cd Diffcontext && pip install -e .
 ```
-
-Zero runtime dependencies, Python 3.9+.
 
 ## Quick start
 
