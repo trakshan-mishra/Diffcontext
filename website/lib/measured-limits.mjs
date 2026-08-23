@@ -19,7 +19,7 @@ export const MEASURED_LIMITS = [
   {
     id: 'precision',
     text:
-      'Recall is the strength (hybrid ~0.70 mean vs 0.56 call-graph-only); **precision is under 0.1** at the default top-k, so retrieved context is a wide net of supporting code, not a curated shortlist. `--cutoff gap` trades ~30% relative recall for roughly 4× precision.',
+      'Recall is the strength (hybrid ~0.70 mean vs 0.56 call-graph-only); **precision is under 0.1** at the default top-k, so retrieved context is a wide net of supporting code, not a curated shortlist. `--cutoff gap` trades recall for precision, and the size of that trade depends on the benchmark: roughly 4× precision for ~30% relative recall on the co-change benchmark, 2.2× for ~14% on ContextBench.',
     href: '/docs/benchmarks',
   },
   {

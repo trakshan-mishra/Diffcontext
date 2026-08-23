@@ -158,7 +158,7 @@ Pearson r (score vs recall): +0.287  (p=0.0001)
 → Moderate positive relationship. Treat the score as a coarse ranking signal...
 ```
 
-That output is from a **clean re-measurement** (n=1,080 cases across all 9 repos). An earlier version of this page showed r=0.274 on n=25 — that number was measured on a polluted index (components with zero evidence defaulted to a perfect 1.0). It has been [retracted](benchmarks.mdx). The tool measures itself against evidence it didn't choose and reports the result even when unflattering. If calibration comes back flat or negative, `verify` says so in plain text ("**NULL RESULT**") — a proxy that doesn't track reality on your repo should not be trusted there.
+That output is from a **clean re-measurement** (n=1,080 cases across all 9 repos). An earlier version of this page showed r=0.274 on n=25 — that number was measured on a polluted index (components with zero evidence defaulted to a perfect 1.0). It has been [retracted](/docs/benchmarks). The tool measures itself against evidence it didn't choose and reports the result even when unflattering. If calibration comes back flat or negative, `verify` says so in plain text ("**NULL RESULT**") — a proxy that doesn't track reality on your repo should not be trusted there.
 
 ## How to Measure "Model Accuracy" Honestly
 
