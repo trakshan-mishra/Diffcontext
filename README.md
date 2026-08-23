@@ -18,6 +18,10 @@ It is built for people wiring LLMs into real codebases — agent loops, PR
 review bots, CI checks — anywhere you have to decide what goes in the prompt
 and the repository is far too large to send.
 
+And it grades itself: point it at your repo and it mines your git history,
+runs retrieval against real co-change pairs, and prints **NULL RESULT** when
+it doesn't fit — finding that out *is* the feature.
+
 ## The problem
 
 Ask an assistant to change one function in a 50,000-line project and you have
