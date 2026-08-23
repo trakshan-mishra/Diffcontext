@@ -35,9 +35,9 @@ export const MEASURED_LIMITS = [
     href: '/docs/verify',
   },
   {
-    id: 'downstream-null',
+    id: 'downstream-pass1',
     text:
-      'The downstream "does better context improve LLM task outcomes?" evaluation is **not yet answered** — the current result is a null produced by a task set that cannot discriminate between arms. See the roadmap.',
+      'Context roughly quadruples pass@1 (5.5% → 25.8%, McNemar p < 0.0001) — but the three context variants are statistically indistinguishable from each other (p = 0.36–0.81) at n=128.',
     href: '/docs/benchmarks',
   },
 ]

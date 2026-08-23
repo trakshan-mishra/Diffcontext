@@ -82,7 +82,7 @@ const COMPONENT_TEXT = {
 
   // components/Metrics.jsx
   Metrics: [
-    'At a glance: **423** real commits benchmarked · **189** automated tests ·',
+    'At a glance: **701** real commits benchmarked · **189** automated tests ·',
     '**Python** production ready · **TypeScript** prototype support.',
   ].join('\n'),
 

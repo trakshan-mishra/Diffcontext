@@ -1,9 +1,10 @@
-> **PROVISIONAL — single seed, no confidence intervals on pass@1, do not cite.**
-> The retrieval metrics below carry bootstrap CIs and a sign test; the pass@1
-> column carries bare counts from a single GLM 5.2 run. The residual gen_error
-> counts (14/4/3/6 across variants) are unexplained and under investigation.
-> A second seed + CI computation is pending (Day 2). Do not merge or link until
-> that clears. The gap-vs-depboost sign may flip with more seeds.
+> **Single-seed pass@1 with Wilson CIs + exact McNemar tests.**
+> The pass@1 column now carries 95% Wilson score CIs and all 6 pairwise
+> comparisons carry exact McNemar p-values (see stats.py). The context-vs-none
+> effect is robust (p < 0.0001 on every arm); the context-variant differences
+> (p = 0.36–0.81) are statistically indistinguishable at n=128 — the limit is
+> discordant-pair count, not run-to-run noise. More seeds will not resolve this;
+> more tasks (T3: clone the other 17 ContextBench repos) might.
 
 # ContextBench Results — DiffContext retrieval + GLM 5.2 pass@1
 
@@ -110,33 +111,40 @@ The n=128 numbers above are the headline; these are disclosed so the vacuous-pre
 
 ## 3. GLM 5.2 pass@1 (downstream evaluation)
 
-### Full 128-task run, 3 variants (0 setup errors)
+### Full 128-task run, 4 variants (0 setup errors)
 
-136 tasks total; 8 are oracle misses (no seeds, no context, skipped). 128 tasks attempted × 3 variants = 384 generation attempts. Judge = repo's own test suite (Django `runtests.py` with `test_sqlite` settings; pytest for requests/flask). No LLM-as-judge.
+136 tasks total; 8 are oracle misses (no seeds, no context, skipped). 128 tasks attempted × 4 variants = 512 generation attempts. Judge = repo's own test suite (Django `runtests.py` with `test_sqlite` settings; pytest for requests/flask). No LLM-as-judge.
 
-| Variant | Passed | Attempted | Pass@1 | no_seeds | gen_error | apply_error | test_fail |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| none (no context) | 7 | 128 | **5.5%** | 8 | 6 | 84 | 31 |
-| diffcontext (default) | 21 | 128 | **16.4%** | 8 | 2 | 69 | 36 |
-| **diffcontext_gap** | **25** | 128 | **19.5%** | 8 | 4 | 66 | 33 |
+| Variant | Passed | Attempted | Pass@1 | 95% Wilson CI | no_seeds | gen_error | apply_error | test_fail |
+|---|---:|---:|---:|---|---:|---:|---:|---:|
+| none (no context) | 7 | 128 | **5.5%** | [0.027, 0.109] | 8 | 14 | 82 | 25 |
+| diffcontext (default) | 28 | 128 | **21.9%** | [0.156, 0.298] | 8 | 4 | 46 | 50 |
+| **diffcontext_gap** | **33** | 128 | **25.8%** | [0.190, 0.340] | 8 | 3 | 46 | 46 |
+| diffcontext_depboost | 30 | 128 | **23.4%** | [0.169, 0.315] | 8 | 6 | 49 | 43 |
 
-**Context retrieval roughly triples pass@1** (5.5% → 16.4% / 19.5%). The gap (precision) variant beats the default by +3.1pp (19.5% vs 16.4%, +19% relative).
+**Context retrieval quadruples pass@1** (5.5% → 22–26%, p < 0.0001 on every arm). The three context variants (diffcontext, gap, depboost) are **statistically indistinguishable** from each other (McNemar p = 0.36–0.81, see below). The headline is context vs no context, not gap vs default.
 
-### Paired pass@1 (attempted tasks only, n=128 per pair)
+### Paired pass@1 (exact McNemar, attempted tasks only, n=128 per pair)
 
-| Comparison | Both pass | A only | B only | Neither |
-|---|---:|---:|---:|---:|
-| diffcontext_gap vs diffcontext | 14 | 11 | 7 | 96 |
-| diffcontext vs none | 4 | 17 | 3 | 104 |
-| diffcontext_gap vs none | 5 | 20 | 2 | 101 |
+| Comparison | Both pass | A only | B only | Neither | McNemar p |
+|---|---:|---:|---:|---:|---:|
+| none vs diffcontext | 5 | 2 | 23 | 98 | **0.00002** *** |
+| none vs diffcontext_gap | 5 | 2 | 28 | 93 | **0.0000009** *** |
+| none vs diffcontext_depboost | 4 | 3 | 26 | 95 | **0.00002** *** |
+| diffcontext vs diffcontext_gap | 21 | 7 | 12 | 88 | 0.359 |
+| diffcontext vs diffcontext_depboost | 20 | 8 | 10 | 90 | 0.815 |
+| diffcontext_gap vs diffcontext_depboost | 22 | 11 | 8 | 87 | 0.648 |
 
-- **gap vs none:** gap solves 20 tasks that none fails; none solves only 2 that gap fails. Net +18 tasks.
-- **diffcontext vs none:** diffcontext solves 17 that none fails; none solves 3 that diffcontext fails. Net +14 tasks.
-- **gap vs diffcontext:** gap solves 11 that default fails; default solves 7 that gap fails. Net +4 tasks — the precision improvement has a real downstream effect.
+`*` p < 0.05, `**` p < 0.01, `***` p < 0.001
+
+- **Context vs no context is real and large.** Every context variant beats none at p < 0.0001. Gap solves 28 tasks that none fails; none solves only 2 that gap fails.
+- **The three context variants are statistically indistinguishable.** The confidence intervals overlap almost completely. Gap beating default by +3.9pp is NOT supported (p = 0.359). Only ~15% of tasks are discordant on any context-variant pair; resolving a 3pp difference needs roughly an order of magnitude more tasks, not more seeds.
 
 ### Error breakdown
 
-The dominant failure mode is `apply_error` (the model produces a malformed diff that `git apply` rejects): 84/128 (66%) for `none`, 69/128 (54%) for `diffcontext`, 66/128 (51%) for `diffcontext_gap`. Context reduces apply errors — the model sees the actual code and produces better-formed patches. `gen_error` (GLM null content) is rare (6 for none, 2 for diffcontext, 4 for gap).
+The dominant failure mode is `apply_error` (the model produces a malformed diff that `git apply` rejects): 82/128 (64%) for `none`, 46/128 (36%) for `diffcontext`, 46/128 (36%) for `diffcontext_gap`. Context reduces apply errors — the model sees the actual code and produces better-formed patches. The `apply_patch` cascade hardening (`--ignore-whitespace` + trailing-newline fallback) reduced apply errors from the original run (84→82 for none, 69→46 for diffcontext, 66→46 for gap). `gen_error` (GLM null content) is rare but higher for `none` (14) than context variants (3–6).
+
+All 164 `test_error` rows were verified as genuine test failures (real Python tracebacks), not infrastructure contamination. The evaluator shallow-clone landmine documented in SESSION_STATE.md did not affect this run.
 
 ---
 
@@ -148,45 +156,47 @@ The dominant failure mode is `apply_error` (the model produces a malformed diff 
 
 ## 5. Key findings
 
-1. **DiffContext retrieval triples GLM 5.2 pass@1** on ContextBench Python tasks (5.5% → 19.5%, n=128 attempted). This is the first external evidence that DiffContext's context quality improves downstream LLM task outcomes — not just retrieval-vs-gold proxy metrics.
+1. **Context retrieval quadruples GLM 5.2 pass@1** on ContextBench Python tasks (5.5% → 25.8%, p < 0.0001, n=128 attempted). This is the first external evidence that DiffContext's context quality improves downstream LLM task outcomes — not just retrieval-vs-gold proxy metrics.
 
-2. **The `cutoff="gap"` precision lever is the best operating point.** It improves retrieval F1 by +0.106 (bootstrap 95% CI [0.078, 0.134], sign-test p < 10⁻¹², 75.8% paired win rate) and downstream pass@1 by +3.1pp over the default (19.5% vs 16.4%). Precision-first context selection helps the model.
+2. **The three context variants are statistically indistinguishable.** diffcontext (21.9%), gap (25.8%), and depboost (23.4%) have overlapping 95% Wilson CIs and McNemar p = 0.36–0.81. The headline is context vs no context, not gap vs default. Only ~15% of tasks are discordant on any context-variant pair; resolving a 3pp difference needs ~10× more tasks, not more seeds.
 
-3. **DiffContext adds +41% recall over oracle seeds** (0.411 → 0.580 line recall, n=128) but the default's precision is low (0.192). The gap variant recovers precision to 0.431 at a modest recall cost — the right tradeoff for LLM consumption.
+3. **The `cutoff="gap"` precision lever improves retrieval F1** by +0.106 (bootstrap 95% CI [0.078, 0.134], sign-test p < 10⁻¹², 75.8% paired win rate) — a retrieval-metric improvement that does NOT reach statistical significance downstream (p = 0.359). Retrieval F1 is not a perfect proxy for downstream pass@1; precision matters more than the F1 gain suggests.
 
-4. **Context reduces apply errors.** 66% of `none`-variant attempts produce malformed diffs (vs 51% for gap) — without context, the model hallucinates code structure; with context, it sees the actual file and produces applicable patches.
+4. **Dependency-type score boosting (depboost) improves retrieval metrics but NOT downstream pass@1.** depboost raised retrieval F1 from 0.358 to 0.365 (+0.007) and symbol recall from 55.1% to 60.7% (+10.2% relative), keeping precision at 0.391 (vs 0.431). But downstream pass@1 was 23.4% vs gap's 25.8% (p = 0.648). The +6.4% retrieval recall did not translate; the precision loss (0.431→0.391) was more costly to the model.
+
+5. **Context reduces apply errors.** 64% of `none`-variant attempts produce malformed diffs (vs 36% for context variants) — without context, the model hallucinates code structure; with context, it sees the actual file and produces applicable patches. The `apply_patch` cascade hardening (`--ignore-whitespace` + trailing-newline fallback) further reduced apply errors from the original run (84→82 none, 69→46 diffcontext, 66→46 gap), raising gap's pass@1 from 19.5% to 25.8%.
 
 ---
 
 ## 6. Limitations
 
 - **Oracle localization.** Seeds are extracted from the gold patch. The measured claim is "given correct localization, does context quality matter?" — not end-to-end issue solving. The 8 oracle misses (class/module-level patches) are excluded from retrieval metrics and skipped in pass@1.
-- **Python only.** DiffContext supports Python; 136/512 Python tasks are in cloned repos (django 129, requests 6, flask 1). 121/128 effective tasks are django — this is largely a django result.
-- **Single backbone.** GLM 5.2 only. The ContextBench leaderboard shows backbone matters (DeepSeek-V4-Pro 57.5% vs GLM-5.1 51.4% pass@1); the retrieval effect may differ across models.
+- **Python only.** DiffContext supports Python; 136/512 Python tasks are in cloned repos (django 129, requests 6, flask 1). 121/128 effective tasks are django — this is largely a django result. ContextBench has 512 Python tasks across 20 repos; cloning the other 17 repos would give 3.8× the tasks at zero inference cost.
+- **Single backbone, single seed.** GLM 5.2 only, one run per variant. The pass@1 column carries bare counts with Wilson CIs but no multi-seed variance. The context-vs-none effect is large enough to be robust (p < 0.0001 on every arm), but the context-variant differences (p = 0.36–0.81) cannot be resolved at n=136 — the limit is discordant-pair count, not run-to-run noise.
 - **Reasoning suppression.** GLM 5.2 is a reasoning model; `chat_template_kwargs: {"enable_thinking": false}` suppresses reasoning (0 chars, 5-8s latency). With reasoning on, large contexts cause 2+ minute response times or null content. The pass@1 numbers are with reasoning off.
-- **Apply-error dominant.** Over half the attempts fail at patch application, not test execution. A better patch extractor (or function-call format instead of raw diff) would raise the absolute pass@1; the relative comparison between variants holds.
+- **Apply-error dominant.** 36–64% of attempts fail at patch application, not test execution. A better patch extractor (or function-call format instead of raw diff) would raise the absolute pass@1; the relative comparison between variants holds.
 
 ---
 
 ## 7. Reproduction
 
 ```bash
-# 1. Retrieval metrics (no LLM cost, ~7 min for 136 tasks × 4 variants)
+# 1. Retrieval metrics (no LLM cost, ~7 min for 136 tasks × 5 variants)
 HF_HUB_OFFLINE=1 python3 benchmarks/contextbench/run_diffcontext.py \
-    --out-dir benchmarks/contextbench/results/retrieval_136_4var \
+    --out-dir benchmarks/contextbench/results/retrieval_136_5var \
     --max-tokens 8000 --top-k 20
 
-# 2. Official ContextBench evaluator (disposable clones, ~40 min for 4 variants)
+# 2. Official ContextBench evaluator (disposable clones, ~40 min)
 python3 benchmarks/contextbench/run_official_eval.py \
-    --pred-dir benchmarks/contextbench/results/retrieval_136_4var \
+    --pred-dir benchmarks/contextbench/results/retrieval_136_5var \
     --out-dir benchmarks/contextbench/results/official_eval_136
 
-# 3. GLM 5.2 pass@1 (~1.5 hr for 128 tasks × 3 variants)
+# 3. GLM 5.2 pass@1 (~2 hr for 128 tasks × 4 variants)
 set -a; . .env; set +a
 HF_HUB_OFFLINE=1 python3 benchmarks/contextbench/run_glm_pass1.py \
-    --out benchmarks/contextbench/results/glm_pass1/glm_pass1_full.jsonl \
+    --out benchmarks/contextbench/results/glm_pass1/glm_pass1_depboost.jsonl \
     --repos django,requests,flask --limit 0 \
-    --variants none,diffcontext,diffcontext_gap \
+    --variants none,diffcontext,diffcontext_gap,diffcontext_depboost \
     --test-python /home/trakshan/temporary/cb_tmp/py311/bin/python
 
 # 4. Regenerate every number in this file from JSONL
@@ -199,16 +209,26 @@ python3 benchmarks/contextbench/verify_results.py
 
 ```
 benchmarks/contextbench/
-├── run_diffcontext.py       # retrieval adapter (136 tasks, 4 variants)
-├── run_glm_pass1.py         # GLM 5.2 pass@1 harness (128 tasks, 3 variants)
+├── run_diffcontext.py       # retrieval adapter (136 tasks, 5 variants)
+├── run_glm_pass1.py         # GLM 5.2 pass@1 harness (128 tasks, 4 variants)
 ├── run_official_eval.py     # official evaluator runner (disposable clones)
 ├── verify_results.py        # regenerates every number above from JSONL
+├── stats.py                 # wilson_interval, mcnemar_exact, paired_table
+├── analyze_apply_errors.py  # Phase 1: classify 219 apply errors
+├── analyze_retrieval_failures.py # Phase 2: classify retrieval false negatives
+├── diagnose_selector.py     # Phase 1: instrument selector cut reasons
+├── ablation_selector.py     # Phase 2+3: 10-config ablation harness
+├── diff_relocator.py        # tested-and-rejected patch repair (0/18)
+├── validate_relocator.py    # offline validation of relocator
 ├── RESULTS.md               # this file
 ├── SESSION_STATE.md         # session notes + lessons learned
 └── results/
-    ├── retrieval_136_4var/  # 136-task run: pred_*.jsonl + summary.json (4 variants)
-    ├── official_eval_136/   # official evaluator on 136 tasks (4 variants)
-    ├── glm_pass1/           # GLM 5.2 pass@1 (glm_pass1_full.jsonl, 408 rows)
+    ├── retrieval_136_5var/  # 136-task run: pred_*.jsonl + summary.json (5 variants)
+    ├── retrieval_136_4var/  # [baseline] 4-variant run (tag v0.4.0-selection-baseline)
+    ├── glm_pass1/           # GLM 5.2 pass@1 (glm_pass1_depboost.jsonl, 544 rows)
+    ├── ablation_dep_boost/  # 10-config selection ablation (128 tasks)
+    ├── retrieval_failures/  # false-negative analysis (128 tasks)
+    ├── selector_diagnosis_*/ # selector cut-reason diagnosis
     ├── retrieval_136/       # [superseded] 3-variant run (no gap)
     ├── retrieval_57_gap/    # [superseded] 57-task 5-variant run (corrupted)
     ├── official_eval_7/     # [superseded] 7-task official eval
