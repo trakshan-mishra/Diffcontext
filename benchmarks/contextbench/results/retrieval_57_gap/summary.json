@@ -1,0 +1,3532 @@
+[
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__0006beec",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 14,
+    "ctx_tokens": 6982,
+    "sec": 4.1,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1408,
+        "line_precision": 1.0,
+        "line_f1": 0.2469,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 10,
+        "gold_lines": 71
+      },
+      "retrieved_only": {
+        "line_recall": 0.6056,
+        "line_precision": 0.1946,
+        "line_f1": 0.2945,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 221,
+        "gold_lines": 71
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.7465,
+        "line_precision": 0.2294,
+        "line_f1": 0.351,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 231,
+        "gold_lines": 71
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.7465,
+        "line_precision": 0.3099,
+        "line_f1": 0.438,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 171,
+        "gold_lines": 71
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.7183,
+        "line_precision": 0.1992,
+        "line_f1": 0.3119,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 256,
+        "gold_lines": 71
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__01527b89",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 17,
+    "ctx_tokens": 6736,
+    "sec": 3.61,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0177,
+        "line_precision": 0.129,
+        "line_f1": 0.0311,
+        "file_recall": 0.2,
+        "file_precision": 1.0,
+        "pred_lines": 31,
+        "gold_lines": 226
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.2,
+        "file_precision": 0.3333,
+        "pred_lines": 142,
+        "gold_lines": 226
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0177,
+        "line_precision": 0.0231,
+        "line_f1": 0.0201,
+        "file_recall": 0.2,
+        "file_precision": 0.3333,
+        "pred_lines": 173,
+        "gold_lines": 226
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0177,
+        "line_precision": 0.0714,
+        "line_f1": 0.0284,
+        "file_recall": 0.2,
+        "file_precision": 0.5,
+        "pred_lines": 56,
+        "gold_lines": 226
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.1947,
+        "line_precision": 0.2105,
+        "line_f1": 0.2023,
+        "file_recall": 0.4,
+        "file_precision": 0.6667,
+        "pred_lines": 209,
+        "gold_lines": 226
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__01ac491d",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 2.64,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 273
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 273
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 273
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 25,
+        "gold_lines": 273
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 157,
+        "gold_lines": 273
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__02b5862c",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 9,
+    "ctx_tokens": 7206,
+    "sec": 21.39,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.1069,
+        "line_f1": 0.1931,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 131,
+        "gold_lines": 14
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 224,
+        "gold_lines": 14
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.0394,
+        "line_f1": 0.0759,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 355,
+        "gold_lines": 14
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.0593,
+        "line_f1": 0.112,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 236,
+        "gold_lines": 14
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0353,
+        "line_f1": 0.0681,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 397,
+        "gold_lines": 14
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__05a89a66",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 20,
+    "ctx_tokens": 7044,
+    "sec": 8.15,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3333,
+        "line_precision": 1.0,
+        "line_f1": 0.5,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 21,
+        "gold_lines": 63
+      },
+      "retrieved_only": {
+        "line_recall": 0.0476,
+        "line_precision": 0.0082,
+        "line_f1": 0.014,
+        "file_recall": 0.25,
+        "file_precision": 0.5,
+        "pred_lines": 367,
+        "gold_lines": 63
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.381,
+        "line_precision": 0.0619,
+        "line_f1": 0.1064,
+        "file_recall": 0.25,
+        "file_precision": 0.5,
+        "pred_lines": 388,
+        "gold_lines": 63
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.3333,
+        "line_precision": 0.5122,
+        "line_f1": 0.4038,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 41,
+        "gold_lines": 63
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.381,
+        "line_precision": 0.0511,
+        "line_f1": 0.0901,
+        "file_recall": 0.25,
+        "file_precision": 0.3333,
+        "pred_lines": 470,
+        "gold_lines": 63
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__08563070",
+    "repo": "django",
+    "n_seeds": 3,
+    "n_retrieved": 13,
+    "ctx_tokens": 6953,
+    "sec": 4.57,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.5317,
+        "line_precision": 1.0,
+        "line_f1": 0.6943,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 109,
+        "gold_lines": 205
+      },
+      "retrieved_only": {
+        "line_recall": 0.3659,
+        "line_precision": 0.3827,
+        "line_f1": 0.3741,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 196,
+        "gold_lines": 205
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.8976,
+        "line_precision": 0.6033,
+        "line_f1": 0.7216,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 305,
+        "gold_lines": 205
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.7902,
+        "line_precision": 0.6667,
+        "line_f1": 0.7232,
+        "file_recall": 1.0,
+        "file_precision": 0.4,
+        "pred_lines": 243,
+        "gold_lines": 205
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.8634,
+        "line_precision": 0.5116,
+        "line_f1": 0.6425,
+        "file_recall": 1.0,
+        "file_precision": 0.4,
+        "pred_lines": 346,
+        "gold_lines": 205
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__0b74a2c7",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 7,
+    "ctx_tokens": 7338,
+    "sec": 4.56,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.125,
+        "line_precision": 1.0,
+        "line_f1": 0.2222,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 13,
+        "gold_lines": 104
+      },
+      "retrieved_only": {
+        "line_recall": 0.8654,
+        "line_precision": 0.2473,
+        "line_f1": 0.3846,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 364,
+        "gold_lines": 104
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9904,
+        "line_precision": 0.2732,
+        "line_f1": 0.4283,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 377,
+        "gold_lines": 104
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9904,
+        "line_precision": 0.2807,
+        "line_f1": 0.4374,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 367,
+        "gold_lines": 104
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9904,
+        "line_precision": 0.3084,
+        "line_f1": 0.4703,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 334,
+        "gold_lines": 104
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__0cafd004",
+    "repo": "django",
+    "n_seeds": 3,
+    "n_retrieved": 20,
+    "ctx_tokens": 5343,
+    "sec": 7.75,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.4,
+        "line_precision": 0.8889,
+        "line_f1": 0.5517,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 9,
+        "gold_lines": 20
+      },
+      "retrieved_only": {
+        "line_recall": 0.45,
+        "line_precision": 0.0968,
+        "line_f1": 0.1593,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 93,
+        "gold_lines": 20
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.85,
+        "line_precision": 0.1667,
+        "line_f1": 0.2787,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 102,
+        "gold_lines": 20
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.55,
+        "line_precision": 0.3667,
+        "line_f1": 0.44,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 30,
+        "gold_lines": 20
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.85,
+        "line_precision": 0.1789,
+        "line_f1": 0.2957,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 95,
+        "gold_lines": 20
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__0ee86552",
+    "repo": "django",
+    "n_seeds": 3,
+    "n_retrieved": 9,
+    "ctx_tokens": 7249,
+    "sec": 8.84,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.7119,
+        "line_precision": 0.2414,
+        "line_f1": 0.3605,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 174,
+        "gold_lines": 59
+      },
+      "retrieved_only": {
+        "line_recall": 0.2203,
+        "line_precision": 0.032,
+        "line_f1": 0.0559,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 406,
+        "gold_lines": 59
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9322,
+        "line_precision": 0.0948,
+        "line_f1": 0.1721,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 580,
+        "gold_lines": 59
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9322,
+        "line_precision": 0.0952,
+        "line_f1": 0.1727,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 578,
+        "gold_lines": 59
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9322,
+        "line_precision": 0.0937,
+        "line_f1": 0.1703,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 587,
+        "gold_lines": 59
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__12d848d7",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 13,
+    "ctx_tokens": 7197,
+    "sec": 7.85,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 1.0,
+        "line_f1": 1.0,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 34,
+        "gold_lines": 34
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 382,
+        "gold_lines": 34
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.0817,
+        "line_f1": 0.1511,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 416,
+        "gold_lines": 34
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.0817,
+        "line_f1": 0.1511,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 416,
+        "gold_lines": 34
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0793,
+        "line_f1": 0.1469,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 429,
+        "gold_lines": 34
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__16c72e4c",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 2.89,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 13
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 13
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 13
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 382,
+        "gold_lines": 13
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 395,
+        "gold_lines": 13
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__16db8cc6",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 2.83,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 6
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 6
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 6
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 423,
+        "gold_lines": 6
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 437,
+        "gold_lines": 6
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__17c707e8",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 20,
+    "ctx_tokens": 6308,
+    "sec": 4.78,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1298,
+        "line_precision": 1.0,
+        "line_f1": 0.2297,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 17,
+        "gold_lines": 131
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.25,
+        "file_precision": 0.25,
+        "pred_lines": 197,
+        "gold_lines": 131
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.1298,
+        "line_precision": 0.0794,
+        "line_f1": 0.0986,
+        "file_recall": 0.25,
+        "file_precision": 0.25,
+        "pred_lines": 214,
+        "gold_lines": 131
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.1298,
+        "line_precision": 0.1771,
+        "line_f1": 0.1498,
+        "file_recall": 0.25,
+        "file_precision": 0.25,
+        "pred_lines": 96,
+        "gold_lines": 131
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.1298,
+        "line_precision": 0.0501,
+        "line_f1": 0.0723,
+        "file_recall": 0.25,
+        "file_precision": 0.25,
+        "pred_lines": 339,
+        "gold_lines": 131
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__17eadaae",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 12,
+    "ctx_tokens": 7025,
+    "sec": 4.31,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.8,
+        "line_precision": 0.5217,
+        "line_f1": 0.6316,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 23,
+        "gold_lines": 15
+      },
+      "retrieved_only": {
+        "line_recall": 0.0667,
+        "line_precision": 0.0031,
+        "line_f1": 0.006,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 318,
+        "gold_lines": 15
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.8667,
+        "line_precision": 0.0381,
+        "line_f1": 0.073,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 341,
+        "gold_lines": 15
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.8667,
+        "line_precision": 0.0616,
+        "line_f1": 0.115,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 211,
+        "gold_lines": 15
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.8667,
+        "line_precision": 0.0365,
+        "line_f1": 0.0701,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 356,
+        "gold_lines": 15
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__183a2a5b",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 6,
+    "ctx_tokens": 7375,
+    "sec": 4.52,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.68,
+        "line_precision": 0.5152,
+        "line_f1": 0.5862,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 33,
+        "gold_lines": 25
+      },
+      "retrieved_only": {
+        "line_recall": 0.28,
+        "line_precision": 0.0176,
+        "line_f1": 0.0332,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 397,
+        "gold_lines": 25
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.96,
+        "line_precision": 0.0558,
+        "line_f1": 0.1055,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 430,
+        "gold_lines": 25
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.96,
+        "line_precision": 0.0578,
+        "line_f1": 0.1091,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 415,
+        "gold_lines": 25
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.68,
+        "line_precision": 0.0422,
+        "line_f1": 0.0794,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 403,
+        "gold_lines": 25
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1a760e52",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 7.12,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 25
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 25
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 25
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 239,
+        "gold_lines": 25
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 268,
+        "gold_lines": 25
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1ad7449c",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 13,
+    "ctx_tokens": 7039,
+    "sec": 5.7,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3611,
+        "line_precision": 0.1625,
+        "line_f1": 0.2241,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 80,
+        "gold_lines": 36
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 271,
+        "gold_lines": 36
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.3611,
+        "line_precision": 0.037,
+        "line_f1": 0.0672,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 351,
+        "gold_lines": 36
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.3611,
+        "line_precision": 0.0802,
+        "line_f1": 0.1313,
+        "file_recall": 0.5,
+        "file_precision": 0.25,
+        "pred_lines": 162,
+        "gold_lines": 36
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.3611,
+        "line_precision": 0.0343,
+        "line_f1": 0.0627,
+        "file_recall": 0.5,
+        "file_precision": 0.1667,
+        "pred_lines": 379,
+        "gold_lines": 36
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1ae3c3bd",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 20,
+    "ctx_tokens": 4056,
+    "sec": 4.08,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1444,
+        "line_precision": 1.0,
+        "line_f1": 0.2524,
+        "file_recall": 0.3333,
+        "file_precision": 1.0,
+        "pred_lines": 13,
+        "gold_lines": 90
+      },
+      "retrieved_only": {
+        "line_recall": 0.0778,
+        "line_precision": 0.0352,
+        "line_f1": 0.0484,
+        "file_recall": 0.6667,
+        "file_precision": 1.0,
+        "pred_lines": 199,
+        "gold_lines": 90
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.2222,
+        "line_precision": 0.0943,
+        "line_f1": 0.1325,
+        "file_recall": 0.6667,
+        "file_precision": 1.0,
+        "pred_lines": 212,
+        "gold_lines": 90
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.1444,
+        "line_precision": 0.2453,
+        "line_f1": 0.1818,
+        "file_recall": 0.3333,
+        "file_precision": 1.0,
+        "pred_lines": 53,
+        "gold_lines": 90
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6111,
+        "line_precision": 0.1467,
+        "line_f1": 0.2366,
+        "file_recall": 0.6667,
+        "file_precision": 1.0,
+        "pred_lines": 375,
+        "gold_lines": 90
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1c5aa714",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 10,
+    "ctx_tokens": 6982,
+    "sec": 4.15,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3333,
+        "line_precision": 0.7059,
+        "line_f1": 0.4528,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 17,
+        "gold_lines": 36
+      },
+      "retrieved_only": {
+        "line_recall": 0.6389,
+        "line_precision": 0.0836,
+        "line_f1": 0.1479,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 275,
+        "gold_lines": 36
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9722,
+        "line_precision": 0.1199,
+        "line_f1": 0.2134,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 292,
+        "gold_lines": 36
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9722,
+        "line_precision": 0.1211,
+        "line_f1": 0.2154,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 289,
+        "gold_lines": 36
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9722,
+        "line_precision": 0.1129,
+        "line_f1": 0.2023,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 310,
+        "gold_lines": 36
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1efc2b51",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 19,
+    "ctx_tokens": 7142,
+    "sec": 5.05,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3801,
+        "line_precision": 1.0,
+        "line_f1": 0.5509,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 111,
+        "gold_lines": 292
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.5,
+        "file_precision": 0.1667,
+        "pred_lines": 426,
+        "gold_lines": 292
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.3801,
+        "line_precision": 0.2067,
+        "line_f1": 0.2678,
+        "file_recall": 0.5,
+        "file_precision": 0.1667,
+        "pred_lines": 537,
+        "gold_lines": 292
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.3801,
+        "line_precision": 0.5286,
+        "line_f1": 0.4422,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 210,
+        "gold_lines": 292
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.3801,
+        "line_precision": 0.1934,
+        "line_f1": 0.2564,
+        "file_recall": 0.5,
+        "file_precision": 0.1429,
+        "pred_lines": 574,
+        "gold_lines": 292
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__220b60c1",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 15,
+    "ctx_tokens": 6860,
+    "sec": 5.1,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.2963,
+        "line_precision": 1.0,
+        "line_f1": 0.4571,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 24,
+        "gold_lines": 81
+      },
+      "retrieved_only": {
+        "line_recall": 0.5432,
+        "line_precision": 0.2604,
+        "line_f1": 0.352,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 169,
+        "gold_lines": 81
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.8395,
+        "line_precision": 0.3523,
+        "line_f1": 0.4964,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 193,
+        "gold_lines": 81
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.2963,
+        "line_precision": 0.2449,
+        "line_f1": 0.2682,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 98,
+        "gold_lines": 81
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.679,
+        "line_precision": 0.2227,
+        "line_f1": 0.3354,
+        "file_recall": 1.0,
+        "file_precision": 0.1429,
+        "pred_lines": 247,
+        "gold_lines": 81
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__227490c2",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 16,
+    "ctx_tokens": 6887,
+    "sec": 8.26,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1845,
+        "line_precision": 1.0,
+        "line_f1": 0.3116,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 31,
+        "gold_lines": 168
+      },
+      "retrieved_only": {
+        "line_recall": 0.0357,
+        "line_precision": 0.0274,
+        "line_f1": 0.031,
+        "file_recall": 0.5,
+        "file_precision": 0.6667,
+        "pred_lines": 219,
+        "gold_lines": 168
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.2202,
+        "line_precision": 0.148,
+        "line_f1": 0.177,
+        "file_recall": 0.5,
+        "file_precision": 0.6667,
+        "pred_lines": 250,
+        "gold_lines": 168
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.1845,
+        "line_precision": 0.3483,
+        "line_f1": 0.2412,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 89,
+        "gold_lines": 168
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.4048,
+        "line_precision": 0.2105,
+        "line_f1": 0.277,
+        "file_recall": 0.5,
+        "file_precision": 0.6667,
+        "pred_lines": 323,
+        "gold_lines": 168
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2ab7d0fc",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 13,
+    "ctx_tokens": 7320,
+    "sec": 5.08,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.4634,
+        "line_f1": 0.6333,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 82,
+        "gold_lines": 38
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 396,
+        "gold_lines": 38
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.0795,
+        "line_f1": 0.1473,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 478,
+        "gold_lines": 38
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.1659,
+        "line_f1": 0.2846,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 229,
+        "gold_lines": 38
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0735,
+        "line_f1": 0.1369,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 517,
+        "gold_lines": 38
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2b2332fb",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 12,
+    "ctx_tokens": 7061,
+    "sec": 4.56,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.125,
+        "line_precision": 0.1463,
+        "line_f1": 0.1348,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 82,
+        "gold_lines": 96
+      },
+      "retrieved_only": {
+        "line_recall": 0.6562,
+        "line_precision": 0.2188,
+        "line_f1": 0.3281,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 288,
+        "gold_lines": 96
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.7812,
+        "line_precision": 0.2027,
+        "line_f1": 0.3219,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 370,
+        "gold_lines": 96
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.125,
+        "line_precision": 0.071,
+        "line_f1": 0.0906,
+        "file_recall": 0.5,
+        "file_precision": 0.25,
+        "pred_lines": 169,
+        "gold_lines": 96
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.7812,
+        "line_precision": 0.1979,
+        "line_f1": 0.3158,
+        "file_recall": 0.5,
+        "file_precision": 0.2,
+        "pred_lines": 379,
+        "gold_lines": 96
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2c34be8a",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 20,
+    "ctx_tokens": 4993,
+    "sec": 4.03,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1026,
+        "line_precision": 1.0,
+        "line_f1": 0.186,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 4,
+        "gold_lines": 39
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 214,
+        "gold_lines": 39
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.1026,
+        "line_precision": 0.0183,
+        "line_f1": 0.0311,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 218,
+        "gold_lines": 39
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.1026,
+        "line_precision": 0.1905,
+        "line_f1": 0.1333,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 21,
+        "gold_lines": 39
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.1026,
+        "line_precision": 0.0244,
+        "line_f1": 0.0394,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 164,
+        "gold_lines": 39
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2ccbdc72",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 20,
+    "ctx_tokens": 6748,
+    "sec": 8.05,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.24,
+        "line_precision": 1.0,
+        "line_f1": 0.3871,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 12,
+        "gold_lines": 50
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 253,
+        "gold_lines": 50
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.24,
+        "line_precision": 0.0453,
+        "line_f1": 0.0762,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 265,
+        "gold_lines": 50
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.24,
+        "line_precision": 0.24,
+        "line_f1": 0.24,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 50,
+        "gold_lines": 50
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.36,
+        "line_precision": 0.0542,
+        "line_f1": 0.0942,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 332,
+        "gold_lines": 50
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2d5d4dcd",
+    "repo": "django",
+    "n_seeds": 8,
+    "n_retrieved": 10,
+    "ctx_tokens": 7084,
+    "sec": 9.04,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.384,
+        "line_precision": 0.6667,
+        "line_f1": 0.4873,
+        "file_recall": 0.75,
+        "file_precision": 1.0,
+        "pred_lines": 72,
+        "gold_lines": 125
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.5,
+        "file_precision": 0.3333,
+        "pred_lines": 104,
+        "gold_lines": 125
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.384,
+        "line_precision": 0.2727,
+        "line_f1": 0.3189,
+        "file_recall": 0.75,
+        "file_precision": 0.4286,
+        "pred_lines": 176,
+        "gold_lines": 125
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.384,
+        "line_precision": 0.2909,
+        "line_f1": 0.331,
+        "file_recall": 0.75,
+        "file_precision": 0.4286,
+        "pred_lines": 165,
+        "gold_lines": 125
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.384,
+        "line_precision": 0.2637,
+        "line_f1": 0.3127,
+        "file_recall": 0.75,
+        "file_precision": 0.4286,
+        "pred_lines": 182,
+        "gold_lines": 125
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2e3d6eae",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 7,
+    "ctx_tokens": 7216,
+    "sec": 4.46,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.2973,
+        "line_precision": 0.5,
+        "line_f1": 0.3729,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 44,
+        "gold_lines": 74
+      },
+      "retrieved_only": {
+        "line_recall": 0.3919,
+        "line_precision": 0.0861,
+        "line_f1": 0.1411,
+        "file_recall": 1.0,
+        "file_precision": 0.4,
+        "pred_lines": 337,
+        "gold_lines": 74
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.6892,
+        "line_precision": 0.1339,
+        "line_f1": 0.2242,
+        "file_recall": 1.0,
+        "file_precision": 0.4,
+        "pred_lines": 381,
+        "gold_lines": 74
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.4595,
+        "line_precision": 0.1227,
+        "line_f1": 0.1937,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 277,
+        "gold_lines": 74
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6892,
+        "line_precision": 0.1339,
+        "line_f1": 0.2242,
+        "file_recall": 1.0,
+        "file_precision": 0.4,
+        "pred_lines": 381,
+        "gold_lines": 74
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__31d4fe9d",
+    "repo": "django",
+    "n_seeds": 2,
+    "n_retrieved": 15,
+    "ctx_tokens": 6810,
+    "sec": 4.12,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.2807,
+        "line_f1": 0.4384,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 114,
+        "gold_lines": 32
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 157,
+        "gold_lines": 32
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.1265,
+        "line_f1": 0.2246,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 253,
+        "gold_lines": 32
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.2254,
+        "line_f1": 0.3678,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 142,
+        "gold_lines": 32
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0904,
+        "line_f1": 0.1658,
+        "file_recall": 1.0,
+        "file_precision": 0.1429,
+        "pred_lines": 354,
+        "gold_lines": 32
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__3e44d93a",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 17,
+    "ctx_tokens": 6831,
+    "sec": 7.78,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1429,
+        "line_precision": 1.0,
+        "line_f1": 0.25,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 6,
+        "gold_lines": 42
+      },
+      "retrieved_only": {
+        "line_recall": 0.5,
+        "line_precision": 0.1469,
+        "line_f1": 0.227,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 143,
+        "gold_lines": 42
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.6429,
+        "line_precision": 0.1812,
+        "line_f1": 0.2827,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 149,
+        "gold_lines": 42
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.381,
+        "line_precision": 1.0,
+        "line_f1": 0.5517,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 16,
+        "gold_lines": 42
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6429,
+        "line_precision": 0.1709,
+        "line_f1": 0.27,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 158,
+        "gold_lines": 42
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__3f745086",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 12,
+    "ctx_tokens": 6881,
+    "sec": 8.79,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.9355,
+        "line_precision": 1.0,
+        "line_f1": 0.9667,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 29,
+        "gold_lines": 31
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 297,
+        "gold_lines": 31
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9355,
+        "line_precision": 0.089,
+        "line_f1": 0.1625,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 326,
+        "gold_lines": 31
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9355,
+        "line_precision": 0.3816,
+        "line_f1": 0.5421,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 76,
+        "gold_lines": 31
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9355,
+        "line_precision": 0.0831,
+        "line_f1": 0.1526,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 349,
+        "gold_lines": 31
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__405a9ea4",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 3.17,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 106
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 106
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 106
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 43,
+        "gold_lines": 106
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 286,
+        "gold_lines": 106
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__409b7811",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 19,
+    "ctx_tokens": 7315,
+    "sec": 8.21,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.6957,
+        "line_f1": 0.8205,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 92,
+        "gold_lines": 64
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 492,
+        "gold_lines": 64
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.1096,
+        "line_f1": 0.1975,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 584,
+        "gold_lines": 64
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.3122,
+        "line_f1": 0.4758,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 205,
+        "gold_lines": 64
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.1085,
+        "line_f1": 0.1957,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 590,
+        "gold_lines": 64
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__45db86cf",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 19,
+    "ctx_tokens": 6798,
+    "sec": 4.6,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.6,
+        "line_precision": 1.0,
+        "line_f1": 0.75,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 15,
+        "gold_lines": 25
+      },
+      "retrieved_only": {
+        "line_recall": 0.08,
+        "line_precision": 0.0136,
+        "line_f1": 0.0233,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 147,
+        "gold_lines": 25
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.68,
+        "line_precision": 0.1049,
+        "line_f1": 0.1818,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 162,
+        "gold_lines": 25
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.6,
+        "line_precision": 0.4286,
+        "line_f1": 0.5,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 35,
+        "gold_lines": 25
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.68,
+        "line_precision": 0.0746,
+        "line_f1": 0.1344,
+        "file_recall": 1.0,
+        "file_precision": 0.1429,
+        "pred_lines": 228,
+        "gold_lines": 25
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__46dc77a5",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 13,
+    "ctx_tokens": 6978,
+    "sec": 8.03,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.98,
+        "line_precision": 0.6712,
+        "line_f1": 0.7967,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 73,
+        "gold_lines": 50
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 206,
+        "gold_lines": 50
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.98,
+        "line_precision": 0.1756,
+        "line_f1": 0.2979,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 279,
+        "gold_lines": 50
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.98,
+        "line_precision": 0.2606,
+        "line_f1": 0.4118,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 188,
+        "gold_lines": 50
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.98,
+        "line_precision": 0.1467,
+        "line_f1": 0.2552,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 334,
+        "gold_lines": 50
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__48fc5ec4",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 18,
+    "ctx_tokens": 6694,
+    "sec": 8.31,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0561,
+        "line_precision": 1.0,
+        "line_f1": 0.1062,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 6,
+        "gold_lines": 107
+      },
+      "retrieved_only": {
+        "line_recall": 0.2336,
+        "line_precision": 0.1381,
+        "line_f1": 0.1736,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 181,
+        "gold_lines": 107
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.2897,
+        "line_precision": 0.1658,
+        "line_f1": 0.2109,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 187,
+        "gold_lines": 107
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0561,
+        "line_precision": 0.3158,
+        "line_f1": 0.0952,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 19,
+        "gold_lines": 107
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.2897,
+        "line_precision": 0.1476,
+        "line_f1": 0.1956,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 210,
+        "gold_lines": 107
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__497deb6f",
+    "repo": "django",
+    "n_seeds": 3,
+    "n_retrieved": 20,
+    "ctx_tokens": 6442,
+    "sec": 7.92,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0719,
+        "line_precision": 0.9677,
+        "line_f1": 0.1339,
+        "file_recall": 0.3333,
+        "file_precision": 1.0,
+        "pred_lines": 31,
+        "gold_lines": 417
+      },
+      "retrieved_only": {
+        "line_recall": 0.0384,
+        "line_precision": 0.0578,
+        "line_f1": 0.0461,
+        "file_recall": 0.3333,
+        "file_precision": 0.5,
+        "pred_lines": 277,
+        "gold_lines": 417
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.1103,
+        "line_precision": 0.1494,
+        "line_f1": 0.1269,
+        "file_recall": 0.3333,
+        "file_precision": 0.5,
+        "pred_lines": 308,
+        "gold_lines": 417
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0719,
+        "line_precision": 0.8333,
+        "line_f1": 0.1325,
+        "file_recall": 0.3333,
+        "file_precision": 0.6667,
+        "pred_lines": 36,
+        "gold_lines": 417
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.1607,
+        "line_precision": 0.1492,
+        "line_f1": 0.1547,
+        "file_recall": 0.5,
+        "file_precision": 0.75,
+        "pred_lines": 449,
+        "gold_lines": 417
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4a0ef170",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 7,
+    "ctx_tokens": 7267,
+    "sec": 7.88,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.378,
+        "line_f1": 0.5487,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 164,
+        "gold_lines": 62
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 197,
+        "gold_lines": 62
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.1717,
+        "line_f1": 0.2931,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 361,
+        "gold_lines": 62
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.1782,
+        "line_f1": 0.3024,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 348,
+        "gold_lines": 62
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.1658,
+        "line_f1": 0.2844,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 374,
+        "gold_lines": 62
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4b691a35",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 17,
+    "ctx_tokens": 6837,
+    "sec": 9.52,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.7778,
+        "line_precision": 0.84,
+        "line_f1": 0.8077,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 25,
+        "gold_lines": 27
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 119,
+        "gold_lines": 27
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.7778,
+        "line_precision": 0.1458,
+        "line_f1": 0.2456,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 144,
+        "gold_lines": 27
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.7778,
+        "line_precision": 0.1458,
+        "line_f1": 0.2456,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 144,
+        "gold_lines": 27
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.7778,
+        "line_precision": 0.1066,
+        "line_f1": 0.1875,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 197,
+        "gold_lines": 27
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4cac510e",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 5,
+    "ctx_tokens": 7287,
+    "sec": 4.04,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.6842,
+        "line_f1": 0.8125,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 76,
+        "gold_lines": 52
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 426,
+        "gold_lines": 52
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.1036,
+        "line_f1": 0.1877,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 502,
+        "gold_lines": 52
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.1044,
+        "line_f1": 0.1891,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 498,
+        "gold_lines": 52
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.1133,
+        "line_f1": 0.2035,
+        "file_recall": 1.0,
+        "file_precision": 0.1429,
+        "pred_lines": 459,
+        "gold_lines": 52
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4d207ce8",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 12,
+    "ctx_tokens": 7285,
+    "sec": 8.38,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3226,
+        "line_precision": 1.0,
+        "line_f1": 0.4878,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 10,
+        "gold_lines": 31
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 372,
+        "gold_lines": 31
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.3226,
+        "line_precision": 0.0262,
+        "line_f1": 0.0484,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 382,
+        "gold_lines": 31
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.3226,
+        "line_precision": 0.0671,
+        "line_f1": 0.1111,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 149,
+        "gold_lines": 31
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.3226,
+        "line_precision": 0.0218,
+        "line_f1": 0.0409,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 458,
+        "gold_lines": 31
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4e7b7c81",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 18,
+    "ctx_tokens": 6885,
+    "sec": 5.24,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.5366,
+        "line_precision": 1.0,
+        "line_f1": 0.6984,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 44,
+        "gold_lines": 82
+      },
+      "retrieved_only": {
+        "line_recall": 0.1341,
+        "line_precision": 0.0373,
+        "line_f1": 0.0584,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 295,
+        "gold_lines": 82
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.6707,
+        "line_precision": 0.1622,
+        "line_f1": 0.2613,
+        "file_recall": 1.0,
+        "file_precision": 0.1667,
+        "pred_lines": 339,
+        "gold_lines": 82
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.6707,
+        "line_precision": 0.1763,
+        "line_f1": 0.2792,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 312,
+        "gold_lines": 82
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6707,
+        "line_precision": 0.1432,
+        "line_f1": 0.2361,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 384,
+        "gold_lines": 82
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4fb8fc10",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 15,
+    "ctx_tokens": 7086,
+    "sec": 10.11,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.9726,
+        "line_precision": 0.6893,
+        "line_f1": 0.8068,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 103,
+        "gold_lines": 73
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.1111,
+        "pred_lines": 273,
+        "gold_lines": 73
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9726,
+        "line_precision": 0.1888,
+        "line_f1": 0.3163,
+        "file_recall": 1.0,
+        "file_precision": 0.1111,
+        "pred_lines": 376,
+        "gold_lines": 73
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9726,
+        "line_precision": 0.5182,
+        "line_f1": 0.6762,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 137,
+        "gold_lines": 73
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9726,
+        "line_precision": 0.153,
+        "line_f1": 0.2644,
+        "file_recall": 1.0,
+        "file_precision": 0.0909,
+        "pred_lines": 464,
+        "gold_lines": 73
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__5255cd73",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 15,
+    "ctx_tokens": 7107,
+    "sec": 8.19,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 0.4658,
+        "line_f1": 0.6355,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 73,
+        "gold_lines": 34
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 332,
+        "gold_lines": 34
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.084,
+        "line_f1": 0.1549,
+        "file_recall": 1.0,
+        "file_precision": 0.1111,
+        "pred_lines": 405,
+        "gold_lines": 34
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.3178,
+        "line_f1": 0.4823,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 107,
+        "gold_lines": 34
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0835,
+        "line_f1": 0.1542,
+        "file_recall": 1.0,
+        "file_precision": 0.1429,
+        "pred_lines": 407,
+        "gold_lines": 34
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__5555e84c",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 20,
+    "ctx_tokens": 5525,
+    "sec": 7.8,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0524,
+        "line_precision": 1.0,
+        "line_f1": 0.0996,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 13,
+        "gold_lines": 248
+      },
+      "retrieved_only": {
+        "line_recall": 0.1492,
+        "line_precision": 0.1307,
+        "line_f1": 0.1394,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 283,
+        "gold_lines": 248
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.2016,
+        "line_precision": 0.1689,
+        "line_f1": 0.1838,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 296,
+        "gold_lines": 248
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0524,
+        "line_precision": 0.65,
+        "line_f1": 0.097,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 20,
+        "gold_lines": 248
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.1613,
+        "line_precision": 0.1389,
+        "line_f1": 0.1493,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 288,
+        "gold_lines": 248
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__55a3ef80",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 13,
+    "ctx_tokens": 7240,
+    "sec": 3.95,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 1.0,
+        "line_precision": 1.0,
+        "line_f1": 1.0,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 23,
+        "gold_lines": 23
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 470,
+        "gold_lines": 23
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 1.0,
+        "line_precision": 0.0467,
+        "line_f1": 0.0891,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 493,
+        "gold_lines": 23
+      },
+      "diffcontext_gap": {
+        "line_recall": 1.0,
+        "line_precision": 0.0562,
+        "line_f1": 0.1065,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 409,
+        "gold_lines": 23
+      },
+      "diffcontext_rerank": {
+        "line_recall": 1.0,
+        "line_precision": 0.0452,
+        "line_f1": 0.0865,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 509,
+        "gold_lines": 23
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__5c1509d5",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 17,
+    "ctx_tokens": 6921,
+    "sec": 4.42,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.1447,
+        "line_precision": 1.0,
+        "line_f1": 0.2529,
+        "file_recall": 0.25,
+        "file_precision": 1.0,
+        "pred_lines": 33,
+        "gold_lines": 228
+      },
+      "retrieved_only": {
+        "line_recall": 0.0789,
+        "line_precision": 0.1406,
+        "line_f1": 0.1011,
+        "file_recall": 0.25,
+        "file_precision": 0.3333,
+        "pred_lines": 128,
+        "gold_lines": 228
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.2237,
+        "line_precision": 0.3168,
+        "line_f1": 0.2622,
+        "file_recall": 0.25,
+        "file_precision": 0.3333,
+        "pred_lines": 161,
+        "gold_lines": 228
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.2237,
+        "line_precision": 0.5,
+        "line_f1": 0.3091,
+        "file_recall": 0.25,
+        "file_precision": 0.5,
+        "pred_lines": 102,
+        "gold_lines": 228
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.2237,
+        "line_precision": 0.2308,
+        "line_f1": 0.2272,
+        "file_recall": 0.25,
+        "file_precision": 0.25,
+        "pred_lines": 221,
+        "gold_lines": 228
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__5c82134f",
+    "repo": "django",
+    "n_seeds": 3,
+    "n_retrieved": 15,
+    "ctx_tokens": 7062,
+    "sec": 4.16,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.4211,
+        "line_precision": 0.96,
+        "line_f1": 0.5854,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 25,
+        "gold_lines": 57
+      },
+      "retrieved_only": {
+        "line_recall": 0.3158,
+        "line_precision": 0.0849,
+        "line_f1": 0.1338,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 212,
+        "gold_lines": 57
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.7368,
+        "line_precision": 0.1772,
+        "line_f1": 0.2857,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 237,
+        "gold_lines": 57
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.4211,
+        "line_precision": 0.1472,
+        "line_f1": 0.2182,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 163,
+        "gold_lines": 57
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.7368,
+        "line_precision": 0.1479,
+        "line_f1": 0.2463,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 284,
+        "gold_lines": 57
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__607f6b9e",
+    "repo": "django",
+    "n_seeds": 0,
+    "n_retrieved": 0,
+    "ctx_tokens": 0,
+    "sec": 2.64,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 14
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 14
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.0,
+        "line_precision": 1.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 1.0,
+        "pred_lines": 0,
+        "gold_lines": 14
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 136,
+        "gold_lines": 14
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.0,
+        "file_precision": 0.0,
+        "pred_lines": 261,
+        "gold_lines": 14
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60b000ec",
+    "repo": "django",
+    "n_seeds": 1,
+    "n_retrieved": 16,
+    "ctx_tokens": 7197,
+    "sec": 4.88,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.3951,
+        "line_precision": 1.0,
+        "line_f1": 0.5664,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 32,
+        "gold_lines": 81
+      },
+      "retrieved_only": {
+        "line_recall": 0.4074,
+        "line_precision": 0.0848,
+        "line_f1": 0.1404,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 389,
+        "gold_lines": 81
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.8025,
+        "line_precision": 0.1544,
+        "line_f1": 0.259,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 421,
+        "gold_lines": 81
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.3951,
+        "line_precision": 0.3636,
+        "line_f1": 0.3787,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 88,
+        "gold_lines": 81
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6049,
+        "line_precision": 0.1075,
+        "line_f1": 0.1825,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 456,
+        "gold_lines": 81
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__61a7a81e",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__666e82c9",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__67e32922",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__6809df19",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__681ea2b6",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__6cf8c11d",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__6f3e4cd9",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__7429e4b6",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__7489fdd8",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__768d44e5",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__7d35a578",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__7e498c7a",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__80c9776a",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__81f2c925",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__84a1749f",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__84effcbc",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__8923da9e",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__8c719ad0",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__8d3e4969",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__8f9e4358",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__8fdc33d5",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__90f381a2",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__914c325d",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__91fb680f",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__93721db4",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__96afaad2",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__986c9e85",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__994d041f",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9a05fe0c",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9ad7edbc",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9bb1a3b8",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9db89f01",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9f186bf4",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a36e086e",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a42cace7",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a5ec0eec",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a602a91b",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a7a5e8ed",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__abfdb2c5",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__ac705f35",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__adc79a60",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__ae3f8dff",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__afcc47be",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b10492be",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b10cbb79",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b234375e",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b2cb9f4b",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__bd296236",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__bd3d7a3d",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__bdde6d9c",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c20c3c4f",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c2371197",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c4c8d376",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c684b666",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c923cfa8",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__c9656d7a",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__cecff61c",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__d105d187",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__d2a786e2",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__d6662a31",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__d939b999",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__db2dbb1a",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__dc72c033",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__dd6505be",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__dded0f96",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e2250ebc",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e31a7bab",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e97ac668",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__ebf021d0",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__ee10f0e4",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__f3695f8d",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__f4588448",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__f667fa43",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__f8da42bc",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__f9e99232",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__fb07ed8b",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__fd75b7c9",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__fd8123b1",
+    "repo": "django",
+    "error": "git checkout failed: error: Could not read d569c1dcfeb26ca9ee391e5dfeadedf2b5ed4253\nfatal: internal error in revision walk"
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__2e76c8cd",
+    "repo": "flask",
+    "n_seeds": 1,
+    "n_retrieved": 8,
+    "ctx_tokens": 7274,
+    "sec": 0.42,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.8974,
+        "line_precision": 1.0,
+        "line_f1": 0.9459,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 35,
+        "gold_lines": 39
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 407,
+        "gold_lines": 39
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.8974,
+        "line_precision": 0.0792,
+        "line_f1": 0.1455,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 442,
+        "gold_lines": 39
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.8974,
+        "line_precision": 0.1362,
+        "line_f1": 0.2365,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 257,
+        "gold_lines": 39
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.8974,
+        "line_precision": 0.0756,
+        "line_f1": 0.1394,
+        "file_recall": 1.0,
+        "file_precision": 0.25,
+        "pred_lines": 463,
+        "gold_lines": 39
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__07f7e78f",
+    "repo": "requests",
+    "n_seeds": 1,
+    "n_retrieved": 18,
+    "ctx_tokens": 7251,
+    "sec": 0.44,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.9833,
+        "line_precision": 0.7195,
+        "line_f1": 0.831,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 82,
+        "gold_lines": 60
+      },
+      "retrieved_only": {
+        "line_recall": 0.1333,
+        "line_precision": 0.0295,
+        "line_f1": 0.0483,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 271,
+        "gold_lines": 60
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9833,
+        "line_precision": 0.171,
+        "line_f1": 0.2914,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 345,
+        "gold_lines": 60
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9833,
+        "line_precision": 0.596,
+        "line_f1": 0.7421,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 99,
+        "gold_lines": 60
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9833,
+        "line_precision": 0.1379,
+        "line_f1": 0.2418,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 428,
+        "gold_lines": 60
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1fdd9275",
+    "repo": "requests",
+    "n_seeds": 2,
+    "n_retrieved": 13,
+    "ctx_tokens": 7561,
+    "sec": 0.56,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.6875,
+        "line_precision": 0.449,
+        "line_f1": 0.5432,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 98,
+        "gold_lines": 64
+      },
+      "retrieved_only": {
+        "line_recall": 0.2656,
+        "line_precision": 0.0457,
+        "line_f1": 0.078,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 372,
+        "gold_lines": 64
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9531,
+        "line_precision": 0.1298,
+        "line_f1": 0.2285,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 470,
+        "gold_lines": 64
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9531,
+        "line_precision": 0.251,
+        "line_f1": 0.3974,
+        "file_recall": 1.0,
+        "file_precision": 0.6667,
+        "pred_lines": 243,
+        "gold_lines": 64
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9531,
+        "line_precision": 0.1344,
+        "line_f1": 0.2355,
+        "file_recall": 1.0,
+        "file_precision": 0.6667,
+        "pred_lines": 454,
+        "gold_lines": 64
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__23963510",
+    "repo": "requests",
+    "n_seeds": 1,
+    "n_retrieved": 15,
+    "ctx_tokens": 7114,
+    "sec": 0.49,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.807,
+        "line_precision": 0.5412,
+        "line_f1": 0.6479,
+        "file_recall": 0.5,
+        "file_precision": 1.0,
+        "pred_lines": 85,
+        "gold_lines": 57
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.5,
+        "file_precision": 0.3333,
+        "pred_lines": 285,
+        "gold_lines": 57
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.807,
+        "line_precision": 0.1243,
+        "line_f1": 0.2155,
+        "file_recall": 0.5,
+        "file_precision": 0.3333,
+        "pred_lines": 370,
+        "gold_lines": 57
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.807,
+        "line_precision": 0.3485,
+        "line_f1": 0.4868,
+        "file_recall": 0.5,
+        "file_precision": 0.3333,
+        "pred_lines": 132,
+        "gold_lines": 57
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.807,
+        "line_precision": 0.1087,
+        "line_f1": 0.1917,
+        "file_recall": 0.5,
+        "file_precision": 0.25,
+        "pred_lines": 423,
+        "gold_lines": 57
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__88e1ffd3",
+    "repo": "requests",
+    "n_seeds": 3,
+    "n_retrieved": 12,
+    "ctx_tokens": 7205,
+    "sec": 0.37,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.9701,
+        "line_precision": 0.8333,
+        "line_f1": 0.8966,
+        "file_recall": 1.0,
+        "file_precision": 1.0,
+        "pred_lines": 78,
+        "gold_lines": 67
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 302,
+        "gold_lines": 67
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.9701,
+        "line_precision": 0.1711,
+        "line_f1": 0.2908,
+        "file_recall": 1.0,
+        "file_precision": 0.3333,
+        "pred_lines": 380,
+        "gold_lines": 67
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.9701,
+        "line_precision": 0.3234,
+        "line_f1": 0.4851,
+        "file_recall": 1.0,
+        "file_precision": 0.5,
+        "pred_lines": 201,
+        "gold_lines": 67
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.9701,
+        "line_precision": 0.1522,
+        "line_f1": 0.2632,
+        "file_recall": 1.0,
+        "file_precision": 0.2,
+        "pred_lines": 427,
+        "gold_lines": 67
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__9cca0774",
+    "repo": "requests",
+    "n_seeds": 1,
+    "n_retrieved": 14,
+    "ctx_tokens": 7220,
+    "sec": 0.65,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.068,
+        "line_precision": 0.0854,
+        "line_f1": 0.0757,
+        "file_recall": 0.3333,
+        "file_precision": 1.0,
+        "pred_lines": 82,
+        "gold_lines": 103
+      },
+      "retrieved_only": {
+        "line_recall": 0.0,
+        "line_precision": 0.0,
+        "line_f1": 0.0,
+        "file_recall": 0.3333,
+        "file_precision": 0.3333,
+        "pred_lines": 305,
+        "gold_lines": 103
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.068,
+        "line_precision": 0.0181,
+        "line_f1": 0.0286,
+        "file_recall": 0.3333,
+        "file_precision": 0.3333,
+        "pred_lines": 387,
+        "gold_lines": 103
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.068,
+        "line_precision": 0.0189,
+        "line_f1": 0.0296,
+        "file_recall": 0.3333,
+        "file_precision": 0.5,
+        "pred_lines": 370,
+        "gold_lines": 103
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.068,
+        "line_precision": 0.0154,
+        "line_f1": 0.025,
+        "file_recall": 0.3333,
+        "file_precision": 0.3333,
+        "pred_lines": 456,
+        "gold_lines": 103
+      }
+    }
+  },
+  {
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e989ba2d",
+    "repo": "requests",
+    "n_seeds": 1,
+    "n_retrieved": 14,
+    "ctx_tokens": 7021,
+    "sec": 0.23,
+    "metrics": {
+      "seeds_only": {
+        "line_recall": 0.2447,
+        "line_precision": 1.0,
+        "line_f1": 0.3932,
+        "file_recall": 0.3333,
+        "file_precision": 1.0,
+        "pred_lines": 23,
+        "gold_lines": 94
+      },
+      "retrieved_only": {
+        "line_recall": 0.4362,
+        "line_precision": 0.099,
+        "line_f1": 0.1614,
+        "file_recall": 0.6667,
+        "file_precision": 0.6667,
+        "pred_lines": 414,
+        "gold_lines": 94
+      },
+      "seeds_plus_retrieved": {
+        "line_recall": 0.6809,
+        "line_precision": 0.1465,
+        "line_f1": 0.2411,
+        "file_recall": 0.6667,
+        "file_precision": 0.6667,
+        "pred_lines": 437,
+        "gold_lines": 94
+      },
+      "diffcontext_gap": {
+        "line_recall": 0.6809,
+        "line_precision": 1.0,
+        "line_f1": 0.8101,
+        "file_recall": 0.6667,
+        "file_precision": 1.0,
+        "pred_lines": 64,
+        "gold_lines": 94
+      },
+      "diffcontext_rerank": {
+        "line_recall": 0.6809,
+        "line_precision": 0.1432,
+        "line_f1": 0.2366,
+        "file_recall": 0.6667,
+        "file_precision": 0.6667,
+        "pred_lines": 447,
+        "gold_lines": 94
+      }
+    }
+  }
+]

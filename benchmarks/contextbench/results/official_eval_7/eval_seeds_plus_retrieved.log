@@ -1,0 +1,363 @@
+Indexing gold contexts
+  2272 instance IDs indexed
+Loading predictions
+  7 trajectories loaded
+
+[1/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__2e76c8cd
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/flask
+  Commit: 7ee9ceb71e86...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__flask/7ee9ceb71e868944a46e1ff00b506772a53a4f1d
+  Parsing trajectory
+  Extracted: 1 steps, final has 2 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__2e76c8cd
+  gold_files: n=1
+    - src/flask/blueprints.py
+  pred_files: n=2
+    - src/flask/blueprints.py
+    - src/flask/scaffold.py
+  hit_files: n=1
+    - src/flask/blueprints.py
+  gold_symbols: n=2
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@6979-8206
+  pred_symbols: n=13
+    - src/flask/blueprints.py:class_definition@1270-4368
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@10813-16406
+    - src/flask/blueprints.py:function_definition@13268-13472
+    - src/flask/blueprints.py:function_definition@1550-3283
+    - src/flask/blueprints.py:function_definition@16429-17515
+    - src/flask/blueprints.py:function_definition@3289-4368
+    - src/flask/blueprints.py:function_definition@6979-8206
+    - src/flask/blueprints.py:function_definition@8212-8738
+    - src/flask/blueprints.py:function_definition@8761-9089
+    - src/flask/scaffold.py:class_definition@1717-29772
+    - src/flask/scaffold.py:function_definition@2613-9253
+    - src/flask/scaffold.py:function_definition@9799-9995
+  hit_symbols: n=2
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@6979-8206
+
+[2/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__07f7e78f
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 847735553aed...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/847735553aeda6e6633f2b32e14ba14ba86887a4
+  Parsing trajectory
+  Extracted: 1 steps, final has 5 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__07f7e78f
+  gold_files: n=1
+    - requests/auth.py
+  pred_files: n=5
+    - requests/auth.py
+    - requests/models.py
+    - requests/packages/urllib3/util.py
+    - requests/sessions.py
+    - test_requests.py
+  hit_files: n=1
+    - requests/auth.py
+  gold_symbols: n=4
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+  pred_symbols: n=29
+    - requests/auth.py:class_definition@1162-1402
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:class_definition@634-814
+    - requests/auth.py:class_definition@817-1159
+    - requests/auth.py:function_definition@1037-1159
+    - requests/auth.py:function_definition@1274-1402
+    - requests/auth.py:function_definition@1516-1726
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+    - requests/auth.py:function_definition@443-631
+    - requests/auth.py:function_definition@4466-5706
+    - requests/auth.py:function_definition@5712-6062
+    - requests/auth.py:function_definition@726-814
+    - requests/auth.py:function_definition@926-1031
+    - requests/models.py:class_definition@1126-4593
+    - requests/models.py:class_definition@5368-7702
+    - requests/models.py:class_definition@7705-15819
+    - requests/models.py:function_definition@1180-1513
+    - requests/models.py:function_definition@1537-2525
+    - requests/models.py:function_definition@6312-7152
+    - requests/models.py:function_definition@9834-11984
+    - requests/packages/urllib3/util.py:class_definition@10196-11174
+    - requests/packages/urllib3/util.py:function_definition@10782-10983
+    - requests/sessions.py:class_definition@5064-18743
+    - requests/sessions.py:function_definition@7436-8908
+    - test_requests.py:class_definition@854-24489
+    - test_requests.py:function_definition@12446-12615
+    - test_requests.py:function_definition@14142-14670
+  hit_symbols: n=4
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+
+[3/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__1fdd9275
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 5f7a3a74aab1...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/5f7a3a74aab1625c2bb65f643197ee885e3da576
+  Parsing trajectory
+  Extracted: 1 steps, final has 4 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__1fdd9275
+  gold_files: n=2
+    - requests/models.py
+    - requests/utils.py
+  pred_files: n=4
+    - requests/models.py
+    - requests/packages/urllib3/util/url.py
+    - requests/utils.py
+    - test_requests.py
+  hit_files: n=2
+    - requests/models.py
+    - requests/utils.py
+  gold_symbols: n=5
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@2028-3034
+    - requests/utils.py:function_definition@20765-21251
+  pred_symbols: n=19
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@13549-15329
+    - requests/models.py:function_definition@15860-16588
+    - requests/models.py:function_definition@1671-2004
+    - requests/models.py:function_definition@2028-3034
+    - requests/models.py:function_definition@3058-5063
+    - requests/models.py:function_definition@9361-10061
+    - requests/packages/urllib3/util/url.py:class_definition@199-2609
+    - requests/packages/urllib3/util/url.py:function_definition@1274-2561
+    - requests/packages/urllib3/util/url.py:function_definition@3462-5720
+    - requests/utils.py:function_definition@12806-13609
+    - requests/utils.py:function_definition@20765-21251
+    - requests/utils.py:function_definition@21254-21627
+    - requests/utils.py:function_definition@4747-5431
+    - test_requests.py:class_definition@1898-39735
+    - test_requests.py:function_definition@2054-2110
+    - test_requests.py:function_definition@31075-31369
+  hit_symbols: n=5
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@2028-3034
+    - requests/utils.py:function_definition@20765-21251
+
+[4/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__23963510
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 39d0fdd9096f...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/39d0fdd9096f7dceccbc8f82e1eda7dd64717a8e
+  Parsing trajectory
+  Extracted: 1 steps, final has 3 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__23963510
+  gold_files: n=2
+    - requests/models.py
+    - requests/tests/test_requests.py
+  pred_files: n=3
+    - requests/_internal_utils.py
+    - requests/models.py
+    - requests/utils.py
+  hit_files: n=1
+    - requests/models.py
+  gold_symbols: n=2
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@11974-15164
+  pred_symbols: n=19
+    - requests/_internal_utils.py:function_definition@254-719
+    - requests/_internal_utils.py:function_definition@722-1095
+    - requests/models.py:class_definition@2001-5709
+    - requests/models.py:class_definition@6460-9063
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@10361-11077
+    - requests/models.py:function_definition@11164-11516
+    - requests/models.py:function_definition@11522-11730
+    - requests/models.py:function_definition@11754-11968
+    - requests/models.py:function_definition@11974-15164
+    - requests/models.py:function_definition@15170-15564
+    - requests/models.py:function_definition@15570-18260
+    - requests/models.py:function_definition@18938-19666
+    - requests/models.py:function_definition@19672-20555
+    - requests/models.py:function_definition@2055-2388
+    - requests/models.py:function_definition@2412-3400
+    - requests/models.py:function_definition@8564-9063
+    - requests/utils.py:function_definition@20205-21025
+    - requests/utils.py:function_definition@31874-32265
+  hit_symbols: n=2
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@11974-15164
+
+[5/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__88e1ffd3
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 22623bd8c265...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/22623bd8c265b78b161542663ee980738441c307
+  Parsing trajectory
+  Extracted: 1 steps, final has 3 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__88e1ffd3
+  gold_files: n=1
+    - requests/models.py
+  pred_files: n=3
+    - requests/models.py
+    - requests/packages/urllib3/filepost.py
+    - requests/utils.py
+  hit_files: n=1
+    - requests/models.py
+  gold_symbols: n=4
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+  pred_symbols: n=19
+    - requests/models.py:class_definition@1048-3964
+    - requests/models.py:class_definition@13542-20788
+    - requests/models.py:class_definition@4610-7169
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10059-10281
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+    - requests/models.py:function_definition@12947-13382
+    - requests/models.py:function_definition@13686-14903
+    - requests/models.py:function_definition@1459-2447
+    - requests/models.py:function_definition@2471-3964
+    - requests/models.py:function_definition@5554-6426
+    - requests/models.py:function_definition@6505-7169
+    - requests/models.py:function_definition@7707-8102
+    - requests/models.py:function_definition@8189-8379
+    - requests/models.py:function_definition@8385-10053
+    - requests/packages/urllib3/filepost.py:function_definition@888-3046
+    - requests/utils.py:function_definition@810-999
+  hit_symbols: n=4
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+
+[6/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__9cca0774
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 091991be0da1...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/091991be0da19de9108dbe5e3752917fea3d7fdc
+  Parsing trajectory
+  Extracted: 1 steps, final has 3 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__9cca0774
+  gold_files: n=3
+    - requests/compat.py
+    - requests/sessions.py
+    - requests/utils.py
+  pred_files: n=3
+    - requests/api.py
+    - requests/sessions.py
+    - test_requests.py
+  hit_files: n=1
+    - requests/sessions.py
+  gold_symbols: n=5
+    - requests/sessions.py:class_definition@2664-9094
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@13009-16041
+    - requests/sessions.py:function_definition@2704-6765
+    - requests/utils.py:function_definition@19473-19959
+  pred_symbols: n=17
+    - requests/api.py:function_definition@217-2200
+    - requests/api.py:function_definition@3146-3647
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@11515-13003
+    - requests/sessions.py:function_definition@13009-16041
+    - requests/sessions.py:function_definition@16047-16388
+    - requests/sessions.py:function_definition@16394-16747
+    - requests/sessions.py:function_definition@16753-17098
+    - requests/sessions.py:function_definition@17104-17639
+    - requests/sessions.py:function_definition@17645-18073
+    - requests/sessions.py:function_definition@18079-18514
+    - requests/sessions.py:function_definition@18520-18819
+    - requests/sessions.py:function_definition@18825-21561
+    - requests/sessions.py:function_definition@21567-22597
+    - requests/sessions.py:function_definition@9586-11410
+    - test_requests.py:class_definition@1506-34852
+    - test_requests.py:function_definition@8400-8764
+  hit_symbols: n=2
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@13009-16041
+
+[7/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__e989ba2d
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 0192aac24123...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/0192aac24123735b3eaf9b08df46429bb770c283
+  Parsing trajectory
+  Extracted: 1 steps, final has 3 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__e989ba2d
+  gold_files: n=3
+    - requests/adapters.py
+    - requests/utils.py
+    - tests/test_utils.py
+  pred_files: n=3
+    - requests/adapters.py
+    - requests/models.py
+    - requests/utils.py
+  hit_files: n=2
+    - requests/adapters.py
+    - requests/utils.py
+  gold_symbols: n=6
+    - requests/adapters.py:class_definition@3174-21644
+    - requests/adapters.py:function_definition@11626-12760
+    - requests/adapters.py:function_definition@14827-15656
+    - requests/utils.py:function_definition@29980-30836
+    - requests/utils.py:function_definition@32090-32481
+    - tests/test_utils.py:function_definition@19405-19519
+  pred_symbols: n=17
+    - requests/adapters.py:class_definition@3174-21644
+    - requests/adapters.py:function_definition@11626-12760
+    - requests/models.py:class_definition@9066-20925
+    - requests/models.py:function_definition@11974-15172
+    - requests/utils.py:function_definition@23241-25418
+    - requests/utils.py:function_definition@25421-25651
+    - requests/utils.py:function_definition@25654-26339
+    - requests/utils.py:function_definition@26342-27320
+    - requests/utils.py:function_definition@27323-27501
+    - requests/utils.py:function_definition@27504-27791
+    - requests/utils.py:function_definition@27794-28626
+    - requests/utils.py:function_definition@28805-29977
+    - requests/utils.py:function_definition@29980-30836
+    - requests/utils.py:function_definition@30839-31186
+    - requests/utils.py:function_definition@31367-32087
+    - requests/utils.py:function_definition@32090-32481
+    - requests/utils.py:function_definition@6024-7873
+  hit_symbols: n=4
+    - requests/adapters.py:class_definition@3174-21644
+    - requests/adapters.py:function_definition@11626-12760
+    - requests/utils.py:function_definition@29980-30836
+    - requests/utils.py:function_definition@32090-32481
+
+
+======================================================================
+EVALUATION: 7/7 instances
+======================================================================
+file     Coverage=0.692 Precision=0.391
+         AUC=0.786 Redundancy=0.000
+symbol   Coverage=0.821 Precision=0.173
+         AUC=0.867 Redundancy=0.000
+span     Coverage=0.710 Precision=0.116
+         AUC=0.810 Redundancy=0.000
+line     Coverage=0.696 Precision=0.119
+         AUC=0.766 Redundancy=0.000
+
+EditLoc: Recall=0.014 Precision=1.000
+======================================================================
+
+Results written to /tmp/opencode/cb_run_fast/eval_seeds_plus_retrieved.jsonl

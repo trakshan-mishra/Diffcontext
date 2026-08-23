@@ -34,7 +34,7 @@ diffcontext_state.json
 benchmark_repos/
 benchmarks/results/
 benchmarks/downstream/results/
-benchmark_results.json
+ benchmark_results.json
 DiffContext_Status_Summary.pdf
 sweep.log
 
@@ -50,6 +50,7 @@ benchmarks/semantic/audit/*.csv
 # Private working notes — call prep, positioning, application drafts.
 # Never publish these.
 writing/
+notes/
 
 # Local editor/agent configuration.
 .claude/
