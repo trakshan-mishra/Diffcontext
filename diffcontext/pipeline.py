@@ -585,6 +585,8 @@ def _blend_hybrid(
     adaptive: bool = True,
     history_scores: Optional[Dict[str, float]] = None,
     history_weight: float = 0.15,
+    query_text: Optional[str] = None,
+    query_weight: float = 0.0,
 ) -> Dict[str, float]:
     """
     Blend graph impact scores with BM25 and same-file signals.
@@ -605,6 +607,16 @@ def _blend_hybrid(
     file that historically co-changed with the changed files gets
     `history_weight * association` added — the only signal that can reach
     co-change partners with no structural or lexical connection at all.
+
+    `query_text` (the bug report / issue text / task description) is an
+    optional fifth signal: BM25 scores the query text against every
+    symbol's source code, and `query_weight * normalized_score` is added
+    to each candidate. This is the one signal that ranks by relevance to
+    the *described problem* rather than structural nearness to the changed
+    symbols — the "thematic siblings" blind spot the graph alone cannot
+    address. Default query_weight=0.0 = no effect (backwards compatible).
+    When query_weight > 0, symbols matching the problem description get a
+    boost even with no call-graph or same-file connection.
     """
     from .lexical import get_lexical_index
 
@@ -630,6 +642,18 @@ def _blend_hybrid(
                 lex_raw[sid] = sc
     lex_norm = _normalize_scores(lex_raw)
 
+    # Query-text BM25: rank symbols by relevance to the described problem.
+    # This is the one signal that doesn't derive from the changed symbols
+    # at all — it reaches symbols semantically related to the bug report
+    # even with no structural or lexical connection to the changed code.
+    query_norm: Dict[str, float] = {}
+    if query_text and query_weight > 0:
+        query_raw: Dict[str, float] = {}
+        for sid, sc in lexical_index.scores_for(query_text).items():
+            if sid not in changed_set and sc > query_raw.get(sid, 0.0):
+                query_raw[sid] = sc
+        query_norm = _normalize_scores(query_raw)
+
     changed_files = {s.split(":")[0] for s in changed_in_index}
 
     history_files = {
@@ -647,6 +671,8 @@ def _blend_hybrid(
             sid for sid in index.symbols
             if sid.split(":")[0] in history_files and sid not in changed_set
         )
+    if query_norm:
+        candidates.update(query_norm.keys())
     for sid in candidates:
         score = w_graph * graph_norm.get(sid, 0.0) + w_lex * lex_norm.get(sid, 0.0)
         sid_file = sid.split(":")[0]
@@ -654,6 +680,8 @@ def _blend_hybrid(
             score += w_file
         if history_scores:
             score += history_weight * history_scores.get(sid_file, 0.0)
+        if query_norm:
+            score += query_weight * query_norm.get(sid, 0.0)
         blended[sid] = 100.0 * score
 
     # Changed symbols keep their unblended score so they stay ranked on top.
@@ -712,6 +740,8 @@ def analyze_impact(
     hybrid: bool = True,
     adaptive: bool = True,
     history: Optional[object] = None,
+    query_text: Optional[str] = None,
+    query_weight: float = 0.0,
 ) -> ImpactResult:
     """
     Phase 2: Given changed symbols, compute blast radius and impact scores.
@@ -729,6 +759,16 @@ def analyze_impact(
         co-change association is blended as a fourth signal — the only
         signal that can reach co-change partners with no structural or
         lexical connection (the measured cross-subsystem ceiling).
+    query_text: the bug report / issue text / task description. When given
+        with query_weight > 0, BM25 scores the query text against every
+        symbol's source code and adds query_weight * normalized_score to
+        each candidate. This is the one signal that ranks by relevance to
+        the *described problem* rather than structural nearness — the
+        "thematic siblings" blind spot. Default query_weight=0.0 = no
+        effect (backwards compatible).
+    query_weight: weight for the query_text signal (default 0.0 = off).
+        When > 0, symbols matching the problem description get a boost
+        even with no call-graph or same-file connection.
 
     Fix: expanded_deps is now passed into compute_impact_scores so those
     nodes are actually scored. Previously they were computed and discarded.
@@ -774,6 +814,7 @@ def analyze_impact(
         scores = _blend_hybrid(
             index, changed_symbols, scores,
             adaptive=adaptive, history_scores=history_scores,
+            query_text=query_text, query_weight=query_weight,
         )
 
     return ImpactResult(
@@ -836,9 +877,7 @@ def compile(
                         manifest, graph confidence, warnings), "compact"
                         (counts + dropped top-3 only — ~60% smaller, keeps
                         warnings), "off" (no meta-header, just code). The
-                        A/B test showed full meta costs ~10pp pass@1 at 4000
-                        tokens by displacing code; compact is the measured
-                        middle ground.
+                        pass@1 effect of meta level is UNMEASURED.
     """
     # Apply dependency-type boost BEFORE selection (the key experiment).
     # Boosts direct callees, callers, and siblings of changed symbols so

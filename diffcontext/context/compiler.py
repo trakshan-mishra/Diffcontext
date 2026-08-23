@@ -167,11 +167,9 @@ def compile_context(
                         compacted so meta can't dwarf the code it annotates.
         meta:           Disclosure level: "full" (default — counts, architecture
                         snapshot, dropped manifest, graph confidence, warnings),
-                        "compact" (counts + dropped top-3 only — ~60% smaller),
-                        "off" (no meta-header at all, just code sections). The
-                        A/B test showed full meta costs ~10pp pass@1 at 4000
-                        tokens by displacing code; "compact" is the measured
-                        middle ground.
+                        "compact" (counts + dropped top-3 only — ~60% smaller,
+                        keeps warnings), "off" (no meta-header, just code). The
+                        pass@1 effect of meta level is UNMEASURED.
     """
     dropped_ids   = dropped_ids   or []
     skipped_files = skipped_files or []
@@ -421,9 +419,8 @@ def _build_meta_header(
 
     # --- Repository Architecture Snapshot ---
     # Skipped entirely in compact mode — it's the largest meta component
-    # (per-module listing + docstrings), and the A/B test showed meta
-    # displaces code under tight budgets. Compact keeps counts + dropped
-    # top-3 only.
+    # (per-module listing + docstrings). Compact keeps counts + dropped
+    # top-3 only. The pass@1 effect of meta level is UNMEASURED.
     if not compact:
         # Build rel_file -> absolute_path mapping from symbol table.
         # sym_id gives us relative path; sym.file gives us the absolute path we

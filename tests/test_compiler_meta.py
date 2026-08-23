@@ -210,8 +210,7 @@ class TestDocstringCache:
 
 class TestMetaLevels:
     """The --meta full|compact|off flag controls the disclosure header's
-    budget cost. The A/B test showed full meta costs ~10pp pass@1 at 4000
-    tokens by displacing code; compact is the measured middle ground."""
+    budget cost. The pass@1 effect of meta level is UNMEASURED."""
 
     def _make_pkg(self, meta=None):
         symbols = _make_symbols()
