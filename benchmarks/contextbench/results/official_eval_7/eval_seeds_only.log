@@ -1,0 +1,227 @@
+Indexing gold contexts
+  2272 instance IDs indexed
+Loading predictions
+  7 trajectories loaded
+
+[1/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__2e76c8cd
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/flask
+  Commit: 7ee9ceb71e86...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__flask/7ee9ceb71e868944a46e1ff00b506772a53a4f1d
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__2e76c8cd
+  gold_files: n=1
+    - src/flask/blueprints.py
+  pred_files: n=1
+    - src/flask/blueprints.py
+  hit_files: n=1
+    - src/flask/blueprints.py
+  gold_symbols: n=2
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@6979-8206
+  pred_symbols: n=2
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@6979-8206
+  hit_symbols: n=2
+    - src/flask/blueprints.py:class_definition@4371-24355
+    - src/flask/blueprints.py:function_definition@6979-8206
+
+[2/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__07f7e78f
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 847735553aed...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/847735553aeda6e6633f2b32e14ba14ba86887a4
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__07f7e78f
+  gold_files: n=1
+    - requests/auth.py
+  pred_files: n=1
+    - requests/auth.py
+  hit_files: n=1
+    - requests/auth.py
+  gold_symbols: n=4
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+  pred_symbols: n=4
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+  hit_symbols: n=4
+    - requests/auth.py:class_definition@1405-6062
+    - requests/auth.py:function_definition@1732-4460
+    - requests/auth.py:function_definition@2231-2378
+    - requests/auth.py:function_definition@2458-2606
+
+[3/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__1fdd9275
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 5f7a3a74aab1...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/5f7a3a74aab1625c2bb65f643197ee885e3da576
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__1fdd9275
+  gold_files: n=2
+    - requests/models.py
+    - requests/utils.py
+  pred_files: n=1
+    - requests/models.py
+  hit_files: n=1
+    - requests/models.py
+  gold_symbols: n=5
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@2028-3034
+    - requests/utils.py:function_definition@20765-21251
+  pred_symbols: n=4
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@2028-3034
+  hit_symbols: n=4
+    - requests/models.py:class_definition@1617-5063
+    - requests/models.py:class_definition@8275-17831
+    - requests/models.py:function_definition@10673-13256
+    - requests/models.py:function_definition@2028-3034
+
+[4/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__23963510
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 39d0fdd9096f...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/39d0fdd9096f7dceccbc8f82e1eda7dd64717a8e
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__23963510
+  gold_files: n=2
+    - requests/models.py
+    - requests/tests/test_requests.py
+  pred_files: n=1
+    - requests/models.py
+  hit_files: n=1
+    - requests/models.py
+  gold_symbols: n=2
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@11974-15164
+  pred_symbols: n=2
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@11974-15164
+  hit_symbols: n=2
+    - requests/models.py:class_definition@9066-20917
+    - requests/models.py:function_definition@11974-15164
+
+[5/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__88e1ffd3
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 22623bd8c265...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/22623bd8c265b78b161542663ee980738441c307
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__88e1ffd3
+  gold_files: n=1
+    - requests/models.py
+  pred_files: n=1
+    - requests/models.py
+  hit_files: n=1
+    - requests/models.py
+  gold_symbols: n=4
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+  pred_symbols: n=4
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+  hit_symbols: n=4
+    - requests/models.py:class_definition@7172-13539
+    - requests/models.py:function_definition@10287-12065
+    - requests/models.py:function_definition@12071-12424
+    - requests/models.py:function_definition@12430-12941
+
+[6/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__9cca0774
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 091991be0da1...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/091991be0da19de9108dbe5e3752917fea3d7fdc
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__9cca0774
+  gold_files: n=3
+    - requests/compat.py
+    - requests/sessions.py
+    - requests/utils.py
+  pred_files: n=1
+    - requests/sessions.py
+  hit_files: n=1
+    - requests/sessions.py
+  gold_symbols: n=5
+    - requests/sessions.py:class_definition@2664-9094
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@13009-16041
+    - requests/sessions.py:function_definition@2704-6765
+    - requests/utils.py:function_definition@19473-19959
+  pred_symbols: n=2
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@13009-16041
+  hit_symbols: n=2
+    - requests/sessions.py:class_definition@9097-23690
+    - requests/sessions.py:function_definition@13009-16041
+
+[7/7] Evaluating SWE-Bench-Verified__python__maintenance__bugfix__e989ba2d
+  Setting up repository
+  Repo: /home/trakshan/temporary/titanic.csv/diff/Diffcontext/benchmark_repos/requests
+  Commit: 0192aac24123...
+  Checkout ready: /tmp/contextbench_worktrees/__home__trakshan__temporary__titanic.csv__diff__Diffcontext__benchmark_repos__requests/0192aac24123735b3eaf9b08df46429bb770c283
+  Parsing trajectory
+  Extracted: 1 steps, final has 1 files
+DETAILS:
+instance_id=SWE-Bench-Verified__python__maintenance__bugfix__e989ba2d
+  gold_files: n=3
+    - requests/adapters.py
+    - requests/utils.py
+    - tests/test_utils.py
+  pred_files: n=1
+    - requests/utils.py
+  hit_files: n=1
+    - requests/utils.py
+  gold_symbols: n=6
+    - requests/adapters.py:class_definition@3174-21644
+    - requests/adapters.py:function_definition@11626-12760
+    - requests/adapters.py:function_definition@14827-15656
+    - requests/utils.py:function_definition@29980-30836
+    - requests/utils.py:function_definition@32090-32481
+    - tests/test_utils.py:function_definition@19405-19519
+  pred_symbols: n=1
+    - requests/utils.py:function_definition@29980-30836
+  hit_symbols: n=1
+    - requests/utils.py:function_definition@29980-30836
+
+
+======================================================================
+EVALUATION: 7/7 instances
+======================================================================
+file     Coverage=0.538 Precision=1.000
+         AUC=0.667 Redundancy=0.000
+symbol   Coverage=0.679 Precision=1.000
+         AUC=0.767 Redundancy=0.000
+span     Coverage=0.590 Precision=0.576
+         AUC=0.716 Redundancy=0.000
+line     Coverage=0.576 Precision=0.578
+         AUC=0.665 Redundancy=0.000
+
+EditLoc: Recall=0.014 Precision=1.000
+======================================================================
+
+Results written to /tmp/opencode/cb_run_fast/eval_seeds_only.jsonl
