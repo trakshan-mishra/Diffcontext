@@ -1,47 +1,91 @@
 # DiffContext
 
-**Find the code that matters for a change, and fit it into an LLM's context
-window — automatically.**
+**Show an AI coding assistant only the code that matters for the change it is
+making.**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue)](https://www.python.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/trakshan-mishra/Diffcontext/test.yml?branch=main)](https://github.com/trakshan-mishra/Diffcontext/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Not on PyPI — install from source: `pip install -e .`
+DiffContext is a **context compiler for LLM coding agents**. Give it a Python
+repository and a change — a git diff, a branch, or a single function name —
+and it returns the small set of functions the model actually needs to make
+that change safely: the callers that will break, the subclasses that override
+it, the tests that cover it. It fits them to whatever token budget you have,
+and it tells the model what it had to leave out.
 
-**Context roughly quadruples pass@1**: 5.5% → 25.8% on 128 ContextBench
-Python tasks, judged by each repo's own test suite. Exact McNemar
-p < 0.0001. The three context variants (default / gap / depboost) are
-statistically indistinguishable (p = 0.36–0.81). Full results:
-[`benchmarks/contextbench/RESULTS.md`](benchmarks/contextbench/RESULTS.md).
+It is built for people wiring LLMs into real codebases — agent loops, PR
+review bots, CI checks — anywhere you have to decide what goes in the prompt
+and the repository is far too large to send.
+
+## The problem
+
+Ask an assistant to change one function in a 50,000-line project and you have
+three bad options: paste the whole repository (it does not fit, and models get
+worse in very large contexts), paste just that one function (the model breaks
+three callers it never saw), or grep for the name (grep cannot find the
+subclass that overrides it, or the handler that receives it through
+`functools.partial` — we measured grep's recall *plateauing* no matter how
+much budget you give it).
+
+DiffContext is the fourth option. Parse the repository once into a real
+dependency graph, then for any change select the few functions that actually
+matter and pack them into the smallest useful prompt.
 
 ```
 git change ──► changed functions ──► hybrid retrieval ──► token budget ──► LLM-ready context
                                       graph ∪ BM25 ∪ file      top-k + tokens
 ```
 
-- Zero runtime dependencies, Python 3.9+
-- **1.5–2.7× the recall of grep depending on token budget** on real co-change
-  ground truth — at ~5-10% precision ([measured](docs/BENCHMARKS.md))
-- Benchmarked on **701 real commits** across **9 Python repositories**;
-  retrieval quality is **CI-gated** on every push
-- Output is **honest by construction**: a meta header discloses exactly
-  which symbols were dropped, so the model knows what it cannot see
-- Python fully supported; TypeScript/JavaScript (ESM) is a prototype via
-  `[typescript]` extra ([per-style results](docs/LANG_ADAPTERS.md))
+## Does it make the model better?
+
+Yes — measured end to end, not by proxy. On 128 ContextBench Python tasks
+judged by each repository's own test suite (no LLM-as-judge), **context
+roughly quadruples pass@1: 5.5% → 25.8%**, exact McNemar p < 0.0001.
+
+The honest companion: the three context variants (default / gap / depboost)
+are statistically **indistinguishable** from each other, p = 0.36–0.81. The
+win is context versus no context — not this selector versus that one. Full
+results: [`benchmarks/contextbench/RESULTS.md`](benchmarks/contextbench/RESULTS.md).
+
+## Install
+
+Not yet on PyPI — install from source:
+
+```bash
+git clone https://github.com/trakshan-mishra/Diffcontext.git
+cd Diffcontext && pip install -e .
+```
+
+Zero runtime dependencies, Python 3.9+.
 
 ## Quick start
 
 ```bash
-pip install -e .
-diffcontext index /path/to/project
+diffcontext index /path/to/project              # cold: seconds; warm: ~0.02s
 diffcontext compile --ref HEAD~1 --max-tokens 8000
 diffcontext verify --from-history 20 --calibrate
 ```
 
 More commands: [USAGE.md](USAGE.md). Production recipes: [docs/USE_CASES.md](docs/USE_CASES.md).
 
-## Does it actually work? (measured, not claimed)
+## What this is not
+
+- **Not a code generator.** It selects and packs context; the model writes
+  the code.
+- **Not precision-first.** It casts a wide net — mean precision is under 0.1
+  at the default top-k. Use `--cutoff gap` if you pay per token.
+- **Not multi-language yet.** Python is fully supported. TypeScript/JS (ESM)
+  is a working prototype; CommonJS is a measured failure mode.
+- **Not a replacement for reading the code.** Static analysis has blind spots,
+  itemized below and in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+## Retrieval quality (measured, not claimed)
+
+Ground truth is mined from git history — *a developer changed these functions
+together in one commit; shown one, does the tool find the others?* Measured on
+**701 real commits across 9 Python repositories**, and re-run as a CI gate on
+every push so quality cannot silently regress.
 
 Per-commit hit / recall of real co-change partners, hybrid retrieval:
 
