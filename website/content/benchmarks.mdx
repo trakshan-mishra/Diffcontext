@@ -40,14 +40,14 @@ Independent validation on repos **never used for tuning or weight selection** (f
 - **starlette**: hit 0.929 / recall 0.776
 
 <Callout type="warning">
-  The flip side of that recall: cross-repo mean **precision is under 0.1** at the default top-k selection — roughly 90%+ of retrieved symbols are not in the ground-truth co-change set (and GT-adjusting for incomplete ground truth still leaves it under 0.15 everywhere). They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision — not recall — is this product's real problem. The measured lever is `--cutoff gap`: roughly **4× the precision of top-20 at 6–9 retrieved symbols**, costing ~30% relative recall.
+  The flip side of that recall: cross-repo mean **precision is under 0.1** at the default top-k selection — roughly 90%+ of retrieved symbols are not in the ground-truth co-change set (and GT-adjusting for incomplete ground truth still leaves it under 0.15 everywhere). They're mostly structurally adjacent supporting context (callers, callees, same-file siblings), which is often what you want an LLM to see, but if you're paying per token, precision — not recall — is this product's real problem. The measured lever is `--cutoff gap`: roughly **4× the precision of top-20 at 6–9 retrieved symbols on the co-change benchmark (2.2× on ContextBench)**, costing ~30% relative recall on the co-change benchmark (~14% on ContextBench).
 </Callout>
 
 ## Head-to-Head vs grep, at Identical Token Budgets
 
 The question that actually matters for an agent loop: _given the same context window, does this beat what a developer does by hand?_
 
-30 real co-change queries from black's history; recall of the true co-change partners inside the packed window:
+30 real co-change queries from black's history (n=30, no confidence interval — small sample; the 2.7× headline is the most-quoted number in this project and rests on the thinnest sampling). Recall of the true co-change partners inside the packed window:
 
 | Token budget | grep-packing | DiffContext | Improvement |
 |---|---|---|---|
@@ -93,6 +93,43 @@ diffcontext verify --from-history 20 --calibrate
 ```
 
 See [Verify](/docs/verify) for the full methodology.
+
+## Downstream: Does Better Context Improve LLM Task Outcomes?
+
+Yes — **context roughly quadruples pass@1**. Measured on 128 ContextBench
+Python tasks (django, requests, flask), judged by each repo's own test
+suite (Django `runtests.py`; pytest for requests/flask). No LLM-as-judge.
+
+| Variant | Passed | Pass@1 | 95% Wilson CI |
+|---|---:|---:|---|
+| none (no context) | 7 | **5.5%** | [0.027, 0.109] |
+| diffcontext (default) | 28 | **21.9%** | [0.156, 0.298] |
+| diffcontext_gap | 33 | **25.8%** | [0.190, 0.340] |
+| diffcontext_depboost | 30 | **23.4%** | [0.169, 0.315] |
+
+Exact McNemar, context vs no-context (all arms p < 0.0001):
+
+| Pair | Both pass | A only | B only | Neither | p |
+|---|---:|---:|---:|---:|---:|
+| none vs diffcontext | 5 | 2 | 23 | 98 | **0.00002** *** |
+| none vs gap | 5 | 2 | 28 | 93 | **0.0000009** *** |
+| none vs depboost | 4 | 3 | 26 | 95 | **0.00002** *** |
+
+The honest companion: the three context variants are **statistically
+indistinguishable** from each other. Their Wilson CIs overlap almost
+completely, and exact McNemar gives p = 0.36 / 0.81 / 0.65 for
+diffcontext vs gap, diffcontext vs depboost, and gap vs depboost
+respectively. Only ~19 of 128 tasks are discordant on any
+context-variant pair — the benchmark is underpowered to resolve a 3pp
+difference, and more seeds will not help (the limit is discordant-pair
+count, not run-to-run noise).
+
+Conditioning on successful patch application (the model produced a
+diff that `git apply` accepted), pass rate rises from **22%** (no
+context) to **42%** (with context): context halves the rate at which the
+model hallucinates code structure and produces a malformed patch.
+
+Full methodology, provenance, and reproduction: [`benchmarks/contextbench/RESULTS.md`](https://github.com/anomalyco/Diffcontext/blob/main/benchmarks/contextbench/RESULTS.md). Every number is regenerated from JSONL by `verify_results.py`.
 
 ## Known Limitations
 

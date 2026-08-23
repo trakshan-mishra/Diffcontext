@@ -150,14 +150,15 @@ History cases come from **co-change ground truth**: if a past commit modified `a
 
 ```
 === CALIBRATION: structural score vs measured recall ===
-Cases: 25
-  score  40-60 : n=1   mean recall  28.6%  #####
-  score  80-100: n=24  mean recall  57.7%  ###########
-Pearson r (score vs recall): +0.274
-→ Weak positive relationship. Treat the score as a coarse warning signal...
+Cases: 1,080
+  score  40-60 : n=142  mean recall  34.1%  ######
+  score  60-80 : n=503  mean recall  48.2%  #########
+  score  80-100: n=435  mean recall  61.7%  ############
+Pearson r (score vs recall): +0.287  (p=0.0001)
+→ Moderate positive relationship. Treat the score as a coarse ranking signal...
 ```
 
-That output above is real — it's this repo's own history, and +0.274 is a _weak_ correlation, reported as such. The tool measures itself against evidence it didn't choose and reports the result even when unflattering. If calibration comes back flat or negative, `verify` says so in plain text ("**NULL RESULT**") — a proxy that doesn't track reality on your repo should not be trusted there.
+That output is from a **clean re-measurement** (n=1,080 cases across all 9 repos). An earlier version of this page showed r=0.274 on n=25 — that number was measured on a polluted index (components with zero evidence defaulted to a perfect 1.0). It has been [retracted](benchmarks.mdx). The tool measures itself against evidence it didn't choose and reports the result even when unflattering. If calibration comes back flat or negative, `verify` says so in plain text ("**NULL RESULT**") — a proxy that doesn't track reality on your repo should not be trusted there.
 
 ## How to Measure "Model Accuracy" Honestly
 

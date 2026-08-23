@@ -27,9 +27,12 @@ from collections import Counter, defaultdict
 from typing import Dict, List, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE))  # for stats.py import
+
+from stats import wilson_interval, mcnemar_exact, paired_table
 
 VARIANTS = ("seeds_only", "retrieved_only", "seeds_plus_retrieved",
-            "diffcontext_gap")
+            "diffcontext_gap", "diffcontext_depboost")
 
 
 # ── retrieval metrics ──────────────────────────────────────────────────────
@@ -174,7 +177,7 @@ def retrieval_report(rows: List[dict]) -> dict:
 
 # ── pass@1 metrics ─────────────────────────────────────────────────────────
 
-PASS1_VARIANTS = ("none", "diffcontext", "diffcontext_gap")
+PASS1_VARIANTS = ("none", "diffcontext", "diffcontext_gap", "diffcontext_depboost")
 
 
 def load_pass1(path: str) -> List[dict]:
@@ -216,39 +219,37 @@ def pass1_report(rows: List[dict]) -> dict:
         test_fail = sum(1 for r in vr if r.get("passed") is False
                         and r.get("error_class") not in non_evaluable)
         n_total = len(vr)
+        lo, hi = wilson_interval(passed, attempted) if attempted else (float("nan"), float("nan"))
         out["variants"][v] = {
             "n_total": n_total, "passed": passed, "attempted": attempted,
             "pass_rate_of_attempted": passed / attempted if attempted else float("nan"),
             "pass_rate_of_total": passed / n_total if n_total else float("nan"),
+            "wilson_ci": (lo, hi),
             "no_seeds": no_seeds, "setup_error": setup_err,
             "gen_error": gen_err, "apply_error": apply_err,
             "test_fail": test_fail,
         }
-    # Paired pass@1: on tasks where both variants were attempted (gen ran),
-    # did gap differ from default / none?
-    def attempted_pairs(va, vb):
-        by_id = defaultdict(dict)
-        for r in rows:
-            if r.get("error_class") in non_evaluable:
-                continue
-            by_id[r["instance_id"]][r.get("variant")] = r
-        pairs = []
-        for iid, vd in by_id.items():
-            if va in vd and vb in vd:
-                pairs.append((vd[va].get("passed") is True, vd[vb].get("passed") is True))
-        return pairs
-    for va, vb in (("diffcontext_gap", "diffcontext"),
-                   ("diffcontext", "none"), ("diffcontext_gap", "none")):
-        pairs = attempted_pairs(va, vb)
-        if not pairs:
-            continue
-        both = sum(1 for a, b in pairs if a and b)
-        a_only = sum(1 for a, b in pairs if a and not b)
-        b_only = sum(1 for a, b in pairs if not a and b)
-        neither = sum(1 for a, b in pairs if not a and not b)
+    # Paired pass@1 with exact McNemar tests — all 6 pairwise comparisons.
+    result_maps = {}
+    for v in PASS1_VARIANTS:
+        result_maps[v] = {r["instance_id"]: r.get("passed") is True
+                          for r in rows
+                          if r.get("variant") == v and r.get("error_class") not in non_evaluable}
+
+    for va, vb in (("diffcontext_gap", "diffcontext_depboost"),
+                   ("diffcontext_gap", "diffcontext"),
+                   ("diffcontext_depboost", "diffcontext"),
+                   ("diffcontext", "none"),
+                   ("diffcontext_gap", "none"),
+                   ("diffcontext_depboost", "none")):
+        both, a_only, b_only, neither = paired_table(
+            result_maps.get(va, {}), result_maps.get(vb, {}),
+        )
+        p_val = mcnemar_exact(a_only, b_only)
         out.setdefault("paired_pass1", {})[f"{va}_vs_{vb}"] = {
-            "n_pairs": len(pairs),
-            "both_pass": both, "a_only": a_only, "b_only": b_only, "neither": neither,
+            "n_pairs": both + a_only + b_only + neither,
+            "both_pass": both, "a_only": a_only, "b_only": b_only,
+            "neither": neither, "mcnemar_p": p_val,
         }
     # contamination guard: every row should have head_sha + tree_status
     missing_prov = sum(1 for r in rows
@@ -309,7 +310,7 @@ def print_report(rtr: dict, p1: dict, args):
                          for v in VARIANTS)
         print(line)
 
-    print(f"\n## Pass@1 (glm_pass1_full.jsonl)")
+    print(f"\n## Pass@1 ({os.path.basename(args.pass1)})")
     print(f"  rows: {p1['n_rows']}")
     if p1.get("note"):
         print(f"  NOTE: {p1['note']}")
@@ -317,22 +318,30 @@ def print_report(rtr: dict, p1: dict, args):
         print(f"  WARNING duplicate (iid,variant) pairs: {p1['duplicate_pairs']}")
     if p1.get("missing_provenance_rows"):
         print(f"  WARNING rows missing provenance: {p1['missing_provenance_rows']}")
-    print(f"\n  {'variant':<18} {'passed':>7} {'attempted':>9} {'pass@1':>7} "
-          f"{'no_seed':>7} {'setup':>5} {'gen':>4} {'apply':>5} {'testfail':>8}")
-    print("  " + "-" * 78)
+    print(f"\n  {'variant':<22} {'passed':>7} {'attempted':>9} {'pass@1':>7} "
+          f"{'95% Wilson CI':>16} {'no_seed':>7} {'gen':>4} {'apply':>5} {'testfail':>8}")
+    print("  " + "-" * 92)
     for v in PASS1_VARIANTS:
         if v not in p1["variants"]:
             continue
         d = p1["variants"][v]
-        print(f"  {v:<18} {d['passed']:>7} {d['attempted']:>9} "
-              f"{fmt_pct(d['pass_rate_of_attempted']):>7} {d['no_seeds']:>7} "
-              f"{d['setup_error']:>5} {d['gen_error']:>4} {d['apply_error']:>5} "
+        lo, hi = d.get("wilson_ci", (float("nan"), float("nan")))
+        ci = f"[{lo:.3f}, {hi:.3f}]" if lo == lo else "—"
+        print(f"  {v:<22} {d['passed']:>7} {d['attempted']:>9} "
+              f"{fmt_pct(d['pass_rate_of_attempted']):>7} {ci:>16} "
+              f"{d['no_seeds']:>7} {d['gen_error']:>4} {d['apply_error']:>5} "
               f"{d['test_fail']:>8}")
     if "paired_pass1" in p1:
-        print(f"\n  paired pass@1 (attempted tasks only):")
+        print(f"\n  paired pass@1 (exact McNemar, attempted tasks only):")
         for k, d in p1["paired_pass1"].items():
+            sig = ""
+            p = d.get("mcnemar_p", 1.0)
+            if p < 0.001: sig = " ***"
+            elif p < 0.01: sig = " **"
+            elif p < 0.05: sig = " *"
             print(f"    {k}: n={d['n_pairs']} both={d['both_pass']} "
-                  f"a_only={d['a_only']} b_only={d['b_only']} neither={d['neither']}")
+                  f"a_only={d['a_only']} b_only={d['b_only']} "
+                  f"neither={d['neither']} p={p:.4g}{sig}")
     print("\n" + "=" * 72)
     print("Every number above is computed from JSONL. Paste into RESULTS.md.")
     print("=" * 72)
@@ -341,10 +350,10 @@ def print_report(rtr: dict, p1: dict, args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--retrieval-dir",
-                   default=os.path.join(HERE, "results", "retrieval_136_4var"))
+                    default=os.path.join(HERE, "results", "retrieval_136_5var"))
     ap.add_argument("--pass1",
-                   default=os.path.join(HERE, "results", "glm_pass1",
-                                       "glm_pass1_full.jsonl"))
+                    default=os.path.join(HERE, "results", "glm_pass1",
+                                        "glm_pass1_depboost.jsonl"))
     args = ap.parse_args()
     summary_path = os.path.join(args.retrieval_dir, "summary.json")
     rows = load_summary(summary_path)
