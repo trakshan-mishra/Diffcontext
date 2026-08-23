@@ -45,6 +45,14 @@ pip install diffcontext
 
 Zero runtime dependencies, Python 3.9+.
 
+For MCP integration (Claude Code / Cursor / Windsurf):
+
+```bash
+pip install "diffcontext[mcp]"
+```
+
+See [docs/MCP.md](docs/MCP.md) for the server config.
+
 From source for development:
 
 ```bash
@@ -176,6 +184,7 @@ dispatch are measured blind spots — itemized in
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, agent API
 - [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — all numbers, downstream pass@1, limitations
+- [docs/MCP.md](docs/MCP.md) — MCP server for Claude Code / Cursor / Windsurf
 - [docs/ROADMAP.md](docs/ROADMAP.md) — prioritized plan with measured motivations
 - [diffcontext-service/](diffcontext-service/) — FastAPI service + web UI
 - [observability/](observability/) — retrieval pipeline tracing
