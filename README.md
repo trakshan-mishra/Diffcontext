@@ -9,12 +9,12 @@ git change ──► changed functions ──► hybrid retrieval ──► toke
 ```
 
 - Zero runtime dependencies, Python 3.9+, `pip install -e .`
-- **~2× the recall of grep at every token budget** on real co-change
+- **1.5–2.7× the recall of grep depending on token budget** on real co-change
   ground truth — at ~5-10% precision: a wide net with the right things in
   it, not a curated shortlist ([measured](docs/BENCHMARKS.md))
-- Benchmarked on **423 real commits** across django, flask, click, httpx,
-  pydantic, with independent validation on black and requests; retrieval
-  quality is **CI-gated** on every push
+- Benchmarked on **701 real commits** across **9 real Python repositories**
+  (django, flask, click, httpx, pydantic + black, requests, rich,
+  starlette); retrieval quality is **CI-gated** on every push
 - Output is **honest by construction**: a meta header discloses exactly
   which symbols were dropped, so the model knows what it cannot see
 - Python is fully supported; TypeScript/JavaScript (ESM) is a working
@@ -102,8 +102,9 @@ top-k selection — most retrieved symbols are supporting context (callers,
 callees, siblings) rather than the exact co-change set. If you pay per
 token, use **`--cutoff gap`**: it cuts the ranking at the largest score
 drop instead of a fixed top-k — measured ~4× the precision at 6–9
-symbols, costing ~30% relative recall. Top-k stays the recall-first
-default; measure the tradeoff on your own repo with
+symbols on the co-change benchmark (2.2× on ContextBench), costing ~30%
+relative recall on the co-change benchmark (~14% on ContextBench). Top-k
+stays the recall-first default; measure the tradeoff on your own repo with
 `diffcontext verify --from-history 20 --cutoff gap`.
 
 **The one-page summary — repository size, tokens before and after,
@@ -176,7 +177,7 @@ measured timings: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 | Language | Status | Retrieval quality |
 |---|---|---|
-| Python | **Full** | Benchmarked: 423 commits, 5 repos + 2 validation repos |
+| Python | **Full** | Benchmarked: 701 commits, 5 repos + 4 validation repos |
 | TypeScript / JS (ESM) | **Working prototype** (`pip install -e ".[typescript]"`) | Mean recall **0–68% depending on code style** — not one number |
 | JavaScript (CommonJS) | **Effectively unsupported** | Measured **0.0%** on express — do not use on CJS repos |
 | Go / Rust / Java / others | Not supported | Retrieves nothing |

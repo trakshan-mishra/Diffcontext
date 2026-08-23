@@ -5,7 +5,7 @@ and where it fails. Summary table in the [README](../README.md#language-support)
 
 | Language | Status | How | Retrieval quality |
 |---|---|---|---|
-| Python | **Full** | stdlib `ast`, deep resolver ([ARCHITECTURE.md](ARCHITECTURE.md)) | Benchmarked: 423 commits, 5 repos + 2 validation repos ([BENCHMARKS.md](BENCHMARKS.md)) |
+| Python | **Full** | stdlib `ast`, deep resolver ([ARCHITECTURE.md](ARCHITECTURE.md)) | Benchmarked: 701 commits, 5 repos + 4 validation repos ([BENCHMARKS.md](BENCHMARKS.md)) |
 | TypeScript / JavaScript (ESM) | **Working prototype** | tree-sitter adapter, `pip install -e ".[typescript]"` | Measured on 4 repos (below): mean recall **0–68% depending on code style** — not one number |
 | JavaScript (CommonJS) | **Effectively unsupported** | `require()`/`exports.x =` not resolved | Measured 0.0% on express — do not use on CJS repos |
 | Go / Rust / Java / others | Not supported | — | Retrieves nothing |

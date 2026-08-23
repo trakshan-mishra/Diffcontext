@@ -116,7 +116,7 @@ whose change lacks the context an agent or reviewer would need.
 
 ## What is measured, and what that does not cover
 
-- Retrieval quality is benchmarked on **423 real commits** across django,
+- Retrieval quality is benchmarked on **701 real commits** across django,
   click, flask, httpx and pydantic, with frozen-weight validation on black,
   requests, rich and starlette. Numbers and methodology: the Benchmarks page,
   `benchmarks/EVAL_V2_REPORT.md`, and `benchmarks/RIGOR_REPORT_2026-07.md`.
@@ -148,7 +148,7 @@ check that the built wheel contains only the package and includes `py.typed`.
 
 | Language | Status | Measured |
 |---|---|---|
-| Python | Full | 423 commits, 5 benchmark repos + 4 validation repos |
+| Python | Full | 701 commits, 5 benchmark repos + 4 validation repos |
 | TypeScript / JavaScript (ESM) | Working prototype, optional extra | Mean recall 0–68% depending on code style: hono 67.9%, zod 58.3%, ky 34.5% |
 | JavaScript (CommonJS) | Effectively unsupported | 0.0% on express — a named, measured failure mode |
 | Go, Rust, Java, others | Not supported | Retrieves nothing |
