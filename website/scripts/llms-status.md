@@ -129,8 +129,11 @@ whose change lacks the context an agent or reviewer would need.
   p < 0.0001 on every context arm vs no-context. The three context variants
   (default / gap / depboost) are statistically indistinguishable (p = 0.36 /
   0.81 / 0.65) at n=128 — the benchmark is underpowered to resolve 3pp
-  differences (only ~19/128 tasks are discordant). Full results:
-  `benchmarks/contextbench/RESULTS.md`.
+  differences (only ~19/128 tasks are discordant). Two qualifiers: the seed
+  functions given to every arm are **oracle** (extracted from the gold patch,
+  so this measures context quality given correct localization, not
+  end-to-end issue solving), and 121/128 effective tasks are django. Full
+  results: `benchmarks/contextbench/RESULTS.md`.
 
 ## Quality gates in CI
 
