@@ -325,6 +325,7 @@ def main():
         "retrieved_only": open(os.path.join(args.out_dir, "pred_retrieved_only.jsonl"), "w"),
         "seeds_plus_retrieved": open(os.path.join(args.out_dir, "pred_seeds_plus_retrieved.jsonl"), "w"),
         "diffcontext_gap": open(os.path.join(args.out_dir, "pred_diffcontext_gap.jsonl"), "w"),
+        "diffcontext_depboost": open(os.path.join(args.out_dir, "pred_diffcontext_depboost.jsonl"), "w"),
     }
     summary = []
     wt: Optional[Worktree] = None
@@ -356,6 +357,7 @@ def main():
                     seeds = seed_symbols_from_patch(index, row["patch"])
                     retrieved: List[str] = []
                     retrieved_gap: List[str] = []
+                    retrieved_depboost: List[str] = []
                     ctx_tokens = 0
                     if seeds:
                         impact = analyze_impact(index, seeds, hybrid=True, adaptive=True)
@@ -376,12 +378,22 @@ def main():
                                              top_k=args.top_k, cutoff="gap")
                         retrieved_gap = [it.symbol_id for it in (pkg_gap.items or [])
                                          if it.symbol_id not in seed_set]
+                        # Dep-boost variant: boost callees/callers/siblings
+                        # +20 before the gap so structurally important
+                        # symbols survive the precision lever.
+                        pkg_depboost = dc_compile(index, impact,
+                                                  max_tokens=args.max_tokens,
+                                                  top_k=args.top_k, cutoff="gap",
+                                                  dep_boost=20.0)
+                        retrieved_depboost = [it.symbol_id for it in (pkg_depboost.items or [])
+                                              if it.symbol_id not in seed_set]
                     # Build the variant span sets.
                     variants = {
                         "seeds_only": seeds,
                         "retrieved_only": retrieved,
                         "seeds_plus_retrieved": seeds + retrieved,
                         "diffcontext_gap": seeds + retrieved_gap,
+                        "diffcontext_depboost": seeds + retrieved_depboost,
                     }
                     row_out = {"instance_id": iid, "repo_url": repo_path,
                                "commit": commit,
@@ -410,9 +422,10 @@ def main():
                                     "ctx_tokens": ctx_tokens, "sec": round(dt, 2),
                                     "metrics": sm})
                     print(f"[{local_repo}] {iid} seeds={len(seeds)} retr={len(retrieved)} "
-                          f"gap={len(retrieved_gap)} {dt:.1f}s  "
+                          f"gap={len(retrieved_gap)} depb={len(retrieved_depboost)} {dt:.1f}s  "
                           f"f1(s+r)={sm['seeds_plus_retrieved']['line_f1']} "
-                          f"f1(gap)={sm['diffcontext_gap']['line_f1']}")
+                          f"f1(gap)={sm['diffcontext_gap']['line_f1']} "
+                          f"f1(depb)={sm['diffcontext_depboost']['line_f1']}")
                     count += 1
                 except Exception as e:
                     print(f"[{local_repo}] {iid} ERROR {type(e).__name__}: {e}")
@@ -429,7 +442,7 @@ def main():
     if n_ok:
         import statistics as st
         for v in ("seeds_only", "retrieved_only", "seeds_plus_retrieved",
-                  "diffcontext_gap"):
+                  "diffcontext_gap", "diffcontext_depboost"):
             r = [s["metrics"][v]["line_recall"] for s in n_ok]
             p = [s["metrics"][v]["line_precision"] for s in n_ok]
             f1 = [s["metrics"][v]["line_f1"] for s in n_ok]
