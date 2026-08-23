@@ -136,6 +136,7 @@ def compile_context(
     token_counter: Optional[Callable[[str], int]] = None,
     scoring_config: Optional[ScoringConfig] = None,
     max_tokens: Optional[int] = None,
+    meta: str = "full",
 ) -> ContextPackage:
     """
     Build the final context package from selected symbols.
@@ -164,6 +165,13 @@ def compile_context(
                         unlimited). Used to keep the meta-header proportionate:
                         under tight budgets the architecture snapshot is
                         compacted so meta can't dwarf the code it annotates.
+        meta:           Disclosure level: "full" (default — counts, architecture
+                        snapshot, dropped manifest, graph confidence, warnings),
+                        "compact" (counts + dropped top-3 only — ~60% smaller),
+                        "off" (no meta-header at all, just code sections). The
+                        A/B test showed full meta costs ~10pp pass@1 at 4000
+                        tokens by displacing code; "compact" is the measured
+                        middle ground.
     """
     dropped_ids   = dropped_ids   or []
     skipped_files = skipped_files or []
@@ -230,23 +238,27 @@ def compile_context(
         code_text = "\n\n".join(parts)
         context_tokens = count(code_text)
 
-        meta = _build_meta_header(
-            symbols        = symbols,
-            selected_ids   = sel_ids,
-            dropped_ids    = drop_ids,
-            skipped_files  = skipped_files,
-            changed_ids    = changed_ids,
-            graph          = graph,
-            reverse        = reverse,
-            graph_confidence = graph_confidence,
-            token_budget   = total_repo_tokens,   # not the budget cap; just total repo
-            context_tokens = context_tokens,
-            scores         = scores,
-            notes          = notes,
-            scoring_config = scoring_config,
-            max_tokens     = max_tokens,
-            count          = count,
-        )
+        if meta == "off":
+            meta_text = ""
+        else:
+            meta_text = _build_meta_header(
+                symbols        = symbols,
+                selected_ids   = sel_ids,
+                dropped_ids    = drop_ids,
+                skipped_files  = skipped_files,
+                changed_ids    = changed_ids,
+                graph          = graph,
+                reverse        = reverse,
+                graph_confidence = graph_confidence,
+                token_budget   = total_repo_tokens,   # not the budget cap; just total repo
+                context_tokens = context_tokens,
+                scores         = scores,
+                notes          = notes,
+                scoring_config = scoring_config,
+                max_tokens     = max_tokens,
+                count          = count,
+                meta_level     = meta,
+            )
 
         suggestions = _build_suggestions(
             changed_ids      = changed_ids,
@@ -258,7 +270,7 @@ def compile_context(
             scores           = scores,
         )
 
-        full_text = meta + "\n\n" + code_text
+        full_text = meta_text + "\n\n" + code_text if meta_text else code_text
         if suggestions:
             full_text += "\n\n" + suggestions
         return items, full_text
@@ -357,6 +369,7 @@ def _build_meta_header(
     scoring_config: Optional[ScoringConfig] = None,
     max_tokens: Optional[int] = None,
     count: Optional[Callable[[str], int]] = None,
+    meta_level: str = "full",
 ) -> str:
     count = count or (lambda text: max(1, len(text) // 4))
     total_syms    = len(symbols)
@@ -374,108 +387,120 @@ def _build_meta_header(
         for s in changed_ids
     ) if graph else 0
 
+    compact = meta_level == "compact"
+
     lines = [
         "=== DIFFCONTEXT META ===",
         f"Repo symbols total    : {total_syms}",
-        f"Symbols scored        : {scored_cnt}",
         f"Symbols IN context    : {selected_cnt}",
         f"Symbols DROPPED       : {dropped_cnt}  ← you cannot see these",
-        f"Graph edges total     : {total_edges}",
-        f"Graph confidence      : {graph_confidence * 100:.0f}%"
-          + ("  ✓" if graph_confidence >= 0.9 else "  ⚠ incomplete"),
-        # Always-present disclosure, same category as the DROPPED manifest:
-        # benchmarked cross-subsystem conceptual co-changes score 0% recall
-        # for every static method (see EVAL_V2_REPORT.md failure taxonomy),
-        # so a confident-looking 100% must not read as "nothing was missed".
-        "Note: graph confidence = STRUCTURAL completeness only. Static "
-        "analysis cannot see cross-subsystem conceptual coupling (e.g. a "
-        "settings flag and the unrelated code that reads it) — such "
-        "related code may exist and not be listed anywhere above.",
+    ]
+    if not compact:
+        lines.extend([
+            f"Symbols scored        : {scored_cnt}",
+            f"Graph edges total     : {total_edges}",
+            f"Graph confidence      : {graph_confidence * 100:.0f}%"
+              + ("  ✓" if graph_confidence >= 0.9 else "  ⚠ incomplete"),
+            # Always-present disclosure, same category as the DROPPED manifest:
+            # benchmarked cross-subsystem conceptual co-changes score 0% recall
+            # for every static method (see EVAL_V2_REPORT.md failure taxonomy),
+            # so a confident-looking 100% must not read as "nothing was missed".
+            "Note: graph confidence = STRUCTURAL completeness only. Static "
+            "analysis cannot see cross-subsystem conceptual coupling (e.g. a "
+            "settings flag and the unrelated code that reads it) — such "
+            "related code may exist and not be listed anywhere above.",
+        ])
+    lines.extend([
         f"Changed symbols       : {len(changed_ids)}",
         f"Direct callers found  : {direct_callers}",
         f"Direct callees found  : {direct_callees}",
         f"Context tokens (code) : {context_tokens:,}",
         "Output tokens (full)  : {FULL_OUTPUT_TOKENS}",
         f"Scoring basis         : {describe_scoring_basis(scoring_config)}",
-    ]
+    ])
 
     # --- Repository Architecture Snapshot ---
-    # Build rel_file -> absolute_path mapping from symbol table.
-    # sym_id gives us relative path; sym.file gives us the absolute path we
-    # need to actually open the file for its docstring.
-    rel_to_abs: Dict[str, str] = {}
-    for sym_id, sym in symbols.items():
-        rel_file = sym_id.split(":", 1)[0]
-        if rel_file not in rel_to_abs:
-            rel_to_abs[rel_file] = sym.file  # sym.file is always absolute
+    # Skipped entirely in compact mode — it's the largest meta component
+    # (per-module listing + docstrings), and the A/B test showed meta
+    # displaces code under tight budgets. Compact keeps counts + dropped
+    # top-3 only.
+    if not compact:
+        # Build rel_file -> absolute_path mapping from symbol table.
+        # sym_id gives us relative path; sym.file gives us the absolute path we
+        # need to actually open the file for its docstring.
+        rel_to_abs: Dict[str, str] = {}
+        for sym_id, sym in symbols.items():
+            rel_file = sym_id.split(":", 1)[0]
+            if rel_file not in rel_to_abs:
+                rel_to_abs[rel_file] = sym.file  # sym.file is always absolute
 
-    modules_total = {}
-    modules_selected = {}
-    for sym_id in symbols:
-        file_name = sym_id.split(":", 1)[0]
-        modules_total[file_name] = modules_total.get(file_name, 0) + 1
-
-    for sym_id in selected_ids:
-        if sym_id in symbols:
+        modules_total = {}
+        modules_selected = {}
+        for sym_id in symbols:
             file_name = sym_id.split(":", 1)[0]
-            modules_selected[file_name] = modules_selected.get(file_name, 0) + 1
+            modules_total[file_name] = modules_total.get(file_name, 0) + 1
 
-    lines.append("")
-    lines.append("=== REPOSITORY ARCHITECTURE SNAPSHOT ===")
-
-    loaded_files = []
-    blind_files = []
-
-    for file_name, total in sorted(modules_total.items()):
-        selected = modules_selected.get(file_name, 0)
-
-        doc_snippet = ""
-        if file_name.endswith(".py"):
-            # FIX: use absolute path, not the relative file_name
-            abs_path = rel_to_abs.get(file_name, "")
-            doc_str = _get_module_docstring(abs_path) if abs_path else ""
-            if doc_str:
-                doc_snippet = f" — {doc_str}"
-
-        if selected > 0:
-            loaded_files.append(f"  - {file_name} ({selected}/{total} symbols loaded){doc_snippet}")
-        else:
-            blind_files.append(f"  - {file_name} ({total} symbols){doc_snippet}")
-
-    # Budget proportionality: the snapshot scales with repo size, not with
-    # the requested budget. Under a tight budget an uncapped snapshot can
-    # cost multiples of the code it annotates (measured: --max-tokens 500 on
-    # black produced ~2,600 total tokens, 5x the request). Compact it when
-    # it would exceed ~25% of the symbol budget.
-    snapshot_cost = count("\n".join(loaded_files + blind_files))
-    snapshot_budget = max(max_tokens // 4, 150) if max_tokens else None
-    if snapshot_budget is not None and snapshot_cost > snapshot_budget:
-        n_loaded = len(loaded_files)
-        n_blind = len(blind_files)
-        lines.append(
-            f"MODULES: {len(modules_total)} files — {n_loaded} in context, "
-            f"{n_blind} blind spots"
-        )
-        lines.append(
-            "  (per-module snapshot omitted under tight budget — raise "
-            "--max-tokens to see it)"
-        )
-    else:
-        lines.append("MODULES IN CONTEXT:")
-        if loaded_files:
-            lines.extend(loaded_files)
-        else:
-            lines.append("  (none)")
+        for sym_id in selected_ids:
+            if sym_id in symbols:
+                file_name = sym_id.split(":", 1)[0]
+                modules_selected[file_name] = modules_selected.get(file_name, 0) + 1
 
         lines.append("")
-        lines.append("KNOWN MODULES (NOT IN CONTEXT - BLIND SPOTS):")
-        if blind_files:
-            _BLIND_CAP = 25
-            lines.extend(blind_files[:_BLIND_CAP])
-            if len(blind_files) > _BLIND_CAP:
-                lines.append(f"  ... and {len(blind_files) - _BLIND_CAP} more modules")
+        lines.append("=== REPOSITORY ARCHITECTURE SNAPSHOT ===")
+
+        loaded_files = []
+        blind_files = []
+
+        for file_name, total in sorted(modules_total.items()):
+            selected = modules_selected.get(file_name, 0)
+
+            doc_snippet = ""
+            if file_name.endswith(".py"):
+                # FIX: use absolute path, not the relative file_name
+                abs_path = rel_to_abs.get(file_name, "")
+                doc_str = _get_module_docstring(abs_path) if abs_path else ""
+                if doc_str:
+                    doc_snippet = f" — {doc_str}"
+
+            if selected > 0:
+                loaded_files.append(f"  - {file_name} ({selected}/{total} symbols loaded){doc_snippet}")
+            else:
+                blind_files.append(f"  - {file_name} ({total} symbols){doc_snippet}")
+
+        # Budget proportionality: the snapshot scales with repo size, not with
+        # the requested budget. Under a tight budget an uncapped snapshot can
+        # cost multiples of the code it annotates (measured: --max-tokens 500 on
+        # black produced ~2,600 total tokens, 5x the request). Compact it when
+        # it would exceed ~25% of the symbol budget.
+        snapshot_cost = count("\n".join(loaded_files + blind_files))
+        snapshot_budget = max(max_tokens // 4, 150) if max_tokens else None
+        if snapshot_budget is not None and snapshot_cost > snapshot_budget:
+            n_loaded = len(loaded_files)
+            n_blind = len(blind_files)
+            lines.append(
+                f"MODULES: {len(modules_total)} files — {n_loaded} in context, "
+                f"{n_blind} blind spots"
+            )
+            lines.append(
+                "  (per-module snapshot omitted under tight budget — raise "
+                "--max-tokens to see it)"
+            )
         else:
-            lines.append("  (none)")
+            lines.append("MODULES IN CONTEXT:")
+            if loaded_files:
+                lines.extend(loaded_files)
+            else:
+                lines.append("  (none)")
+
+            lines.append("")
+            lines.append("KNOWN MODULES (NOT IN CONTEXT - BLIND SPOTS):")
+            if blind_files:
+                _BLIND_CAP = 25
+                lines.extend(blind_files[:_BLIND_CAP])
+                if len(blind_files) > _BLIND_CAP:
+                    lines.append(f"  ... and {len(blind_files) - _BLIND_CAP} more modules")
+            else:
+                lines.append("  (none)")
 
     if skipped_files:
         lines.append("")
@@ -484,17 +509,26 @@ def _build_meta_header(
             lines.append(f"  ✗ {f}")
 
     if dropped_cnt > 0:
-        # Under a tight budget, the top-15 manifest itself costs more than
-        # some requested budgets — show the top 5 and keep the count honest.
-        drop_cap = 5 if (max_tokens and max_tokens < 2000) else 15
+        # Compact mode: top-3 only. Full mode: top 15 (top 5 under <2000
+        # budget) — the dropped manifest itself costs more than some budgets.
+        if compact:
+            drop_cap = 3
+        elif max_tokens and max_tokens < 2000:
+            drop_cap = 5
+        else:
+            drop_cap = 15
         lines.append("")
         lines.append(f"DROPPED SYMBOLS ({dropped_cnt}) — scored but cut by token budget:")
         for d in dropped_ids[:drop_cap]:
             lines.append(f"  - {d}  (score: {scores.get(d, 0):.0f})")
         if dropped_cnt > drop_cap:
             lines.append(f"  ... and {dropped_cnt - drop_cap} more")
-        lines.append("  → If any of these are critical, re-run with a higher --max-tokens.")
+        if not compact:
+            lines.append("  → If any of these are critical, re-run with a higher --max-tokens.")
 
+    # Warnings are kept in compact mode — they flag real graph holes and
+    # dropped references the model needs to know about. Only the
+    # architecture snapshot and the verbose counts are compacted away.
     warnings = []
     if skipped_files:
         warnings.append(
@@ -506,7 +540,7 @@ def _build_meta_header(
             f"⚠ {dropped_cnt} symbol(s) were dropped. "
             "References to them in the code below are NOT backed by visible implementations."
         )
-    if graph_confidence < 0.8:
+    if graph_confidence < 0.8 and not compact:
         warnings.append(
             f"⚠ Graph confidence is {graph_confidence * 100:.0f}%. "
             "Many calls could not be resolved — likely external/stdlib deps or dynamic dispatch."

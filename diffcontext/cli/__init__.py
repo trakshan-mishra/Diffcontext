@@ -113,6 +113,16 @@ def main():
              "reaches related files with no call or lexical connection)",
     )
     p_compile.add_argument("--notes", type=str, default=None, help="Developer notes to prepend to the context output")
+    p_compile.add_argument(
+        "--meta", choices=["full", "compact", "off"], default="full",
+        help=(
+            "Disclosure-header level. 'full' (default): counts, architecture "
+            "snapshot, dropped manifest, graph confidence, warnings. 'compact': "
+            "counts + dropped top-3 + warnings only (~60%% smaller — the A/B "
+            "test showed full meta costs ~10pp pass@1 at 4000 tokens by "
+            "displacing code). 'off': no meta-header, just code sections."
+        ),
+    )
     p_compile.add_argument("--json", action="store_true", help="Output as JSON")
 
     # --- blast (NEW: visual blast radius) ---
@@ -382,7 +392,7 @@ def _cmd_compile(args):
     top_k = args.top_k * len(changed) if args.top_k > 0 else None
     cutoff = args.cutoff if args.cutoff != "topk" else None
     ctx = compile(idx, impact, max_tokens=max_tokens, notes=args.notes,
-                  top_k=top_k, cutoff=cutoff)
+                  top_k=top_k, cutoff=cutoff, meta=args.meta)
 
     if args.json:
         # Existing keys are kept for backwards compatibility. Added for

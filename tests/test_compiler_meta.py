@@ -206,3 +206,72 @@ class TestDocstringCache:
         st = os.stat(f)
         os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
         assert compiler_mod._get_module_docstring(str(f)) == "New doc, edited mid-session."
+
+
+class TestMetaLevels:
+    """The --meta full|compact|off flag controls the disclosure header's
+    budget cost. The A/B test showed full meta costs ~10pp pass@1 at 4000
+    tokens by displacing code; compact is the measured middle ground."""
+
+    def _make_pkg(self, meta=None):
+        symbols = _make_symbols()
+        graph = {"./a.py:f": ["./a.py:g"], "./a.py:g": []}
+        kwargs = dict(
+            symbols=symbols,
+            selected_ids=list(symbols),
+            changed_ids=["./a.py:f"],
+            scores={"./a.py:f": 100.0, "./a.py:g": 90.0},
+            graph=graph,
+            dropped_ids=["./a.py:h"],
+        )
+        if meta is not None:
+            kwargs["meta"] = meta
+        return compile_context(**kwargs)
+
+    def test_full_meta_has_header(self):
+        pkg = self._make_pkg("full")
+        assert "=== DIFFCONTEXT META ===" in pkg.text
+        assert "=== END META ===" in pkg.text
+
+    def test_off_meta_has_no_header(self):
+        pkg = self._make_pkg("off")
+        assert "DIFFCONTEXT META" not in pkg.text
+        # Code sections are still present
+        assert "=== CHANGED SYMBOLS ===" in pkg.text
+
+    def test_compact_has_header_but_no_snapshot(self):
+        pkg = self._make_pkg("compact")
+        assert "=== DIFFCONTEXT META ===" in pkg.text
+        assert "=== END META ===" in pkg.text
+        # The architecture snapshot is the largest meta component —
+        # compact skips it entirely.
+        assert "ARCHITECTURE SNAPSHOT" not in pkg.text
+
+    def test_compact_drops_capped_at_3(self):
+        symbols = _make_symbols()
+        graph = {"./a.py:f": ["./a.py:g"], "./a.py:g": []}
+        # 10 dropped symbols — compact should show top-3 only.
+        dropped = [f"./a.py:fn{i}" for i in range(10)]
+        scores = {"./a.py:f": 100.0, "./a.py:g": 90.0}
+        scores.update({d: float(90 - i) for i, d in enumerate(dropped)})
+        pkg = compile_context(
+            symbols=symbols,
+            selected_ids=list(symbols),
+            changed_ids=["./a.py:f"],
+            scores=scores,
+            graph=graph,
+            dropped_ids=dropped,
+            meta="compact",
+        )
+        # Count dropped-symbol lines (exclude the header and the "and N more")
+        drop_lines = [line for line in pkg.text.splitlines()
+                      if line.startswith("  - ./a.py:fn")]
+        assert len(drop_lines) == 3, f"compact should cap at 3, got {len(drop_lines)}"
+        assert "and 7 more" in pkg.text
+
+    def test_default_is_full(self):
+        # No meta kwarg = full (backwards compatibility).
+        pkg = self._make_pkg()
+        assert "=== DIFFCONTEXT META ===" in pkg.text
+        assert "ARCHITECTURE SNAPSHOT" in pkg.text
+

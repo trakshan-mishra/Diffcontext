@@ -796,6 +796,7 @@ def compile(
     gap_min_ratio: float = 1.0,
     gap_min_keep: int = 0,
     dep_boost: float = 0.0,
+    meta: str = "full",
 ) -> ContextPackage:
     """
     Phase 3: Select symbols and compile into LLM context.
@@ -830,6 +831,14 @@ def compile(
                         (+6.4% recall, +10.2% sym_recall, precision 0.391
                         vs 0.431 baseline, tokens +15%). See
                         benchmarks/contextbench/results/ablation_dep_boost.
+        meta:           Disclosure level: "full" (default — the complete
+                        meta-header: counts, architecture snapshot, dropped
+                        manifest, graph confidence, warnings), "compact"
+                        (counts + dropped top-3 only — ~60% smaller, keeps
+                        warnings), "off" (no meta-header, just code). The
+                        A/B test showed full meta costs ~10pp pass@1 at 4000
+                        tokens by displacing code; compact is the measured
+                        middle ground.
     """
     # Apply dependency-type boost BEFORE selection (the key experiment).
     # Boosts direct callees, callers, and siblings of changed symbols so
@@ -868,6 +877,7 @@ def compile(
         token_counter=token_counter,
         scoring_config=scoring_config,
         max_tokens=max_tokens,
+        meta=meta,
     )
 
 
