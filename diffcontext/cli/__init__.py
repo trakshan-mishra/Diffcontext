@@ -392,6 +392,11 @@ def _cmd_compile(args):
         from ..history import CoChangeIndex
         history = CoChangeIndex(args.repo)
 
+    # Untuned default; not derived from any sweep. The query_weight controls
+    # how much the problem-description signal moves candidates relative to
+    # the graph + BM25 + same-file blend. 0.3 is a guess that "matters but
+    # doesn't dominate" — it has NOT been benchmarked or optimized. Do not
+    # cite this as a measured value; tune it with evidence when data exists.
     query_weight = 0.3 if args.query_text else 0.0
     impact = analyze_impact(
         idx, changed, max_depth=args.depth, hybrid=not args.graph_only,
