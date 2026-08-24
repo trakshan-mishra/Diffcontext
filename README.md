@@ -6,6 +6,7 @@ making.**
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue)](https://www.python.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/trakshan-mishra/Diffcontext/test.yml?branch=main)](https://github.com/trakshan-mishra/Diffcontext/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/trakshan-mishra/diffcontext)
 
 DiffContext is a **context compiler for LLM coding agents**. Give it a Python
 repository and a change — a git diff, a branch, or a single function name —
