@@ -2,7 +2,7 @@ import React from 'react';
 
 const metrics = [
   { value: '701', label: 'Real commits benchmarked' },
-  { value: '277', label: 'Automated tests' },
+  { value: '286', label: 'Automated tests' },
   { value: 'Python', label: 'Production ready' },
   { value: 'MCP', label: 'Claude Code / Cursor' },
 ];

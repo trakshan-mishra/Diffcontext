@@ -72,11 +72,16 @@ Parameters:
 ### `find_impact`
 
 Find what breaks if you change a symbol. Returns the blast radius: direct
-callers, direct callees, and transitive impact.
+callers, direct callees, and transitive impact, ranked by impact score.
+Default cap is 10 symbols — a reviewer brief must be short enough to read.
+The total count is always shown ("339 impacted, showing top 10") so nothing
+is hidden — the cap is a display choice, not information loss.
 
 Parameters:
 - `repo_path` (optional): repo path, defaults to `--repo`
 - `symbol`: symbol ID (e.g. `./src/auth.py:validate_jwt`)
+- `limit` (default 0): max symbols to show. `0` = the default cap of 10; pass
+  a larger number to see more, or set to the total count for all.
 
 ### `explain_selection`
 
