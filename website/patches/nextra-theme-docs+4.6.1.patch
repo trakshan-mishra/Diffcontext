@@ -1,3 +1,16 @@
+diff --git a/node_modules/nextra-theme-docs/dist/components/copy-page.js b/node_modules/nextra-theme-docs/dist/components/copy-page.js
+index 11a4d45..94fcd9f 100644
+--- a/node_modules/nextra-theme-docs/dist/components/copy-page.js
++++ b/node_modules/nextra-theme-docs/dist/components/copy-page.js
+@@ -178,7 +178,7 @@ const CopyPage = (t0) => {
+   }
+   let t11;
+   if ($[15] !== handleCopy) {
+-    t11 = /* @__PURE__ */ jsx(Select, { anchor: t6, className: "x:rounded-none", options: t9, value: "", selectedOption: t10, onChange: (value) => {
++    t11 = /* @__PURE__ */ jsx(Select, { anchor: t6, title: "More page actions", className: "x:rounded-none", options: t9, value: "", selectedOption: t10, onChange: (value) => {
+       if (value === "copy") {
+         handleCopy();
+         return;
 diff --git a/node_modules/nextra-theme-docs/dist/layout.js b/node_modules/nextra-theme-docs/dist/layout.js
 index 57a511f..4b18d85 100644
 --- a/node_modules/nextra-theme-docs/dist/layout.js

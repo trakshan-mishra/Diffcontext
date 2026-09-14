@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/*
+ * Accessibility remediation - WCAG 2.2 AA, SC 1.4.3 (Contrast Minimum).
+ *
+ * Every override below replaces a colour that axe-core 4.13 measured below the
+ * 4.5:1 threshold for normal text. Measured ratios are recorded in
+ * docs/accessibility.md alongside the audit that found them.
+ */
+
+/* Shiki comment token, dark theme: #6A737D on #000000 measured 4.36:1 */
+.dark span[style*="--shiki-dark:#6A737D"] {
+  color: #8b949e !important;
+}
+
+/* Shiki constant token, light theme: #E36209 on #FFFFFF measured 3.48:1 */
+:root:not(.dark) span[style*="--shiki-light:#E36209"] {
+  color: #953800 !important;
+}
+
+/* Primary accent, light theme: #006BE6 measured 4.45:1 on #F3F3F3 and
+   4.49:1 on #F3F4F6. Darkening the primary lightness lifts inline code and
+   in-page anchors above threshold without changing hue. */
+:root:not(.dark) {
+  --nextra-primary-lightness: 38%;
+}
+
+/* Inline code inside the warning callout, light theme:
+   #A65F00 on #F6F4E1 measured 4.44:1 */
+:root:not(.dark) .nextra-callout code.nextra-code {
+  color: #7a4600 !important;
+}
+
+/* Body copy inside the error callout, dark theme:
+   #FB2C36 on #331314 measured 4.43:1 */
+.dark .nextra-callout p {
+  color: #ff8a8f !important;
+}

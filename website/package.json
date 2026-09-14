@@ -8,7 +8,8 @@
     "prebuild": "node scripts/build-llms.mjs",
     "build": "next build",
     "start": "next start",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "a11y": "node scripts/a11y-audit.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.25.0",
@@ -22,7 +23,9 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "autoprefixer": "^10.5.4",
+    "axe-core": "^4.13.0",
     "patch-package": "^8.0.1",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.19",
     "tailwindcss": "^4.3.3"
   }
